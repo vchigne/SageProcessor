@@ -12,4 +12,10 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     CREATE SCHEMA IF NOT EXISTS public;
 EOSQL
 
+# Ejecutar script SQL de backup si existe
+if [ -f "/docker-entrypoint-sql/backup_completo.sql" ]; then
+    echo "Importing database backup..."
+    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" < /docker-entrypoint-sql/backup_completo.sql
+fi
+
 echo "Database initialization completed!"
