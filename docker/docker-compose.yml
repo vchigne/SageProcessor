@@ -1,3 +1,4 @@
+
 version: '3.8'
 
 services:
@@ -14,17 +15,24 @@ services:
     environment:
       - DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@db:5432/sage}
       - NODE_ENV=${NODE_ENV:-production}
-      # Variables opcionales de correo electrónico
       - SMTP_SERVER=${SMTP_SERVER:-}
       - SMTP_PORT=${SMTP_PORT:-}
       - SMTP_USER=${SMTP_USER:-}
       - SMTP_PASSWORD=${SMTP_PASSWORD:-}
       - SMTP_FROM=${SMTP_FROM:-}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_REGION=${AWS_REGION:-}
+      - S3_BUCKET=${S3_BUCKET:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
     networks:
       - sage-network
     volumes:
       - sage-logs:/app/logs
       - sage-data:/app/data
+      - sage-executions:/app/executions
+      - sage-tmp:/app/tmp
+      - ./init-scripts:/app/init-scripts
 
   db:
     image: postgres:14-alpine
@@ -52,4 +60,8 @@ volumes:
   sage-logs:
     driver: local
   sage-data:
+    driver: local
+  sage-executions:
+    driver: local
+  sage-tmp:
     driver: local
