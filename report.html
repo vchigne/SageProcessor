@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            margin: 0;
+            padding: 1rem;
+            font-family: system-ui, -apple-system, sans-serif;
+            background: #f9fafb;
+        }
+        .log-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .message-block {
+            margin: 1em 0;
+            padding: 1.25em;
+            border-radius: 8px;
+            border: 1px solid var(--message-border);
+            background: var(--message-bg);
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+        }
+        .message-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75em;
+            margin-bottom: 0.75em;
+            padding-bottom: 0.75em;
+            border-bottom: 1px solid var(--message-border);
+        }
+        .timestamp {
+            color: var(--message-text);
+            opacity: 0.7;
+            font-size: 0.9em;
+        }
+        .severity {
+            background: var(--message-accent);
+            color: white;
+            padding: 0.25em 0.75em;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .message-content {
+            color: var(--message-text);
+            line-height: 1.5;
+        }
+        .details-block {
+            margin-top: 1em;
+            padding: 1em;
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 6px;
+        }
+        .detail-row {
+            display: flex;
+            align-items: center;
+            gap: 0.5em;
+            margin: 0.5em 0;
+        }
+        .detail-icon {
+            font-size: 1.1em;
+            min-width: 1.5em;
+        }
+        .detail-label {
+            font-weight: 500;
+            margin-right: 0.5em;
+        }
+        .detail-value {
+            font-family: ui-monospace, monospace;
+            padding: 0.2em 0.4em;
+            background: rgba(255, 255, 255, 0.7);
+            border-radius: 4px;
+        }
+        .summary-block {
+            margin: 2em 0;
+            padding: 1.5em;
+            border-radius: 8px;
+            border: 1px solid #E5E7EB;
+            background: white;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        .summary-title {
+            color: #111827;
+            font-size: 1.25em;
+            font-weight: 600;
+            margin: 0 0 1em 0;
+            display: flex;
+            align-items: center;
+            gap: 0.5em;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1em;
+            margin-bottom: 1.5em;
+        }
+        .stat-card {
+            padding: 1em;
+            background: white;
+            border-radius: 6px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 1.5em;
+            font-weight: 600;
+            color: #111827;
+            margin: 0.2em 0;
+        }
+        .success-rate {
+            font-size: 2em;
+            font-weight: 700;
+            text-align: center;
+            padding: 1em;
+            background: white;
+            border-radius: 8px;
+            margin-top: 1em;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+<body>
+<div class="log-container">
+
+        <div class="message-block" style="--message-bg: #EFF6FF; --message-border: #93C5FD; --message-text: #1E40AF; --message-accent: #3B82F6;">
+            <div class="message-header">
+                <span class="icon" style="font-size: 1.2em;">ℹ️</span>
+                <span class="timestamp">2025-04-03 17:23:10</span>
+                <span class="severity">message</span>
+            </div>
+            <div class="message-content">
+                <p style="margin: 0;">✅ Usando OpenRouter para acceder al modelo o3-mini</p>
+        </div></div>
+
+        <div class="message-block" style="--message-bg: #EFF6FF; --message-border: #93C5FD; --message-text: #1E40AF; --message-accent: #3B82F6;">
+            <div class="message-header">
+                <span class="icon" style="font-size: 1.2em;">ℹ️</span>
+                <span class="timestamp">2025-04-03 17:23:10</span>
+                <span class="severity">message</span>
+            </div>
+            <div class="message-content">
+                <p style="margin: 0;">📦 Procesando archivo ZIP: 1743700987953.zip</p>
+        </div></div>
+
+        <div class="message-block" style="--message-bg: #EFF6FF; --message-border: #93C5FD; --message-text: #1E40AF; --message-accent: #3B82F6;">
+            <div class="message-header">
+                <span class="icon" style="font-size: 1.2em;">ℹ️</span>
+                <span class="timestamp">2025-04-03 17:23:10</span>
+                <span class="severity">message</span>
+            </div>
+            <div class="message-content">
+                <p style="margin: 0;">📑 Archivos encontrados: productos.csv, clientes.csv, ventas.csv, productos.xlsx</p>
+        </div></div>
+
+        <div class="message-block" style="--message-bg: #EFF6FF; --message-border: #93C5FD; --message-text: #1E40AF; --message-accent: #3B82F6;">
+            <div class="message-header">
+                <span class="icon" style="font-size: 1.2em;">ℹ️</span>
+                <span class="timestamp">2025-04-03 17:23:10</span>
+                <span class="severity">message</span>
+            </div>
+            <div class="message-content">
+                <p style="margin: 0;">🔍 Analizando archivo: productos.csv</p>
+        </div></div>
+
+        <div class="message-block" style="--message-bg: #EFF6FF; --message-border: #93C5FD; --message-text: #1E40AF; --message-accent: #3B82F6;">
+            <div class="message-header">
+                <span class="icon" style="font-size: 1.2em;">ℹ️</span>
+                <span class="timestamp">2025-04-03 17:23:10</span>
+                <span class="severity">message</span>
+            </div>
+            <div class="message-content">
+                <p style="margin: 0;">Delimitador detectado: ','</p>
+        </div></div>
+
+        <div class="message-block" style="--message-bg: #EFF6FF; --message-border: #93C5FD; --message-text: #1E40AF; --message-accent: #3B82F6;">
+            <div class="message-header">
+                <span class="icon" style="font-size: 1.2em;">ℹ️</span>
+                <span class="timestamp">2025-04-03 17:23:10</span>
+                <span class="severity">message</span>
+            </div>
+            <div class="message-content">
+                <p style="margin: 0;">✓ Archivo analizado: productos.csv</p>
+        </div></div>
+
+        <div class="message-block" style="--message-bg: #EFF6FF; --message-border: #93C5FD; --message-text: #1E40AF; --message-accent: #3B82F6;">
+            <div class="message-header">
+                <span class="icon" style="font-size: 1.2em;">ℹ️</span>
+                <span class="timestamp">2025-04-03 17:23:10</span>
+                <span class="severity">message</span>
+            </div>
+            <div class="message-content">
+                <p style="margin: 0;">- Columnas: 4</p>
+        </div></div>
+
+        <div class="message-block" style="--message-bg: #EFF6FF; --message-border: #93C5FD; --message-text: #1E40AF; --message-accent: #3B82F6;">
+            <div class="message-header">
+                <span class="icon" style="font-size: 1.2em;">ℹ️</span>
+                <span class="timestamp">2025-04-03 17:23:10</span>
+                <span class="severity">message</span>
+            </div>
+            <div class="message-content">
+                <p style="margin: 0;">- BOM detectado: No</p>
+        </div></div>
+
+        <div class="message-block" style="--message-bg: #EFF6FF; --message-border: #93C5FD; --message-text: #1E40AF; --message-accent: #3B82F6;">
+            <div class="message-header">
+                <span class="icon" style="font-size: 1.2em;">ℹ️</span>
+                <span class="timestamp">2025-04-03 17:23:10</span>
+                <span class="severity">message</span>
+            </div>
+            <div class="message-content">
+                <p style="margin: 0;">✓ Columnas encontradas: codigo_producto, nombre, precio, existencias</p>
+        </div></div>
+
+        <div class="message-block" style="--message-bg: #EFF6FF; --message-border: #93C5FD; --message-text: #1E40AF; --message-accent: #3B82F6;">
+            <div class="message-header">
+                <span class="icon" style="font-size: 1.2em;">ℹ️</span>
+                <span class="timestamp">2025-04-03 17:23:10</span>
+                <span class="severity">message</span>
+            </div>
+            <div class="message-content">
+                <p style="margin: 0;">🔍 Analizando archivo: clientes.csv</p>
+        </div></div>
+
+        <div class="message-block" style="--message-bg: #EFF6FF; --message-border: #93C5FD; --message-text: #1E40AF; --message-accent: #3B82F6;">
+            <div class="message-header">
+                <span class="icon" style="font-size: 1.2em;">ℹ️</span>
+                <span class="timestamp">2025-04-03 17:23:10</span>
+                <span class="severity">message</span>
+            </div>
+            <div class="message-content">
+                <p style="margin: 0;">Delimitador detectado: ','</p>
+        </div></div>
+
+        <div class="message-block" style="--message-bg: #EFF6FF; --message-border: #93C5FD; --message-text: #1E40AF; --message-accent: #3B82F6;">
+            <div class="message-header">
+                <span class="icon" style="font-size: 1.2em;">ℹ️</span>
+                <span class="timestamp">2025-04-03 17:23:10</span>
+                <span class="severity">message</span>
+            </div>
+            <div class="message-content">
+                <p style="margin: 0;">✓ Archivo analizado: clientes.csv</p>
+        </div></div>
+
+        <div class="message-block" style="--message-bg: #EFF6FF; --message-border: #93C5FD; --message-text: #1E40AF; --message-accent: #3B82F6;">
+            <div class="message-header">
+                <span class="icon" style="font-size: 1.2em;">ℹ️</span>
+                <span class="timestamp">2025-04-03 17:23:10</span>
+                <span class="severity">message</span>
+            </div>
+            <div class="message-content">
+                <p style="margin: 0;">- Columnas: 3</p>
+        </div></div>
+
+        <div class="message-block" style="--message-bg: #EFF6FF; --message-border: #93C5FD; --message-text: #1E40AF; --message-accent: #3B82F6;">
+            <div class="message-header">
+                <span class="icon" style="font-size: 1.2em;">ℹ️</span>
+                <span class="timestamp">2025-04-03 17:23:10</span>
+                <span class="severity">message</span>
+            </div>
+            <div class="message-content">
+                <p style="margin: 0;">- BOM detectado: No</p>
+        </div></div>
+
+        <div class="message-block" style="--message-bg: #EFF6FF; --message-border: #93C5FD; --message-text: #1E40AF; --message-accent: #3B82F6;">
+            <div class="message-header">
+                <span class="icon" style="font-size: 1.2em;">ℹ️</span>
+                <span class="timestamp">2025-04-03 17:23:10</span>
+                <span class="severity">message</span>
+            </div>
+            <div class="message-content">
+                <p style="margin: 0;">✓ Columnas encontradas: codigo_cliente, nombre, limite_credito</p>
+        </div></div>
+
+        <div class="message-block" style="--message-bg: #EFF6FF; --message-border: #93C5FD; --message-text: #1E40AF; --message-accent: #3B82F6;">
+            <div class="message-header">
+                <span class="icon" style="font-size: 1.2em;">ℹ️</span>
+                <span class="timestamp">2025-04-03 17:23:10</span>
+                <span class="severity">message</span>
+            </div>
+            <div class="message-content">
+                <p style="margin: 0;">🔍 Analizando archivo: ventas.csv</p>
+        </div></div>
+
+        <div class="message-block" style="--message-bg: #EFF6FF; --message-border: #93C5FD; --message-text: #1E40AF; --message-accent: #3B82F6;">
+            <div class="message-header">
+                <span class="icon" style="font-size: 1.2em;">ℹ️</span>
+                <span class="timestamp">2025-04-03 17:23:10</span>
+                <span class="severity">message</span>
+            </div>
+            <div class="message-content">
+                <p style="margin: 0;">Delimitador detectado: ','</p>
+        </div></div>
+
+        <div class="message-block" style="--message-bg: #EFF6FF; --message-border: #93C5FD; --message-text: #1E40AF; --message-accent: #3B82F6;">
+            <div class="message-header">
+                <span class="icon" style="font-size: 1.2em;">ℹ️</span>
+                <span class="timestamp">2025-04-03 17:23:10</span>
+                <span class="severity">message</span>
+            </div>
+            <div class="message-content">
+                <p style="margin: 0;">✓ Archivo analizado: ventas.csv</p>
+        </div></div>
+
+        <div class="message-block" style="--message-bg: #EFF6FF; --message-border: #93C5FD; --message-text: #1E40AF; --message-accent: #3B82F6;">
+            <div class="message-header">
+                <span class="icon" style="font-size: 1.2em;">ℹ️</span>
+                <span class="timestamp">2025-04-03 17:23:10</span>
+                <span class="severity">message</span>
+            </div>
+            <div class="message-content">
+                <p style="margin: 0;">- Columnas: 4</p>
+        </div></div>
+
+        <div class="message-block" style="--message-bg: #EFF6FF; --message-border: #93C5FD; --message-text: #1E40AF; --message-accent: #3B82F6;">
+            <div class="message-header">
+                <span class="icon" style="font-size: 1.2em;">ℹ️</span>
+                <span class="timestamp">2025-04-03 17:23:10</span>
+                <span class="severity">message</span>
+            </div>
+            <div class="message-content">
+                <p style="margin: 0;">- BOM detectado: No</p>
+        </div></div>
+
+        <div class="message-block" style="--message-bg: #EFF6FF; --message-border: #93C5FD; --message-text: #1E40AF; --message-accent: #3B82F6;">
+            <div class="message-header">
+                <span class="icon" style="font-size: 1.2em;">ℹ️</span>
+                <span class="timestamp">2025-04-03 17:23:10</span>
+                <span class="severity">message</span>
+            </div>
+            <div class="message-content">
+                <p style="margin: 0;">✓ Columnas encontradas: codigo_venta, codigo_cliente, codigo_producto, cantidad</p>
+        </div></div>
+
+        <div class="message-block" style="--message-bg: #EFF6FF; --message-border: #93C5FD; --message-text: #1E40AF; --message-accent: #3B82F6;">
+            <div class="message-header">
+                <span class="icon" style="font-size: 1.2em;">ℹ️</span>
+                <span class="timestamp">2025-04-03 17:23:10</span>
+                <span class="severity">message</span>
+            </div>
+            <div class="message-content">
+                <p style="margin: 0;">🔍 Analizando archivo: productos.xlsx</p>
+        </div></div>
+
+        <div class="message-block" style="--message-bg: #FFFBEB; --message-border: #FCD34D; --message-text: #92400E; --message-accent: #D97706;">
+            <div class="message-header">
+                <span class="icon" style="font-size: 1.2em;">⚠️</span>
+                <span class="timestamp">2025-04-03 17:23:11</span>
+                <span class="severity">warning</span>
+            </div>
+            <div class="message-content">
+                <p style="margin: 0;">Error analyzing file /tmp/tmpafve412q/productos.xlsx: cannot access local variable 'best_delimiter' where it is not associated with a value</p>
+        </div></div>
+
+        <div class="message-block" style="--message-bg: #EFF6FF; --message-border: #93C5FD; --message-text: #1E40AF; --message-accent: #3B82F6;">
+            <div class="message-header">
+                <span class="icon" style="font-size: 1.2em;">ℹ️</span>
+                <span class="timestamp">2025-04-03 17:23:11</span>
+                <span class="severity">message</span>
+            </div>
+            <div class="message-content">
+                <p style="margin: 0;">✓ Columnas encontradas:</p>
+        </div></div>
+
+        <div class="message-block" style="--message-bg: #EFF6FF; --message-border: #93C5FD; --message-text: #1E40AF; --message-accent: #3B82F6;">
+            <div class="message-header">
+                <span class="icon" style="font-size: 1.2em;">ℹ️</span>
+                <span class="timestamp">2025-04-03 17:23:11</span>
+                <span class="severity">message</span>
+            </div>
+            <div class="message-content">
+                <p style="margin: 0;">Intentando leer instrucciones desde: instructions_1743700987957.txt</p>
+        </div></div>
+
+        <div class="message-block" style="--message-bg: #EFF6FF; --message-border: #93C5FD; --message-text: #1E40AF; --message-accent: #3B82F6;">
+            <div class="message-header">
+                <span class="icon" style="font-size: 1.2em;">ℹ️</span>
+                <span class="timestamp">2025-04-03 17:23:11</span>
+                <span class="severity">message</span>
+            </div>
+            <div class="message-content">
+                <p style="margin: 0;">✓ Instrucciones cargadas desde /home/runner/workspace/tmp/instructions_1743700987957.txt: 37 caracteres</p>
+        </div></div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,35 @@
+2025-04-02 18:29:44,177 - sage_daemon.main - INFO - Iniciando SAGE Daemon en modo ejecución única (log level: DEBUG)
+2025-04-02 18:29:44,902 - sage_daemon.main - INFO - Se procesarán 2 casillas activas
+2025-04-02 18:29:44,902 - sage_daemon.main - INFO - Se procesarán 2 casillas activas
+2025-04-02 18:29:44,902 - sage_daemon.main - INFO - Procesando casilla: Sin nombre (ID: 49)
+2025-04-02 18:29:44,902 - sage_daemon.main - INFO - Procesando casilla: Sin nombre (ID: 49)
+2025-04-02 18:29:44,902 - EmailMonitor - DEBUG - Configuración recibida: {'id': 49, 'nombre_yaml': 'configuracion (2).yaml', 'yaml_contenido': '[YAML contenido - 3975 caracteres]', 'instalacion_id': 1, 'email_casilla': None, 'tipo_envio': 'email', 'configuracion': {'servidor_entrada': 'imap.dreamhost.com', 'puerto_entrada': 993, 'protocolo_entrada': 'imap', 'usar_ssl_entrada': True, 'servidor_salida': 'smtp.dreamhost.com', 'puerto_salida': 587, 'usar_tls_salida': True, 'usuario': 'info@sage.vidahub.ai', 'password': '********'}, 'sage_config': "SageConfig(name='Configuración de Validación de Datos', catalogs=4, packages=1)", 'package_name': 'paquete_datos'}
+2025-04-02 18:29:44,903 - EmailMonitor - DEBUG - DEBUG - Contraseña real: 'krx32aFF'
+2025-04-02 18:29:44,903 - EmailMonitor - INFO - Conexión: servidor=imap.dreamhost.com, puerto=993, usuario=info@sage.vidahub.ai
+2025-04-02 18:29:44,903 - EmailMonitor - INFO - Conectando a servidor imap.dreamhost.com con usuario info@sage.vidahub.ai
+2025-04-02 18:29:44,973 - EmailMonitor - INFO - Intentando autenticación IMAP...
+2025-04-02 18:29:44,973 - EmailMonitor - DEBUG - DEBUG CREDENCIALES - Usuario: 'info@sage.vidahub.ai', Password: '********'
+2025-04-02 18:29:44,973 - EmailMonitor - DEBUG - USANDO password real para autenticación (longitud: 8)
+2025-04-02 18:29:45,005 - EmailMonitor - INFO - Autenticación exitosa en servidor IMAP imap.dreamhost.com
+2025-04-02 18:29:45,006 - EmailMonitor - INFO - Buscando correos no leídos en imap.dreamhost.com para info@sage.vidahub.ai
+2025-04-02 18:29:45,018 - EmailMonitor - INFO - Total de mensajes en bandeja: 1
+2025-04-02 18:29:45,018 - EmailMonitor - DEBUG - Ejecutando búsqueda IMAP con criterio: (UNSEEN)
+2025-04-02 18:29:45,030 - EmailMonitor - DEBUG - Resultado búsqueda IMAP - Status: OK, Messages: [b'']
+2025-04-02 18:29:45,031 - EmailMonitor - INFO - No se encontraron mensajes sin leer
+2025-04-02 18:29:45,031 - sage_daemon.main - INFO - Procesando casilla: Sin nombre (ID: 45)
+2025-04-02 18:29:45,031 - sage_daemon.main - INFO - Procesando casilla: Sin nombre (ID: 45)
+2025-04-02 18:29:45,031 - EmailMonitor - DEBUG - Configuración recibida: {'id': 45, 'nombre_yaml': 'configuracion (2).yaml', 'yaml_contenido': '[YAML contenido - 13795 caracteres]', 'instalacion_id': 1, 'email_casilla': 'casilla45@sage.vidahub.ai', 'tipo_envio': 'email', 'configuracion': {'servidor_entrada': 'imap.dreamhost.com', 'puerto_entrada': 993, 'protocolo_entrada': 'imap', 'usar_ssl_entrada': True, 'servidor_salida': 'smtp.dreamhost.com', 'puerto_salida': 587, 'usar_tls_salida': True, 'usuario': 'casilla45@sage.vidahub.ai', 'password': '********'}, 'sage_config': "SageConfig(name='Proyecto BI CLOROX - Definición SAGE', catalogs=7, packages=1)", 'package_name': 'paquete_bi_clorox'}
+2025-04-02 18:29:45,031 - EmailMonitor - DEBUG - DEBUG - Contraseña real: 'krx32aFF'
+2025-04-02 18:29:45,031 - EmailMonitor - INFO - Conexión: servidor=imap.dreamhost.com, puerto=993, usuario=casilla45@sage.vidahub.ai
+2025-04-02 18:29:45,032 - EmailMonitor - INFO - Conectando a servidor imap.dreamhost.com con usuario casilla45@sage.vidahub.ai
+2025-04-02 18:29:45,098 - EmailMonitor - INFO - Intentando autenticación IMAP...
+2025-04-02 18:29:45,098 - EmailMonitor - DEBUG - DEBUG CREDENCIALES - Usuario: 'casilla45@sage.vidahub.ai', Password: '********'
+2025-04-02 18:29:45,098 - EmailMonitor - DEBUG - USANDO password real para autenticación (longitud: 8)
+2025-04-02 18:29:45,129 - EmailMonitor - INFO - Autenticación exitosa en servidor IMAP imap.dreamhost.com
+2025-04-02 18:29:45,129 - EmailMonitor - INFO - Buscando correos no leídos en imap.dreamhost.com para casilla45@sage.vidahub.ai
+2025-04-02 18:29:45,140 - EmailMonitor - INFO - Total de mensajes en bandeja: 28
+2025-04-02 18:29:45,140 - EmailMonitor - DEBUG - Ejecutando búsqueda IMAP con criterio: (UNSEEN)
+2025-04-02 18:29:45,152 - EmailMonitor - DEBUG - Resultado búsqueda IMAP - Status: OK, Messages: [b'']
+2025-04-02 18:29:45,152 - EmailMonitor - INFO - No se encontraron mensajes sin leer
+2025-04-02 18:29:45,152 - sage_daemon.main - INFO - Proceso de verificación completado
+2025-04-02 18:29:45,152 - sage_daemon.main - INFO - Proceso de verificación completado

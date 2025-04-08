@@ -1,0 +1,35 @@
+# Resultados del procesamiento de archivos SAGE
+# Fecha y hora: 2025-04-02 01:30:31
+# Archivo YAML: /home/runner/workspace/tests_oficiales/file_processor_cli/yaml/CanalTradicionalArchivosDistribuidora.yaml
+# Archivo ZIP: /home/runner/workspace/tests_oficiales/file_processor_cli/data/zip/output.zip
+# Tiempo de procesamiento: 6.30 segundos
+# Errores: 53, Advertencias: 0
+================================================================================
+
+❌ El procesamiento ha encontrado 53 errores.
+
+📂 Archivos generados durante el procesamiento:
+  - output.log (297.2 KB)
+
+📋 Información del registro principal:
+
+🔴 Errores encontrados (24):
+  [2025-04-02 01:30:27] ❌ ERROR: Campo 'CodigoCliente' debe ser único
+  [2025-04-02 01:30:27] ❌ ERROR: Campo 'CodigoCliente' debe ser único
+  [2025-04-02 01:30:27] ❌ ERROR: Campo 'CodigoCliente' debe ser único
+  [2025-04-02 01:30:27] ℹ️ INFO: Summary for clientes.csv: Total records: 239999 Errors: 3 Warnings: 0 Success rate: 100.00%
+  [2025-04-02 01:30:27] ❌ ERROR: Campo 'CodigoProducto' debe ser único
+  [2025-04-02 01:30:27] ❌ ERROR: Campo 'CodigoProducto' debe ser único
+  [2025-04-02 01:30:27] ❌ ERROR: Campo 'CodigoProducto' debe ser único
+  [2025-04-02 01:30:27] ❌ ERROR: Campo 'CodigoProducto' debe ser único
+  [2025-04-02 01:30:27] ❌ ERROR: Campo 'CodigoProducto' debe ser único
+  [2025-04-02 01:30:27] ❌ ERROR: Campo 'CodigoProducto' debe ser único
+  ... y 14 errores más
+
+🟠 Advertencias encontradas (9):
+  [2025-04-02 01:30:27] ℹ️ INFO: Summary for clientes.csv: Total records: 239999 Errors: 3 Warnings: 0 Success rate: 100.00%
+  [2025-04-02 01:30:27] ⚠️ ADVERTENCIA: Se encontraron 49 valores duplicados para el campo único 'CodigoProducto'. Solo se mostraron los primeros 10 para mejorar el rendimiento.
+  [2025-04-02 01:30:27] ℹ️ INFO: Summary for productos.csv: Total records: 98 Errors: 49 Warnings: 0 Success rate: 50.00%
+  [2025-04-02 01:30:27] ℹ️ INFO: Summary for stock.csv: Total records: 88 Errors: 0 Warnings: 0 Success rate: 100.00%
+  [2025-04-02 01:30:27] ℹ️ INFO: Summary for vendedores.csv: Total records: 483 Errors: 0 Warnings: 0 Success rate: 100.00%
+  ... y 4 advertencias más

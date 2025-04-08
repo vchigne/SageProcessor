@@ -1,0 +1,64 @@
+/* Estilos para el formulario de configuración de email */
+
+.sslTlsActive {
+  background-color: #10b981;
+  color: white;
+  border-radius: 0.375rem;
+  padding: 0.25rem 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  font-weight: 500;
+  font-size: 0.875rem;
+}
+
+.sslTlsInactive {
+  background-color: #ef4444;
+  color: white; 
+  border-radius: 0.375rem;
+  padding: 0.25rem 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  font-weight: 500;
+  font-size: 0.875rem;
+}
+
+.sslTlsIcon {
+  margin-right: 0.25rem;
+  width: 1rem;
+  height: 1rem;
+}
+
+.validationButton {
+  margin-top: 1rem;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f3f4f6;
+  color: #374151;
+  border: 1px solid #d1d5db;
+  padding: 0.5rem;
+  border-radius: 0.375rem;
+  transition: all 0.2s;
+}
+
+.validationButton:hover {
+  background-color: #e5e7eb;
+}
+
+.validationButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.validationButtonIcon {
+  margin-right: 0.5rem;
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.infoMessage {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  color: #6b7280;
+}

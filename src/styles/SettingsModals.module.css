@@ -1,0 +1,46 @@
+
+/* Estilos compartidos para modales de Settings */
+
+.modalOverlay {
+  @apply fixed inset-0 bg-black/30 dark:bg-black/50;
+}
+
+.modalContainer {
+  @apply fixed inset-0 flex items-center justify-center p-4;
+}
+
+.modalPanel {
+  @apply w-full max-w-sm bg-white dark:bg-dark-card/95 rounded-md overflow-hidden shadow-lg dark:shadow-dark-card/60;
+}
+
+.modalHeader {
+  @apply p-4 border-b border-gray-200 dark:border-dark-border;
+}
+
+.modalTitle {
+  @apply text-lg font-medium text-gray-900 dark:text-dark-text;
+}
+
+.modalBody {
+  @apply p-4 space-y-4 bg-white dark:bg-dark-card;
+}
+
+.inputLabel {
+  @apply block text-sm font-medium text-gray-700 dark:text-dark-text;
+}
+
+.errorMessage {
+  @apply mx-4 mt-4 p-2 bg-red-50 dark:bg-dark-error/10 text-red-700 dark:text-dark-error rounded-md text-sm;
+}
+
+.buttonContainer {
+  @apply flex justify-end gap-2 pt-2;
+}
+
+.cancelButton {
+  @apply px-4 py-2 text-sm font-medium text-gray-700 dark:text-dark-text bg-white dark:bg-dark-input border border-gray-300 dark:border-dark-border rounded-md hover:bg-gray-50 dark:hover:bg-dark-cardHover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 dark:focus:ring-dark-accent;
+}
+
+.submitButton {
+  @apply px-4 py-2 text-sm font-medium text-white bg-blue-600 dark:bg-dark-accent border border-transparent rounded-md hover:bg-blue-700 dark:hover:bg-dark-accent/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 dark:focus:ring-dark-accent;
+}

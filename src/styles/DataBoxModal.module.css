@@ -1,0 +1,120 @@
+/* Estilos para el modal de Casillas de Datos */
+.modalHeader {
+  @apply bg-gradient-to-r from-blue-600 to-blue-700 p-4 rounded-t-lg;
+}
+
+.modalTitle {
+  @apply text-xl font-semibold text-white;
+}
+
+.modalBody {
+  @apply flex-1 overflow-y-auto p-6;
+}
+
+.formContainer {
+  @apply space-y-6;
+}
+
+.instalacionInfo {
+  @apply bg-blue-50 dark:bg-dark-card border border-blue-100 dark:border-dark-border p-4 rounded-lg;
+}
+
+.instalacionName {
+  @apply font-medium text-blue-800 dark:text-dark-accent;
+}
+
+.instalacionDetails {
+  @apply text-sm text-blue-600 dark:text-dark-text-secondary;
+}
+
+.panel {
+  @apply bg-white dark:bg-dark-card border border-gray-100 dark:border-dark-border p-5 rounded-lg shadow-sm;
+}
+
+.panelTitle {
+  @apply text-base font-semibold mb-4 text-blue-800 dark:text-dark-accent;
+}
+
+.inputGroup {
+  @apply space-y-4;
+}
+
+.inputLabel {
+  @apply block text-sm font-medium text-gray-700 dark:text-dark-text mb-1;
+}
+
+.inputOptional {
+  @apply text-gray-500 dark:text-dark-text-secondary text-xs;
+}
+
+.inputWrapper {
+  @apply relative;
+}
+
+.inputWithIcon {
+  @apply block w-full pl-10 pr-4 py-2 rounded-md border-gray-300 dark:border-dark-border shadow-sm focus:border-blue-500 dark:focus:border-dark-accent focus:ring-blue-500 dark:focus:ring-dark-accent dark:bg-dark-input dark:text-dark-text;
+}
+
+.inputIcon {
+  @apply absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none;
+}
+
+.inputIconSvg {
+  @apply h-5 w-5 text-gray-400 dark:text-dark-text-secondary;
+}
+
+.inputHint {
+  @apply mt-1 text-xs text-gray-500 dark:text-dark-text-secondary;
+}
+
+.buttonGroup {
+  @apply flex flex-wrap items-center gap-2;
+}
+
+.actionButton {
+  @apply px-4 py-2;
+}
+
+.codeViewer {
+  @apply rounded-md bg-gray-50 dark:bg-dark-cardHover overflow-auto max-h-[400px];
+}
+
+.codeContent {
+  @apply p-4;
+}
+
+.validationBox {
+  @apply p-4 rounded-md text-sm;
+}
+
+.validationBoxLoading {
+  @apply bg-blue-50 dark:bg-dark-card border border-blue-200 dark:border-dark-border text-blue-700 dark:text-dark-accent;
+}
+
+.validationBoxError {
+  @apply bg-red-50 dark:bg-dark-error/10 border border-red-200 dark:border-dark-error/20 text-red-700 dark:text-dark-error;
+}
+
+.validationBoxSuccess {
+  @apply bg-green-50 dark:bg-dark-success/10 border border-green-200 dark:border-dark-success/20 text-green-700 dark:text-dark-success;
+}
+
+.modalFooter {
+  @apply flex justify-between items-center gap-2 p-6 border-t dark:border-dark-border flex-shrink-0 bg-gray-50 dark:bg-dark-cardHover;
+}
+
+.errorMessage {
+  @apply text-sm text-red-600 dark:text-dark-error;
+}
+
+.errorIcon {
+  @apply h-4 w-4 inline mr-1;
+}
+
+.footerButtons {
+  @apply flex gap-2;
+}
+
+.primaryButton {
+  @apply bg-gradient-to-r from-blue-600 to-blue-700;
+}

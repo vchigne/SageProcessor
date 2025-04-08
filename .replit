@@ -1,0 +1,101 @@
+modules = ["python-3.11", "nodejs-20", "postgresql-16", "python3"]
+
+[nix]
+channel = "stable-24_05"
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "UI Dev Server"
+author = 39710120
+mode = "sequential"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run dev"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "SAGE Daemon"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "SAGE Daemon 2"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Next.js Development Server"
+
+[[workflows.workflow]]
+name = "SAGE Daemon"
+author = "agent"
+
+[workflows.workflow.metadata]
+agentRequireRestartOnSave = false
+
+[[workflows.workflow.tasks]]
+task = "packager.installForAll"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python run_sage_daemon.py"
+
+[[workflows.workflow]]
+name = "Run SAGE"
+author = 39710120
+mode = "sequential"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python run_sage_daemon.py"
+
+[[workflows.workflow]]
+name = "SAGE Daemon 2"
+author = "agent"
+
+[workflows.workflow.metadata]
+agentRequireRestartOnSave = false
+
+[[workflows.workflow.tasks]]
+task = "packager.installForAll"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python run_sage_daemon2.py"
+
+[[workflows.workflow]]
+name = "Next.js Development Server"
+author = "agent"
+
+[workflows.workflow.metadata]
+agentRequireRestartOnSave = false
+
+[[workflows.workflow.tasks]]
+task = "packager.installForAll"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd /home/runner/$REPL_SLUG && npx next dev -p 5000"
+waitForPort = 5000
+
+[[workflows.workflow]]
+name = "Cleanup Temporales"
+author = 39710120
+mode = "sequential"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python scripts/procesamiento/cleanup_executions.py"
+
+[deployment]
+run = ["sh", "-c", "npm run dev"]
+
+[[ports]]
+localPort = 5000
+externalPort = 80

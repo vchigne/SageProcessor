@@ -1,0 +1,492 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@keyframes progress {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(100%); }
+  100% { transform: translateX(-100%); }
+}
+
+.animate-progress {
+  animation: progress 2s linear infinite;
+}
+
+/* ===== TEMA OSCURO MEJORADO ===== */
+.dark {
+  color-scheme: dark;
+}
+
+/* Estilos básicos del tema oscuro */
+.dark body,
+.dark .bg-gray-50 {
+  @apply bg-dark-background text-dark-text border-dark-border !important;
+}
+
+.dark {
+  @apply bg-dark-background !important;
+}
+
+/* Sidebar en modo oscuro */
+.dark aside,
+.dark nav {
+  @apply bg-dark-sidebar border-dark-border !important;
+}
+
+/* Navegación principal */
+.dark a[href],
+.dark button[type="button"] {
+  @apply text-dark-text-secondary hover:text-dark-text hover:font-semibold !important;
+}
+
+/* Eliminar cualquier fondo en hover de elementos de navegación */
+.dark a[href]:hover,
+.dark button[type="button"]:hover,
+.dark .group:hover {
+  @apply bg-transparent !important;
+}
+
+/* Arreglos específicos para clases de navegación de Tailwind */
+.dark .group:hover,
+.dark a[class*="hover:bg-gray-50"]:hover {
+  @apply bg-transparent hover:bg-transparent !important;
+}
+
+/* Elemento activo sin fondo, solo con cambio de color y negrita */
+.dark a[class*="active"],
+.dark [aria-current="page"] {
+  @apply text-dark-accent font-semibold bg-transparent !important;
+}
+
+/* Menú móvil - mantener comportamiento actual con fondo */
+.dark .lg\:hidden a[class*="active"],
+.dark .lg\:hidden [aria-current="page"] {
+  @apply bg-dark-accent/10 !important;
+}
+
+/* Cards y contenedores en modo oscuro */
+.dark .tremor-Card-root,
+.dark [role="menu"],
+.dark [role="menuitem"] {
+  @apply bg-dark-card border-dark-border !important;
+  box-shadow: 0 4px 24px 0 rgba(0,0,0,0.24) !important;
+}
+
+.dark .tremor-Card-root:hover {
+  box-shadow: 0 6px 30px 0 rgba(0,0,0,0.3) !important;
+}
+
+/* Menus y dropdowns */
+.dark [role="menu"] div,
+.dark [role="menuitem"] {
+  @apply bg-dark-card text-dark-text border-dark-border !important;
+}
+
+.dark [role="menuitem"]:hover {
+  @apply bg-dark-cardHover !important;
+}
+
+/* Iconos y colores de acento */
+.dark svg {
+  @apply text-dark-text-secondary !important;
+}
+
+.dark [class*="text-indigo"],
+.dark [class*="text-blue"] {
+  @apply text-dark-accent !important;
+}
+
+.dark [class*="text-green"],
+.dark [class*="text-emerald"] {
+  @apply text-dark-success !important;
+}
+
+.dark [class*="text-red"] {
+  @apply text-dark-error !important;
+}
+
+.dark [class*="text-yellow"],
+.dark [class*="text-amber"] {
+  @apply text-dark-warning !important;
+}
+
+/* Inputs, selects y controles de formulario */
+.dark input, 
+.dark textarea,
+.dark select,
+.dark button {
+  @apply bg-dark-input border-dark-border text-dark-text !important;
+}
+
+.dark input:focus, 
+.dark textarea:focus,
+.dark select:focus {
+  @apply border-dark-accent/50 !important;
+}
+
+.dark [data-tremor-select],
+.dark [data-tremor-input],
+.dark [data-tremor-button] {
+  @apply bg-dark-input border-dark-border text-dark-text !important;
+}
+
+/* Corregir fondo transparente en los dropdowns de selección */
+.dark div[role="listbox"],
+.dark [data-headlessui-state="open"] div,
+.dark .tremor-SelectItem-root,
+.dark .tremor-Select-dropdown,
+.dark .tremor-SelectList-root {
+  @apply bg-dark-input text-dark-text !important;
+}
+
+.dark div[role="option"],
+.dark button[role="option"],
+.dark .tremor-SelectItem-root button {
+  @apply bg-dark-input text-dark-text hover:bg-dark-cardHover !important;
+}
+
+.dark div[role="option"][data-headlessui-state="active"],
+.dark button[role="option"][data-headlessui-state="active"],
+.dark .tremor-SelectItem-root button[aria-selected="true"] {
+  @apply bg-dark-cardHover !important;
+}
+
+/* Corregir dropdowns en modo claro */
+div[role="listbox"],
+[data-headlessui-state="open"] div,
+.tremor-SelectItem-root,
+.tremor-Select-dropdown,
+.tremor-SelectList-root {
+  @apply bg-white !important;
+}
+
+div[role="option"],
+button[role="option"],
+.tremor-SelectItem-root button {
+  @apply bg-white text-gray-900 hover:bg-gray-100 !important;
+}
+
+div[role="option"][data-headlessui-state="active"],
+button[role="option"][data-headlessui-state="active"],
+.tremor-SelectItem-root button[aria-selected="true"] {
+  @apply bg-gray-100 !important;
+}
+
+/* Mejoras específicas para listas de selección de Headless UI */
+.dark [data-headlessui-state*="open"] [data-headlessui-state*="active"],
+.dark [data-headlessui-state*="open"] li,
+.dark [data-headlessui-state*="open"] ul,
+.dark [data-headlessui-state*="open"] div > div {
+  @apply bg-dark-input text-dark-text hover:bg-dark-cardHover !important;
+}
+
+/* Para modo claro */
+[data-headlessui-state*="open"] [data-headlessui-state*="active"],
+[data-headlessui-state*="open"] li,
+[data-headlessui-state*="open"] ul,
+[data-headlessui-state*="open"] div > div {
+  @apply bg-white text-gray-900 hover:bg-gray-100 !important;
+}
+
+/* Para resolver problema específico con Select de Tremor */
+.dark [data-headlessui-state*="open"] [data-headlessui-state*="active"] {
+  @apply bg-dark-cardHover !important;
+}
+
+[data-headlessui-state*="open"] [data-headlessui-state*="active"] {
+  @apply bg-gray-100 !important;
+}
+
+/* Botones con estilos mejorados */
+.dark button[type="submit"],
+.dark .btn-primary,
+.dark [class*="btn-primary"] {
+  @apply bg-dark-accent text-white hover:bg-dark-accent/90 !important;
+}
+
+.dark .btn-secondary,
+.dark [class*="btn-secondary"] {
+  @apply bg-dark-input text-dark-text border-dark-border hover:bg-dark-cardHover !important;
+}
+
+/* Badges y etiquetas */
+.dark [data-tremor-badge],
+.dark .badge {
+  @apply shadow-sm !important;
+}
+
+.dark [class*="bg-emerald"],
+.dark [class*="bg-green"] {
+  @apply bg-dark-success/20 text-dark-success !important;
+}
+
+.dark [class*="bg-amber"],
+.dark [class*="bg-yellow"] {
+  @apply bg-dark-warning/20 text-dark-warning !important;
+}
+
+.dark [class*="bg-red"] {
+  @apply bg-dark-error/20 text-dark-error !important;
+}
+
+.dark [class*="bg-blue"],
+.dark [class*="bg-indigo"] {
+  @apply bg-dark-info/20 text-dark-info !important;
+}
+
+/* Tablas en modo oscuro */
+.dark table {
+  @apply bg-dark-card !important;
+}
+
+.dark th {
+  @apply bg-dark-cardHover text-dark-text border-dark-border !important;
+}
+
+.dark td {
+  @apply text-dark-text border-dark-border !important;
+}
+
+.dark tr:hover td {
+  @apply bg-dark-cardHover !important;
+}
+
+/* Ajustes adicionales para modo oscuro */
+.dark hr {
+  @apply border-dark-divider !important;
+}
+
+/* ESPECÍFICO PARA COMPONENTES DE TREMOR */
+.dark .tremor-Card-root,
+.dark div[class*="Card_"] {
+  @apply bg-dark-card text-dark-text border-dark-border !important;
+}
+
+.dark .tremor-Legend-list {
+  @apply bg-dark-card text-dark-text !important;
+}
+
+.dark [data-tremor-tab] {
+  @apply text-dark-text-secondary hover:text-dark-text !important;
+}
+
+.dark [data-tremor-tab][aria-selected=true] {
+  @apply text-dark-accent border-dark-accent !important;
+}
+
+/* Colores para las gráficas */
+.dark .recharts-pie,
+.dark .recharts-bar,
+.dark .recharts-line {
+  filter: drop-shadow(0px 2px 8px rgba(0,0,0,0.4));
+}
+
+.dark .recharts-cartesian-grid-horizontal line,
+.dark .recharts-cartesian-grid-vertical line {
+  @apply stroke-dark-border/50 !important;
+}
+
+.dark .recharts-text {
+  @apply fill-dark-text-secondary !important;
+}
+
+/* ===== ESTILO PARA PORTAL-EXTERNO (SIEMPRE TEMA CLARO) ===== */
+[data-portal-externo] {
+  color-scheme: light;
+}
+
+[data-portal-externo] body {
+  @apply bg-white text-gray-800 !important;
+}
+
+[data-portal-externo] .tremor-Card-root {
+  @apply bg-white border-gray-200 !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* ===== MEJORAS GENERALES ===== */
+*:focus {
+  @apply outline-none ring-0 !important;
+}
+
+button:focus {
+  @apply outline-none ring-0 !important;
+}
+
+[data-tremor-tab] {
+  @apply focus:ring-0 !important;
+}
+
+.tremor-Card-root {
+  transition: all 0.2s ease-in-out !important;
+}
+
+/* Animaciones suaves */
+.fade-in {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ===== ESTILOS ESPECÍFICOS PARA YAML STUDIO ===== */
+/* Mejorar legibilidad en modo oscuro */
+.dark [class*="studio"] .text-gray-700,
+.dark [class*="studio"] .text-gray-600,
+.dark [class*="studio"] p {
+  color: #e2e8f0 !important; /* text-gray-200 */
+}
+
+/* Textos más brillantes para títulos */
+.dark [class*="studio"] h1, 
+.dark [class*="studio"] h2, 
+.dark [class*="studio"] h3, 
+.dark [class*="studio"] h4,
+.dark [class*="studio"] .text-gray-800,
+.dark [class*="studio"] .text-gray-900 {
+  color: #f8fafc !important; /* text-gray-50 */
+}
+
+/* Mejorar legibilidad de labels */
+.dark [class*="studio"] label.text-sm.font-medium.text-gray-700 {
+  color: #f1f5f9 !important; /* text-gray-100 */
+}
+
+/* Mejorar la instrucciones */
+.dark [class*="studio"] textarea::placeholder {
+  color: #94a3b8 !important; /* text-gray-400 */
+}
+
+/* Mejorar campos de entrada */
+.dark [class*="studio"] textarea,
+.dark [class*="studio"] input[type="text"],
+.dark [class*="studio"] input[type="file"] {
+  color: #f1f5f9 !important; /* text-gray-100 */
+  background-color: #1e293b !important; /* dark-card */
+  border-color: #334155 !important; /* dark-border */
+}
+
+/* Mejorar las cartas en YAML Studio */
+.dark .yaml-studio .tremor-Card-root {
+  background-color: rgba(15, 23, 42, 0.5) !important; /* Ligeramente más oscuro que el fondo */
+  border-color: #334155 !important; /* border-dark-border */
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35) !important; /* Sombra más visible */
+}
+
+/* Mejorar bloques de código */
+.dark [class*="studio"] pre {
+  background-color: #1e293b !important; /* bg-dark-card */
+  border-color: #334155 !important; /* border-dark-border */
+}
+
+.dark [class*="studio"] code {
+  color: #f8fafc !important; /* text-gray-50 */
+}
+
+/* Mejorar visibilidad en previsualización */
+.dark [class*="studio"] .bg-gray-50 {
+  background-color: #1e293b !important; /* bg-dark-card */
+}
+
+.dark [class*="studio"] .border-gray-200,
+.dark [class*="studio"] .border-gray-100 {
+  border-color: #334155 !important; /* border-dark-border */
+}
+
+/* Mejorar mensajes informativos */
+.dark [class*="studio"] .bg-blue-50 {
+  background-color: rgba(59, 130, 246, 0.15) !important; /* bg-blue-500/15 */
+  border-color: rgba(59, 130, 246, 0.3) !important; /* border-blue-500/30 */
+}
+
+.dark [class*="studio"] .text-blue-700,
+.dark [class*="studio"] .text-blue-600 {
+  color: #93c5fd !important; /* text-blue-300 */
+}
+
+/* Mejorar errores */
+.dark [class*="studio"] .bg-red-50 {
+  background-color: rgba(239, 68, 68, 0.15) !important; /* bg-red-500/15 */
+  border-color: rgba(239, 68, 68, 0.3) !important; /* border-red-500/30 */
+}
+
+.dark [class*="studio"] .text-red-700,
+.dark [class*="studio"] .text-red-800 {
+  color: #fca5a5 !important; /* text-red-300 */
+}
+
+/* Mejorar éxitos */
+.dark [class*="studio"] .bg-green-50 {
+  background-color: rgba(34, 197, 94, 0.15) !important; /* bg-green-500/15 */
+  border-color: rgba(34, 197, 94, 0.3) !important; /* border-green-500/30 */
+}
+
+.dark [class*="studio"] .text-green-700,
+.dark [class*="studio"] .text-green-800 {
+  color: #86efac !important; /* text-green-300 */
+}
+
+/* Aumentar tamaño en pantallas grandes */
+@media (min-width: 768px) {
+  .dark [class*="studio"] p, 
+  .dark [class*="studio"] code,
+  .dark [class*="studio"] label,
+  .dark [class*="studio"] textarea,
+  .dark [class*="studio"] .text-sm {
+    font-size: 1rem !important; /* text-base */
+  }
+  
+  .dark [class*="studio"] .text-xs {
+    font-size: 0.875rem !important; /* text-sm */
+  }
+  
+  .dark [class*="studio"] h1, 
+  .dark [class*="studio"] h2, 
+  .dark [class*="studio"] h3, 
+  .dark [class*="studio"] h4,
+  .dark [class*="studio"] .tremor-Title-root {
+    font-size: 1.25rem !important; /* text-xl */
+  }
+}
+
+/* Soporte para modales y diálogos en modo oscuro */
+.dark [role="dialog"],
+.dark .headlessui-dialog-panel,
+.dark div[class*="Dialog-panel"],
+.dark div[class*="DialogPanel"] {
+  @apply bg-dark-card border-dark-border text-dark-text !important;
+}
+
+/* Estilos para fondos blancos en modo oscuro */
+.dark .bg-white,
+.dark div[class*="bg-white"],
+.dark .panel,
+.dark div[class*="panel"] {
+  @apply bg-dark-card !important;
+}
+
+/* Estilos para fondo gris claro en modo oscuro */
+.dark .bg-gray-50,
+.dark div[class*="bg-gray-50"] {
+  @apply bg-dark-cardHover !important;
+}
+
+/* Ajustes para formularios en modales */
+.dark form label {
+  @apply text-dark-text !important;
+}
+
+/* Ajustes para etiquetas específicas por clase */
+.dark .text-gray-700,
+.dark .text-gray-800,
+.dark .text-gray-900 {
+  @apply text-dark-text !important;
+}
+
+/* Ajustes para texto secundario */
+.dark .text-gray-500,
+.dark .text-gray-600 {
+  @apply text-dark-text-secondary !important;
+}

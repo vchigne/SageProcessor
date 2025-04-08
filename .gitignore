@@ -1,0 +1,151 @@
+# Directorios de datos y ejecuciones
+/executions/
+/executions/*
+/logs/
+/logs/*
+/tmp/
+/tmp/*
+/trashcan/
+/data/
+
+# Archivos en attached_assets (excluyendo algunos importantes)
+/attached_assets/*
+!/attached_assets/*.yaml
+
+# Directorios de ejecuciones de los daemons
+/sage_daemon/executions/
+/sage_daemon2/executions/
+/sage_daemon/data/
+/sage_daemon2/data/
+
+# Archivos de configuración de entorno
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+docker/.env
+
+# Archivos generados por Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.cache/
+nosetests.xml
+coverage.xml
+*,cover
+
+# Archivos generados por Node.js
+node_modules
+.next/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.yarn-integrity
+
+# Archivos generados por Next.js
+.next
+.next/**/*
+out/
+.vercel
+.turbo
+.swc/
+public/uploads/
+tmp/
+*.zip
+*.gz
+*.log
+*.tar
+executions/*
+/executions/
+logs/*
+/logs/
+
+# Archivos de Visual Studio Code
+.vscode/
+*.code-workspace
+.history/
+
+# Archivos de JetBrains IDE
+.idea/
+*.iml
+*.iws
+*.ipr
+*.iws
+.idea_modules/
+
+# Archivos de OS
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Archivos generados por entornos de desarrollo
+.cache/
+.config/
+.local/
+.pythonlibs/
+.upm/
+
+# Archivos de log
+*.log
+output.log
+*.log.*
+run_once.log
+sage_daemon_log.txt
+sage_daemon2_log.txt
+trace_output.txt
+
+# Archivos temporales
+*.bak
+*.swp
+*.swo
+*~
+.#*
+\#*\#
+.*.sw[a-z]
+*.un~
+*.tmp
+*.pid
+*.seed
+*.db
+*.sqlite
+*.sqlite3
+
+# Archivos de Docker
+docker-compose.override.yml
+
+# Otros archivos específicos del proyecto
+output_raw_response.json
+dns_report.txt
+uv.lock
+
+# Archivos específicos del proyecto SAGE
+*.pending.*
+*-pending.*
+/.venv/
+/venv/
