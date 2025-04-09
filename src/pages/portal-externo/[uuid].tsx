@@ -588,8 +588,8 @@ export default function PortalExternoPage() {
         <div className="text-sm text-gray-600 mb-6">Portal de recepción de archivos</div>
 
         <div className="bg-white rounded-lg shadow-md overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full divide-y divide-gray-200">
+          <div className="overflow-x-auto lg:overflow-visible max-w-full">
+            <table className="w-full table-auto divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -888,8 +888,8 @@ export default function PortalExternoPage() {
                     {isExpanded && tipoCasilla === 'multiples_emisores' && (
                       <tr>
                         <td colSpan={5} className="p-0 border-b border-gray-200">
-                          <div className="bg-gray-50 overflow-x-auto">
-                            <table className="min-w-full divide-y divide-gray-200">
+                          <div className="bg-gray-50 overflow-x-auto lg:overflow-visible max-w-full">
+                            <table className="min-w-full table-auto divide-y divide-gray-200">
                               <tbody>
                                 {casilla.emisores.map((emisor: any) => {
                                   // Determinar el estado del emisor
@@ -1193,8 +1193,8 @@ export default function PortalExternoPage() {
                   ))}
                 </Grid>
               ) : (
-                <div className="w-full overflow-x-auto" style={{ scrollbarWidth: 'thin' }}>
-                  <Table className="min-w-full">
+                <div className="w-full overflow-x-auto lg:overflow-visible max-w-full" style={{ scrollbarWidth: 'thin' }}>
+                  <Table className="min-w-full table-auto w-full">
                     <TableHead>
                       <TableRow>
                         <TableHeaderCell className="whitespace-nowrap">Nombre</TableHeaderCell>
