@@ -588,7 +588,7 @@ export default function PortalExternoPage() {
         <div className="text-sm text-gray-600 mb-6">Portal de recepción de archivos</div>
 
         <div className="bg-white rounded-lg shadow-md overflow-hidden">
-          <div className="md:overflow-visible overflow-x-auto">
+          <div className="overflow-x-auto">
             <table className="w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
@@ -888,7 +888,7 @@ export default function PortalExternoPage() {
                     {isExpanded && tipoCasilla === 'multiples_emisores' && (
                       <tr>
                         <td colSpan={5} className="p-0 border-b border-gray-200">
-                          <div className="bg-gray-50 md:overflow-visible overflow-x-auto">
+                          <div className="bg-gray-50 overflow-x-auto">
                             <table className="min-w-full divide-y divide-gray-200">
                               <tbody>
                                 {casilla.emisores.map((emisor: any) => {

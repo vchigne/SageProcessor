@@ -534,7 +534,7 @@ export default function HistorialPage() {
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto rounded-lg shadow">
+            <div className="overflow-x-auto rounded-lg shadow" style={{ scrollbarWidth: 'thin' }}>
               <table className="min-w-full divide-y divide-gray-200 bg-white">
                 <thead className="bg-gray-50">
                   <tr>
