@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { pool } from '@/lib/db';
+import { pool } from '../../../lib/db';
 
 type InfoCasillaResponse = {
   casilla_nombre: string;

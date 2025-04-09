@@ -1,5 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { pool } from '@/lib/db';
+import { pool } from '../../../../../lib/db';
 import nodemailer from 'nodemailer';
 
 // Función para verificar conexión SMTP
