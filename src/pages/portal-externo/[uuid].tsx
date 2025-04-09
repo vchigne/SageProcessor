@@ -1249,7 +1249,7 @@ export default function PortalExternoPage() {
           <ProgressCircle className="h-12 w-12" />
         </div>
       ) : (
-        <div className="container mx-auto px-2 sm:px-4 py-6 max-w-full">
+        <div className="w-full px-2 sm:px-4 py-6">
           {renderContent()}
           
           {isUploadModalOpen && selectedCasilla && (

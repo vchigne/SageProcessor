@@ -349,7 +349,7 @@ export default function HistorialPage() {
 
   return (
     <PortalLayout title={datosPortal.titulo}>
-      <div className="p-4 sm:p-6 w-full">
+      <div className="p-4 sm:p-6 w-full h-full">
         <div className="mb-6">
           <button
             onClick={() => router.back()}
