@@ -8,19 +8,36 @@ import os
 import sys
 from sage.yaml_generator import YAMLGenerator
 
-def test_prompt_generation():
-    """Probar la generación del prompt mejorado"""
+def test_prompt_generation(input_file=None, instruction_source=None):
+    """
+    Probar la generación del prompt mejorado
+    
+    Args:
+        input_file: Ruta al archivo a analizar (default: data.zip en executions)
+        instruction_source: Puede ser un archivo o texto directo con instrucciones
+    """
     # Crear una instancia del generador
     generator = YAMLGenerator()
     
-    # Ruta al archivo ZIP a analizar
-    input_file = "executions/3b0db2c1-87c3-48de-a57e-32945a82c1ba/data.zip"
+    # Ruta al archivo ZIP a analizar (usar el valor por defecto si no se proporciona)
+    if input_file is None:
+        input_file = "executions/3b0db2c1-87c3-48de-a57e-32945a82c1ba/data.zip"
     
-    # Instrucciones básicas de ejemplo
-    instructions = """
-    Genera un YAML para validar los archivos de productos, clientes y ventas. 
-    Asegúrate de que los códigos sean únicos y que las cantidades sean mayores a cero.
-    """
+    # Determinar instrucciones a usar
+    if instruction_source:
+        # Si instruction_source es un archivo existente, leer su contenido
+        if os.path.exists(instruction_source):
+            print(f"Usando archivo de instrucciones: {instruction_source}")
+            # Usar la función del generador para cargar instrucciones desde archivo
+            instructions = generator.get_instructions(instruction_source)
+        else:
+            # Si no es un archivo, asumir que es texto de instrucciones directas
+            print("Usando instrucciones proporcionadas directamente como texto")
+            instructions = instruction_source
+    else:
+        # Usar instrucciones predeterminadas
+        print("Usando instrucciones predeterminadas del generador")
+        instructions = generator.get_instructions()
     
     # Analizar la estructura del archivo
     file_info = generator.analyze_file_structure(input_file)
@@ -41,4 +58,17 @@ def test_prompt_generation():
     print("Y que incluye los datos en formato JSON")
 
 if __name__ == "__main__":
-    test_prompt_generation()
+    # Procesar argumentos de línea de comandos
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='Probar la generación de YAML con diferentes instrucciones')
+    parser.add_argument('-i', '--input', help='Archivo de entrada a analizar (ZIP, CSV, etc.)')
+    parser.add_argument('-is', '--instruction-source', help='Archivo o texto con instrucciones')
+    
+    args = parser.parse_args()
+    
+    # Llamar a la función con los argumentos proporcionados
+    test_prompt_generation(
+        input_file=args.input,
+        instruction_source=args.instruction_source
+    )
