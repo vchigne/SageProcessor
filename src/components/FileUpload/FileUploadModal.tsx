@@ -7,7 +7,11 @@ import { Casilla } from '../../types';
 interface FileUploadModalProps {
   isOpen: boolean;
   onClose: () => void;
-  dataBox: Casilla | null;
+  dataBox?: Casilla | null;
+  casilla?: any; // Acepta la prop casilla del portal externo
+  uuid?: string;
+  instalacionId?: number;
+  instalacionInfo?: any;
 }
 
 interface ProcessingResult {
@@ -111,6 +115,10 @@ export const FileUploadModal: React.FC<FileUploadModalProps> = ({
   isOpen,
   onClose,
   dataBox,
+  casilla,
+  uuid,
+  instalacionId,
+  instalacionInfo,
 }) => {
   const [file, setFile] = useState<File | null>(null);
   const [processingStatus, setProcessingStatus] = useState<{
@@ -122,6 +130,9 @@ export const FileUploadModal: React.FC<FileUploadModalProps> = ({
     isProcessing: false
   });
   const [showResults, setShowResults] = useState(false);
+
+  // Determinar qué objeto usar (dataBox o casilla)
+  const casillaData = dataBox || casilla;
 
   useEffect(() => {
     if (!isOpen) {
@@ -141,24 +152,47 @@ export const FileUploadModal: React.FC<FileUploadModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!file || !dataBox) return;
+    if (!file || !casillaData) return;
 
     setProcessingStatus({ isProcessing: true });
 
     const formData = new FormData();
     formData.append('file', file);
-    if (dataBox?.id) {
-      formData.append('casilla_id', dataBox.id.toString());
+    
+    // Agregar ID de casilla
+    if (casillaData.id) {
+      formData.append('casilla_id', casillaData.id.toString());
     }
-    if (dataBox?.instalacion?.id) {
-      formData.append('instalacion_id', dataBox.instalacion.id.toString());
+    
+    // Agregar ID de instalación (de diferentes fuentes posibles)
+    const instId = 
+      instalacionId || 
+      casillaData.instalacion_id || 
+      casillaData.instalacion?.id;
+    
+    if (instId) {
+      formData.append('instalacion_id', instId.toString());
     }
-    // Si nombre_yaml está disponible, usarlo; si no, intentar obtenerlo de yaml_content.name
-    const yamlName = dataBox?.nombre_yaml || dataBox?.yaml_content?.name;
+    
+    // Agregar nombre YAML (de diferentes fuentes posibles)
+    const yamlName = 
+      casillaData.nombre_yaml || 
+      casillaData.yaml_content?.name || 
+      casillaData.archivo_yaml_nombre;
+    
     if (yamlName) {
       formData.append('yaml_nombre', yamlName);
     }
-    // Nota: La funcionalidad de emisor_id se ha removido temporalmente
+    
+    // Agregar UUID del portal si está disponible
+    if (uuid) {
+      formData.append('portal_uuid', uuid);
+    }
+    
+    // Agregar emisor_id si está disponible en casilla
+    if (casillaData.emisorId) {
+      formData.append('emisor_id', casillaData.emisorId.toString());
+    }
 
     try {
       const response = await fetch('/api/process-files', {
@@ -187,7 +221,7 @@ export const FileUploadModal: React.FC<FileUploadModalProps> = ({
     }
   };
 
-  if (!dataBox) return null;
+  if (!casillaData) return null;
 
   return (
     <>
@@ -212,21 +246,28 @@ export const FileUploadModal: React.FC<FileUploadModalProps> = ({
                 <div className="mb-2">
                   <h3 className="font-medium text-gray-900 dark:text-gray-100">Instalación:</h3>
                   <p className="text-sm text-gray-600 dark:text-gray-300">
-                    {dataBox?.instalacion?.nombre || 
-                     (dataBox?.instalacion?.producto?.nombre && 
-                      `${dataBox?.instalacion?.producto?.nombre}${dataBox?.instalacion?.organizacion?.nombre ? ` - ${dataBox?.instalacion?.organizacion?.nombre}` : ''}`
-                     ) || '-'}
+                    {casillaData?.instalacion?.nombre || 
+                     (casillaData?.instalacion?.producto?.nombre && 
+                      `${casillaData?.instalacion?.producto?.nombre}${casillaData?.instalacion?.organizacion?.nombre ? ` - ${casillaData?.instalacion?.organizacion?.nombre}` : ''}`
+                     ) || 
+                     (instalacionInfo ? instalacionInfo.nombre || `${instalacionInfo.producto?.nombre || ''} - ${instalacionInfo.organizacion?.nombre || ''}` : '-')}
                   </p>
                 </div>
 
                 <div>
                   <h3 className="font-medium text-gray-900 dark:text-gray-100">Configuración YAML:</h3>
                   <p className="text-sm text-gray-600 dark:text-gray-300">
-                    {dataBox?.nombre_yaml || dataBox?.yaml_content?.name || '-'}
+                    {casillaData?.nombre_yaml || 
+                     casillaData?.yaml_content?.name || 
+                     casillaData?.archivo_yaml_nombre || '-'}
                   </p>
-                  {(dataBox?.descripcion || dataBox?.yaml_content?.description) && (
+                  {(casillaData?.descripcion || 
+                    casillaData?.yaml_content?.description || 
+                    casillaData?.archivo_yaml_descripcion) && (
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      {dataBox?.descripcion || dataBox?.yaml_content?.description}
+                      {casillaData?.descripcion || 
+                       casillaData?.yaml_content?.description || 
+                       casillaData?.archivo_yaml_descripcion}
                     </p>
                   )}
                 </div>
