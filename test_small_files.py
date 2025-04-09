@@ -50,8 +50,16 @@ def test_small_file_extraction(num_lines=5):
     # Extraer y verificar la parte JSON del prompt
     start_marker = "Datos en formato JSON:"
     json_start = prompt.find(start_marker) + len(start_marker)
-    # Buscar donde comienza el JSON real (puede tener espacios en blanco y saltos de línea)
-    json_text = prompt[json_start:].strip()
+    
+    # Buscar el final del JSON - será el siguiente encabezado que empiece con "==="
+    end_marker = "==="
+    end_pos = prompt.find(end_marker, json_start)
+    if end_pos == -1:
+        # Si no hay marcador de fin, tomamos hasta el final del texto
+        json_text = prompt[json_start:].strip()
+    else:
+        # Si encontramos un marcador, extraemos hasta ahí
+        json_text = prompt[json_start:end_pos].strip()
     
     # Vamos a imprimir los primeros caracteres para depuración
     print(f"Primeros caracteres del JSON: {json_text[:50]}")
@@ -59,6 +67,10 @@ def test_small_file_extraction(num_lines=5):
     # Si comienza con salto de línea (común en los templates), ajustamos
     if json_text.startswith("\n"):
         json_text = json_text[1:].strip()
+    
+    # Para depuración, guardar el JSON extraído
+    with open(os.path.join('tmp', f'extracted_json_{num_lines}.json'), 'w', encoding='utf-8') as f:
+        f.write(json_text)
     
     try:
         json_data = json.loads(json_text)
@@ -86,15 +98,20 @@ def test_small_file_extraction(num_lines=5):
         for line in muestras['ultimas_lineas']:
             print(f"  {line}")
         
-        # Verificar si hay duplicados (para archivos pequeños no debería haberlos)
-        all_lines = []
-        for section in [muestras['primeras_lineas'], muestras['lineas_del_medio'], muestras['ultimas_lineas']]:
-            all_lines.extend(section)
-            
-        unique_lines = set(all_lines)
+        # Verificar líneas totales en todas las secciones
+        total_lineas = (
+            len(muestras['primeras_lineas']) + 
+            len(muestras['lineas_del_medio']) + 
+            len(muestras['ultimas_lineas'])
+        )
         
-        print(f"\nNúmero total de líneas en muestras: {len(all_lines)}")
-        print(f"Número de líneas únicas: {len(unique_lines)}")
+        # Para archivos pequeños, verificar que se repiten adecuadamente
+        if num_lines <= 5:
+            # Se espera que cada línea original aparezca en las tres secciones
+            expected_total = num_lines * 3
+            print(f"\nNúmero total de líneas en muestras: {total_lineas}")
+            print(f"Número esperado (al repetir líneas): {expected_total}")
+            assert total_lineas == expected_total, f"Esperaba {expected_total} líneas en total, pero hay {total_lineas}"
         
         # Verificar si se está siguiendo la lógica correcta
         if num_lines <= 5:

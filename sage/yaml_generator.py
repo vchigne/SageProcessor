@@ -714,16 +714,37 @@ packages:
         ejemplos_de_datos = []
         datos_json = {}
         
-        def extract_samples(raw_examples):
+        def extract_samples(raw_examples, delimiter='|'):
+            """
+            Extrae muestras representativas del archivo y convierte cada línea en un array de valores
+            individuales separados por el delimitador.
+            
+            Args:
+                raw_examples: Lista de líneas de ejemplo
+                delimiter: El delimitador usado en el archivo (por defecto pipe '|')
+            
+            Returns:
+                Tuple: (líneas combinadas como strings, diccionario JSON con arrays de valores)
+            """
             if not raw_examples:
                 empty_result = ["No hay ejemplos disponibles"]
+                empty_array = [[]]
                 return empty_result, {
                     "muestras": {
-                        "primeras_lineas": empty_result,
-                        "lineas_del_medio": empty_result,
-                        "ultimas_lineas": empty_result
+                        "primeras_lineas": empty_array,
+                        "lineas_del_medio": empty_array,
+                        "ultimas_lineas": empty_array
                     }
                 }
+                
+            # Función para dividir una línea en valores individuales
+            def split_line_to_values(line):
+                # Dividir por el delimitador y preservar campos vacíos
+                if isinstance(line, str):
+                    values = line.split(delimiter)
+                    # Trimming de espacios
+                    return [v.strip() for v in values]
+                return [""]  # En caso de recibir algo que no sea un string
             
             # Para archivos pequeños (15 líneas o menos), usamos todas las líneas disponibles
             if len(raw_examples) <= 15:
@@ -777,11 +798,18 @@ packages:
                     ultimas
                 )
             
+            # Convertir líneas a arrays de valores para el JSON
+            primeras_valores = [split_line_to_values(line) for line in primeras]
+            medias_valores = [split_line_to_values(line) for line in medias]
+            ultimas_valores = [split_line_to_values(line) for line in ultimas]
+            
+            # Para texto, mantenemos las líneas originales
+            # Para JSON, convertimos a arrays de valores
             return combined, {
                 "muestras": {
-                    "primeras_lineas": primeras,
-                    "lineas_del_medio": medias,
-                    "ultimas_lineas": ultimas
+                    "primeras_lineas": primeras_valores,
+                    "lineas_del_medio": medias_valores,
+                    "ultimas_lineas": ultimas_valores
                 }
             }
         
@@ -790,8 +818,9 @@ packages:
             for filename, info in file_info['files_info'].items():
                 raw_examples = info.get('raw_examples', ['No hay ejemplos disponibles'])
                 
-                # Extraer muestras representativas
-                samples_text, samples_json = extract_samples(raw_examples)
+                # Detectar delimitador y extraer muestras representativas
+                delim = info.get('delimiter', '|')  # Usar pipe como valor por defecto si no se especifica
+                samples_text, samples_json = extract_samples(raw_examples, delim)
                 
                 # Agregar al texto de ejemplos
                 ejemplos_de_datos.append(f"archivo {filename} contenido ejemplo:")
@@ -803,8 +832,9 @@ packages:
         else:
             raw_examples = file_info.get('raw_examples', ['No hay ejemplos disponibles'])
             
-            # Extraer muestras representativas
-            samples_text, samples_json = extract_samples(raw_examples)
+            # Detectar delimitador y extraer muestras representativas
+            delim = file_info.get('delimiter', '|')  # Usar pipe como predeterminado
+            samples_text, samples_json = extract_samples(raw_examples, delim)
             
             # Agregar al texto de ejemplos
             ejemplos_de_datos.append(f"archivo {nombre_archivo} contenido ejemplo:")
