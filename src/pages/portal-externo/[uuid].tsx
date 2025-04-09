@@ -1157,40 +1157,83 @@ export default function PortalExternoPage() {
             </div>
             
             <div>
-              <Grid numItems={1} numItemsSm={2} numItemsLg={3} className="gap-6">
-                {casillas.map((casilla: DataBox) => (
-                  <Col key={casilla.id}>
-                    <Card className="hover:shadow-lg transition-all duration-200">
-                      <div className="flex justify-between items-start mb-3">
-                        <Title className="text-gray-800 break-words">{casilla.nombre_yaml}</Title>
-                      </div>
-                      
-                      {casilla.descripcion && (
-                        <Text className="mb-2 text-gray-600 break-words">{casilla.descripcion}</Text>
-                      )}
-                      
-                      <div className="flex justify-between items-center mt-4">
-                        <Button
-                          color="blue"
-                          size="sm"
-                          onClick={() => handleUploadClick(casilla)}
-                        >
-                          <ArrowUpTrayIcon className="h-4 w-4 mr-1" />
-                          Subir archivo
-                        </Button>
+              {viewType === 'card' ? (
+                <Grid numItems={1} numItemsSm={2} numItemsLg={3} className="gap-6">
+                  {casillas.map((casilla: DataBox) => (
+                    <Col key={casilla.id}>
+                      <Card className="hover:shadow-lg transition-all duration-200">
+                        <div className="flex justify-between items-start mb-3">
+                          <Title className="text-gray-800 break-words">{casilla.nombre_yaml}</Title>
+                        </div>
                         
-                        <button
-                          onClick={() => handleHistorialClick(casilla)}
-                          className="text-blue-600 hover:text-blue-800 flex items-center"
-                        >
-                          <ClockIcon className="h-4 w-4 mr-1" />
-                          <span className="text-sm">Historial</span>
-                        </button>
-                      </div>
-                    </Card>
-                  </Col>
-                ))}
-              </Grid>
+                        {casilla.descripcion && (
+                          <Text className="mb-2 text-gray-600 break-words">{casilla.descripcion}</Text>
+                        )}
+                        
+                        <div className="flex justify-between items-center mt-4">
+                          <Button
+                            color="blue"
+                            size="sm"
+                            onClick={() => handleUploadClick(casilla)}
+                          >
+                            <ArrowUpTrayIcon className="h-4 w-4 mr-1" />
+                            Subir archivo
+                          </Button>
+                          
+                          <button
+                            onClick={() => handleHistorialClick(casilla)}
+                            className="text-blue-600 hover:text-blue-800 flex items-center"
+                          >
+                            <ClockIcon className="h-4 w-4 mr-1" />
+                            <span className="text-sm">Historial</span>
+                          </button>
+                        </div>
+                      </Card>
+                    </Col>
+                  ))}
+                </Grid>
+              ) : (
+                <div className="w-full overflow-x-auto" style={{ scrollbarWidth: 'thin' }}>
+                  <Table className="min-w-full">
+                    <TableHead>
+                      <TableRow>
+                        <TableHeaderCell className="whitespace-nowrap">Nombre</TableHeaderCell>
+                        <TableHeaderCell className="whitespace-nowrap">Descripción</TableHeaderCell>
+                        <TableHeaderCell className="whitespace-nowrap">Acciones</TableHeaderCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {casillas.map((casilla: DataBox) => (
+                        <TableRow key={casilla.id}>
+                          <TableCell className="max-w-xs truncate">{casilla.nombre_yaml}</TableCell>
+                          <TableCell className="max-w-md truncate">{casilla.descripcion || '-'}</TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            <div className="flex space-x-2">
+                              <Button
+                                color="blue"
+                                size="xs"
+                                onClick={() => handleUploadClick(casilla)}
+                              >
+                                <ArrowUpTrayIcon className="h-4 w-4 mr-1" />
+                                Subir
+                              </Button>
+                              
+                              <Button
+                                color="gray"
+                                size="xs"
+                                onClick={() => handleHistorialClick(casilla)}
+                              >
+                                <ClockIcon className="h-4 w-4 mr-1" />
+                                Historial
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
             </div>
           </>
         );
