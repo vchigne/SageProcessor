@@ -5,7 +5,7 @@ import {
   CalendarIcon, 
   DocumentTextIcon, 
   DocumentIcon, 
-  ArchiveIcon, 
+  ArchiveBoxIcon, 
   ChevronLeftIcon, 
   ChevronRightIcon,
   FunnelIcon,
@@ -601,7 +601,7 @@ export default function HistorialPage() {
                               title="Ver archivo de datos"
                               onClick={() => abrirArchivo(ejecucion.uuid, 'datos')}
                             >
-                              <ArchiveIcon className="h-5 w-5" />
+                              <ArchiveBoxIcon className="h-5 w-5" />
                             </button>
                           )}
                           <button 
