@@ -37,6 +37,8 @@ El usuario ha proporcionado los siguientes archivos para analizar:
 
 Ejemplos de datos extraídos de los archivos:
 {ejemplos_de_datos}
+Datos en formato JSON:
+{datos_json}
 
 === REGLAS GENERALES ===
 1. **Tipos de datos permitidos en el YAML:**
@@ -65,7 +67,7 @@ Ejemplos de datos extraídos de los archivos:
 5. **Detección de encabezados:**
    - SIEMPRE analizar cada archivo para determinar si tiene encabezados. 
    - Para archivos Excel o CSV:
-     * Si la primera fila contiene textos descriptivos que no son datos (como "Código", "Nombre", "Descripción", etc.) usar `header: true`. Pero para que se pueda creer que un archivo tiene cabecera, todos los valores de la columna 1 deben ser descriptivos, no puede haber ningun numero como columna y no debe tener mas de dos palabras ni 20 caracteres ningun supuesto nombre de columna. Si no se cumple todo eso, anda a lo seguro y pon que el archivo no tiene cabecera, ya que en las instrcciones del usuario se hara la descripcion de los campos en caso de haberlos. ES IMPERATIVO que te des cuenta de que si en la primera fila algun campo empieza con un numero, o tiene decimales, o tiene mas de dos palabras o mas de 20 caracteres, entcones el archivo no tiene cabecera. si tienes motivos para pensar que un archivo csv tiene cabecera, debes estar seguro de que lo que ves en la primera fila no son datos normales. Tal vez la segunda fila sea muy parecida y eso ya te indica que no tiene cabecera. Por defecto los CSV NO TIENEN CABECERA
+     * Si la primera fila contiene textos descriptivos que no son datos (como "Código", "Nombre", "Descripción", etc.) usar `header: true`. Pero para que se pueda creer que un archivo tiene cabecera, todos los valores de la columna 1 deben ser descriptivos, no puede haber ningun numero como columna y no debe tener mas de dos palabras ni 20 caracteres ningun supuesto nombre de columna. Si no se cumple todo eso, anda a lo seguro y pon que el archivo no tiene cabecera, ya que en las instrcciones del usuario se hara la descripcion de los campos en caso de haberlos. ES IMPERATIVO que te des cuenta de que si en la primera fila algun campo empieza con un numero, o tiene decimales, o tiene mas de dos palabras o mas de 20 caracteres, entonces el archivo no tiene cabecera. si tienes motivos para pensar que un archivo csv tiene cabecera, debes estar seguro de que lo que ves en la primera fila no son datos normales. Tal vez la segunda fila sea muy parecida y eso ya te indica que no tiene cabecera. Por defecto los CSV NO TIENEN CABECERA
      * Si la primera fila ya contiene datos (como números, fechas, valores), usar `header: false`
    - La propiedad `header` SIEMPRE debe estar dentro de la sección `file_format` para cada catálogo.
 

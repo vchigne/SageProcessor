@@ -710,20 +710,111 @@ packages:
             num_archivos = 1
             lista_archivos_zip = nombre_archivo
         
-        # Preparar ejemplos de datos (primeras 10 líneas de cada archivo)
+        # Preparar ejemplos de datos (5 primeras líneas, 5 del medio y 5 finales de cada archivo)
         ejemplos_de_datos = []
+        datos_json = {}
+        
+        def extract_samples(raw_examples):
+            if not raw_examples:
+                empty_result = ["No hay ejemplos disponibles"]
+                return empty_result, {
+                    "muestras": {
+                        "primeras_lineas": empty_result,
+                        "lineas_del_medio": empty_result,
+                        "ultimas_lineas": empty_result
+                    }
+                }
+            
+            # Para archivos pequeños (15 líneas o menos), usamos todas las líneas disponibles
+            if len(raw_examples) <= 15:
+                # Distribuir equitativamente las líneas si es posible
+                if len(raw_examples) <= 5:
+                    # Si hay 5 o menos líneas, todo va en las tres secciones
+                    # para asegurar que se incluyan todas las líneas del archivo
+                    primeras = raw_examples
+                    medias = raw_examples
+                    ultimas = raw_examples
+                elif len(raw_examples) <= 10:
+                    # Si hay entre 6 y 10 líneas, usar todas las líneas distribuidas equitativamente
+                    # Primeras: primeras 3-5 líneas
+                    # Medias: todas las líneas (para garantizar que se vean todas)
+                    # Últimas: últimas 3-5 líneas
+                    mid_point = len(raw_examples) // 2
+                    primeras = raw_examples[:mid_point]
+                    medias = raw_examples  # Todas las líneas
+                    ultimas = raw_examples[mid_point:]
+                else:
+                    # Si hay entre 11 y 15 líneas, usarlas todas pero distribuidas en tres partes
+                    # con cierto solapamiento para asegurar que se vean todas
+                    third = len(raw_examples) // 3
+                    primeras = raw_examples[:third+1]  # Añadir solapamiento
+                    medias = raw_examples  # Todas para garantizar que se vean todas
+                    ultimas = raw_examples[-(third+1):]  # Añadir solapamiento
+                
+                # Para archivos pequeños no usamos separadores
+                combined = raw_examples
+            else:
+                # Para archivos grandes, usar el enfoque original
+                primeras = raw_examples[:5]
+                
+                # Calcular el índice del medio (desde donde tomar 5 líneas)
+                mid_index = len(raw_examples) // 2 - 2
+                if mid_index < 5:
+                    mid_index = 5
+                
+                # Extraer 5 líneas del medio
+                medias = raw_examples[mid_index:mid_index+5]
+                
+                # Extraer las 5 últimas líneas
+                ultimas = raw_examples[-5:]
+                
+                # Juntar todo con marcadores
+                combined = (
+                    primeras + 
+                    ["..."] +  # Separador para indicar que hay datos omitidos
+                    medias + 
+                    ["..."] +  # Separador para indicar que hay datos omitidos
+                    ultimas
+                )
+            
+            return combined, {
+                "muestras": {
+                    "primeras_lineas": primeras,
+                    "lineas_del_medio": medias,
+                    "ultimas_lineas": ultimas
+                }
+            }
+        
         if file_info['extension'] == '.zip' and 'files_info' in file_info:
+            datos_json["archivos"] = {}
             for filename, info in file_info['files_info'].items():
                 raw_examples = info.get('raw_examples', ['No hay ejemplos disponibles'])
+                
+                # Extraer muestras representativas
+                samples_text, samples_json = extract_samples(raw_examples)
+                
+                # Agregar al texto de ejemplos
                 ejemplos_de_datos.append(f"archivo {filename} contenido ejemplo:")
-                ejemplos_de_datos.extend(raw_examples[:10])  # Tomar las primeras 10 líneas
+                ejemplos_de_datos.extend(samples_text)
                 ejemplos_de_datos.append("")  # Línea en blanco entre archivos
+                
+                # Agregar al JSON de datos
+                datos_json["archivos"][filename] = samples_json["muestras"]
         else:
             raw_examples = file_info.get('raw_examples', ['No hay ejemplos disponibles'])
+            
+            # Extraer muestras representativas
+            samples_text, samples_json = extract_samples(raw_examples)
+            
+            # Agregar al texto de ejemplos
             ejemplos_de_datos.append(f"archivo {nombre_archivo} contenido ejemplo:")
-            ejemplos_de_datos.extend(raw_examples[:10])  # Tomar las primeras 10 líneas
+            ejemplos_de_datos.extend(samples_text)
+            
+            # Agregar al JSON de datos
+            datos_json["archivos"] = {nombre_archivo: samples_json["muestras"]}
         
         ejemplos_texto = "\n".join(ejemplos_de_datos)
+        json_texto = json.dumps(datos_json, ensure_ascii=False, indent=2)
         
         # Cargar las especificaciones de YAML SAGE
         especificaciones_yaml = yaml_spec
@@ -731,7 +822,8 @@ packages:
         # Instrucciones del usuario (sin modificar)
         instrucciones_usuario = instructions
         
-        # Fill template placeholders
+        # Fill template placeholders with correct data
+        # The template uses 'datos_json' for JSON data
         prompt = template.format(
             nombre_archivo=nombre_archivo,
             tipo_archivo=tipo_archivo,
@@ -739,6 +831,7 @@ packages:
             lista_archivos_zip=lista_archivos_zip,
             estructura_archivos="",  # Ya no se usa
             ejemplos_de_datos=ejemplos_texto,
+            datos_json=json_texto,
             instrucciones_usuario=instrucciones_usuario,
             especificaciones_YAML_SAGE=especificaciones_yaml
         )

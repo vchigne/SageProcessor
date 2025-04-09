@@ -1,0 +1,185 @@
+Archivos en el Proyecto de BI CLOROX
+1. Clientes.csv
+
+CódigoProveedor: Texto (10) - Código asignado por VidaSoftware al corporativo
+CodigoDistribuidor: Texto (30) - Código asignado por CLOROX S.A.
+CodigoCliente: Texto (25) - Código asignado por el ERP
+NombreCliente: Texto (100) - Descripción
+TipoDocumento: Texto (20) - DNI -- CE -- PAS - RUC
+DNI: Texto (20) - Número de documento de identidad
+Dirección: Texto (150)
+Mercado: Texto (50) - En caso de que el cliente se encuentre dentro de un mercado
+Módulo: Texto (10) - Número de referencia del puesto del mercado
+Canal: Texto (30) - Código y/o descripción del canal. Ejm: Mayorista, Minorista
+GiroNegocio: Texto (40) - Código y/o descripción del giro de negocio
+SubGiroNegocio: Texto (40) - Código y/o descripción del sub-giro de negocio
+Ubigeo: Texto (6) - Código según INEI
+Distrito: Texto (100) - Descripción del Departamento / Provincia / Distrito
+Estatus: Texto (1) - A (Activo) / I (Inactivo) / T (Temporal)
+X: Num (17) - Longitud -- Ejm: 12.112887653584876
+Y: Num (17) - Latitud -- Ejm: -76.98998977864832
+CodigoPadre: Texto (15) - Código del cliente padre
+FechaIngreso: Date - Fecha de creación del cliente. Formato YYYY-MM-DD
+FechaActualización: Date - Fecha de actualización del cliente. Formato YYYY-MM-DD
+FechaProceso: Datetime - Fecha y hora de generación del archivo
+REF1-REF10: Texto - Campos de referencia adicionales
+
+Nota: El campo código de cliente no debe contener espacios en blanco, tampoco debe haber códigos de cliente repetidos.
+2. Productos.csv
+
+CódigoProveedor: Texto (10) - Código asignado por VidaSoftware al corporativo
+CodigoDistribuidor: Texto (30) - Código asignado por CLOROX S.A.
+CodigoProducto: Texto (25) - Código asignado por el ERP
+NombreProducto: Texto (100)
+EAN: Texto (13) - Código EAN 13 del producto
+DUN: Texto (14) - Código DUN-14 del producto
+FactorCaja: Número (4) - Cantidad de unidades mínimas de venta presentes en una caja o plancha
+Peso: Número (14) - Precisión (14,4) Peso de la unidad mínima de venta
+FlagBonificado: Texto (1) - Indicador tipo producto (P / B)
+Afecto: Texto (1) - 1 -- Afecto a impuesto / 0 -- Exonerado de impuesto
+PrecioCompra: Número (14) - Precisión (14,4) Precio de la unidad mínima de venta
+PrecioSugerido: Número (14) - Precisión (14,4) Precio de la unidad mínima de venta
+PrecioPromedio: Número (14) - Precisión (14,4) Precio de la unidad mínima de venta
+FechaProceso: Datetime - Fecha y hora de generación del archivo
+REF1-REF10: Texto - Campos de referencia adicionales
+
+3. Stock.csv
+
+CódigoProveedor: Texto (10) - Código asignado por VidaSoftware al corporativo
+CodigoDistribuidor: Texto (30) - Concatenado "RUC.Sede". Ejemplo: 20600337832.Lima
+CodigoAlmacen: Texto (10) - Código asignado por el ERP
+NombreAlmacen: Texto (100) - Descripción
+CodigoProducto: Texto (25) - Código asignado por el ERP
+Lote: Texto (25) - Número de lote
+FechaVencimiento: Date - Fecha en el formato YYYY-MM-DD
+StockEnUnidadMinima: Numero (14) - Cantidad a nivel de unidades mínimas de venta
+UnidadDeMedidaMinima: Texto (10) - Descripción
+StockEnUnidadesMaximas: Numero (14) - Cantidad a nivel de cajas o planchas. Precisión (14,4)
+UnidadDeMedidaMaxima: Texto (10) - Descripción
+ValorStock: Numero (14) - Precisión: (14,4). Valor del inventario a precio de lista de compra
+FechaProceso: Datetime - Fecha de inventario
+IngresosEnUnidadDeConsumo: Numero (14) - Cantidad de unidades ingresadas en el día indicado
+ValorIngresos: Numero (14) - Valor total de ingresos según precio de compra. Precisión (14,4)
+VentasEnUnidadDeConsumo: Numero (14) - Cantidad de ventas que salieron de almacén en el día indicado
+ValorVentas: Numero (14) - Valor total de ventas según precio lista. Precisión (14,4)
+OtrosEnUnidadDeConsumo: Numero (14) - Cantidad de artículos movidos por motivos diferentes a venta o ingreso
+ValorOtros: Numero (14) - Valor total de los movimientos del campo OtrosEnUnidadDeConsumo. Precisión (14,4)
+Periodo: Numero (2) - Mes del stock referido
+REF1-REF10: Texto - Campos de referencia adicionales
+
+Nota: La lógica es que el StockEnUnidadDeConsumo + IngresosEnUnidadDeConsumo - VentasEnUnidadDeConsumo + OtrosEnUnidadDeConsumo sea igual a StockEnUnidadDeConsumo informado el día anterior.
+4. Vendedores.csv
+
+CódigoProveedor: Texto (10) - Código asignado por VidaSoftware al corporativo
+CodigoDistribuidor: Texto (30) - Concatenado "RUC.Sede". Ejemplo: 20600337832.Lima
+CodigoVendedor: Texto (25) - Código asignado por el ERP
+NombreVendedor: Texto (100) - Descripción
+TipoDocumento: Texto (20) - DNI -- CE -- PAS
+DI: Texto (20) - Número de documento de identidad
+Canal: Texto (30) - Código y/o descripción del canal del vendedor
+FechaIngreso: Date - Fecha de creación del vendedor. Formato YYYY-MM-DD
+FechaActualización: Date - Fecha de actualización del vendedor. Formato YYYY-MM-DD
+FechaProceso: Datetime - Fecha y hora de generación del archivo
+Exclusivo: Texto (1) - 1 -- Vendedor exclusivo del corporativo / 0 -- (No)
+CodigoSupervisor: Texto (10) - Código asignado por el ERP
+NombreSupervisor: Texto (100) - Descripción
+CRutaLogica: Texto (15) - Campo identificador de la Ruta (Solo sistemas REX)
+CLineaLogica: Texto (15) - Campo identificador de Línea (Solo sistemas REX)
+EstadoVendedor: Texto (100) - Activo o Inactivo
+ZonaVendedor: Texto (100) - De estar segmentado, colocar la zona (NORTE, SUR, etc.)
+REF3-REF10: Texto - Campos de referencia adicionales
+
+5. Ventas.csv
+
+CódigoProveedor: Texto (10) - Código asignado por VidaSoftware al corporativo
+CodigoDistribuidor: Texto (30) - Concatenado "RUC.Sede". Ejemplo: 20600337832.Lima
+TipoDocumento: Texto (2) - FA-BO-NC-ND
+NroDocumento: Texto (20) - Ejem.: 001-0000715
+FechaDocumento: Date - Formato YYYY-MM-DD
+MotivoNC: Texto (50) - En caso de ser una nota de crédito, indicar el motivo
+Origen: Texto (30) - Ejemplo: Toma pedidos, tienda virtual, Oficina, Mercaderista, etc.
+CodigoCliente: Texto (25) - Código asignado por el ERP
+CanalCliente: Texto (30)
+TipoNegocio: Texto (40)
+CodigoVendedor: Texto (25) - Código asignado por el ERP
+CanalVendedor: Texto (30)
+Ruta: Texto (10) - Ruta del cliente
+NumeroItem: Numero (3) - Número correlativo del registro o fila del documento. No se puede repetir
+CodigoProducto: Texto (25) - Código asignado por el ERP
+CantidadUnidadMinima: Numero (10) - Cantidad en unidades mínimas de venta. En caso de ser NC colocar la cantidad en negativo
+TipoUnidadMinima: Texto (30) - Ejemplo: Paquete, Display, etc.
+CantidadUnidadMaxima: Numero (14) - Cantidad en cajas o bultos. Precisión (14,4) En caso de ser NC colocar la cantidad en negativo
+TipoUnidadMaxima: Texto (30) - Descripción de la unidad máxima
+Moneda: Texto (3) - PEN -- USD
+ImporteNetoSinImpuesto: Numero (14) - Precisión: (14,4) Producto de la cantidad por el precio unitario, aplicado el descuento. En caso de ser NC colocar la cantidad en negativo
+ImporteNetoConImpuesto: Numero (14) - Precisión: (14,4) Producto de la cantidad por el precio unitario, aplicado el descuento y el impuesto. En caso de ser NC colocar la cantidad en negativo
+Descuento: Numero (14) - Precisión: (14,4) Descuento total del registro, en caso de no tener colocar cero (0.0)
+TipoVenta: Texto (1) - "P": Producto normal. "B": Bonificación, "C": Combos. "M": Componente de combo
+CodCombo: Texto (25) - En caso de que el producto pertenece a un combo
+CodPromoción: Texto (25) - En caso de que el producto pertenece a una promoción
+TipoDocumentoReferencia: Texto (2) - FA-BO-NC
+NroDocumentoReferencia: Texto (20) - Ejem.: 001-0000715
+FechaDocumentoReferencia: Date - Formato YYYY-MM-DD
+FechaProceso: Datetime - Fecha y hora de generación del archivo
+DescripcionPromocion: Texto - Descripción del código Promoción, se usa para ON y OFF
+REF2-REF4: Texto - Campos de referencia adicionales
+ZonaVendedor: Texto (100) - De estar segmentado, colocar la zona (NORTE, SUR, etc.)
+REF6-REF10: Texto - Campos de referencia adicionales
+
+Nota: Considerar el envío de las ventas del mes anterior y el avance del mes en curso.
+6. Rutas.csv
+
+CódigoProveedor: Texto (10) - Código asignado por VidaSoftware al corporativo
+CodigoDistribuidor: Texto (30) - Concatenado "RUC.Sede". Ejemplo: 20600337832.Lima
+CodigoCliente: Texto (25) - Código asignado por el ERP
+CodigoVendedor: Texto (25) - Código asignado por el ERP
+FuerzaDeVenta: Texto (30) - Ejemplo: Fuerza de venta minorista, fuerza de venta mayorista, etc.
+FrecuenciaVisita: Texto (8) - Código de frecuencia (K-Quincenal impar, Q-Quincenal par, S-Semanal) + 7 dígitos para días
+Zona: Texto (10) - Ejemplo: Zona 10000 - Lima Norte
+Mesa: Texto (10) - Ejemplo: Mesa 1000 - Mayorista
+Ruta: Texto (10) - Ejemplo: Ruta 1001 -- Covida
+Modulo: Texto (10) - Ejemplo: Modulo 1101 - Mayolo
+FechaProceso: Datetime - Fecha y hora de generación del archivo
+ZonaVendedor: Texto (100) - De estar segmentado, colocar la zona (NORTE, SUR, etc.)
+REF2-REF10: Texto - Campos de referencia adicionales
+
+Nota FrecuenciaVisita: Formato de 8 caracteres. El primero indica frecuencia (K-Quincenal impar, Q-Quincenal par, S-Semanal). Los otros 7 indican días de visita (0/1 para cada día).
+7. Pedidos.csv
+
+CódigoProveedor: Texto (10) - Código asignado por VidaSoftware al corporativo
+CodigoDistribuidor: Texto (30) - Concatenado "RUC.Sede". Ejemplo: 20600337832.Lima
+CodigoCliente: Texto (25) - Código asignado por el ERP
+CodigoVendedor: Texto (25) - Código asignado por el ERP
+Origen: Texto (30) - Ejemplo: Toma pedidos, tienda virtual, Oficina, Mercaderista, etc.
+CodigoPedido: Texto (30) - Código asignado por el ERP
+FechaPedido: Date - Formato YYYY-MM-DD
+EstatusPedido: Texto (5) - APRO -- CANC-PEND
+MotivoCancelación: Texto (50)
+TipoDocumento: Texto (2) - BO -- FA
+Documento: Texto (20) - Ejem.: 001-0000715
+FechaDocumento: Date - Formato YYYY-MM-DD
+EstatusDocumento: Texto (5) - APRO -- CANC
+NumeroItem: Numero (3) - Número correlativo del registro o fila del pedido. No se puede repetir
+CodigoProducto: Texto (25) - Código asignado por el ERP
+TipoProducto: Texto (1) - "P": Producto normal. "B": Bonificación, "C": Combos. "M": Componente de combo
+CantidadUnidadMinima: Numero (10) - Cantidad en unidades mínimas de venta
+TipoUnidadMinima: Texto (30) - Ejemplo: Paquete, Display, etc.
+CantidadUnidadMaxima: Numero (14) - Cantidad en cajas o bultos. Precisión (14,4)
+TipoUnidadMaxima: Texto (14) - Descripción de la unidad máxima
+ImportePedidoNetoSinImpuesto: Numero (14) - Precisión: (14,4) Producto de la cantidad por el precio unitario, aplicado el descuento
+ImportePedidoNetoConImpuesto: Numero (14) - Precisión: (14,4) Producto de la cantidad por el precio unitario, aplicado el descuento y el IGV
+Descuento: Numero (14) - Precisión: (14,4) Descuento total del registro, en caso de no tener colocar cero (0.0)
+FechaProceso: Datetime - Fecha y hora de generación del archivo
+REF1: Texto - Campo de referencia adicional
+CodCombo: Texto (25) - En caso de que el producto pertenece a un combo
+ZonaVendedor: Texto (100) - De estar segmentado, colocar la zona (NORTE, SUR, etc.)
+REF4-REF10: Texto - Campos de referencia adicionales
+
+Nota: Considerar el envío de pedidos del mes anterior y el avance del mes en curso.
+Observaciones Generales
+
+Los campos numéricos sin valor deben contener un cero (0).
+El formato para los campos de fecha será YYYY-MM-DD.
+Los archivos CSV deben usar pipes (|) como separadores de campos.
+No debe haber códigos de cliente o producto duplicados en los maestros.
+No puede existir un código de cliente, producto o vendedor en las tablas de transacciones (Ventas, Pedidos) que no esté en sus respectivas tablas maestras.
