@@ -28,8 +28,10 @@ def test_prompt_generation(input_file=None, instruction_source=None):
         # Si instruction_source es un archivo existente, leer su contenido
         if os.path.exists(instruction_source):
             print(f"Usando archivo de instrucciones: {instruction_source}")
-            # Usar la función del generador para cargar instrucciones desde archivo
-            instructions = generator.get_instructions(instruction_source)
+            # Leer directamente el contenido del archivo para asegurar que se envía completo
+            with open(instruction_source, 'r', encoding='utf-8') as f:
+                instructions = f.read()
+            print(f"✓ Instrucciones cargadas: {len(instructions)} caracteres")
         else:
             # Si no es un archivo, asumir que es texto de instrucciones directas
             print("Usando instrucciones proporcionadas directamente como texto")
