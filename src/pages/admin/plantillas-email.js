@@ -12,6 +12,208 @@ import {
 } from '@heroicons/react/24/outline';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
+// Plantillas HTML predeterminadas en formato React Email
+const TEMPLATE_DETALLADO_HTML_REACT = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Notificación Detallada</title>
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4;">
+  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 20px; border-radius: 5px; box-shadow: 0 0 10px rgba(0,0,0,0.1);">
+    <div style="text-align: center; margin-bottom: 20px;">
+      <h1 style="color: #2c5282; margin-bottom: 5px;">Notificación de Procesamiento</h1>
+      <p style="color: #718096; font-size: 14px;">Fecha: {{fecha}}</p>
+    </div>
+    
+    <div style="margin-bottom: 20px; padding: 15px; background-color: #ebf8ff; border-radius: 5px;">
+      <h2 style="color: #2b6cb0; margin-top: 0;">Detalles del Procesamiento</h2>
+      <p>Estimado usuario del Portal <strong>{{portal_nombre}}</strong>,</p>
+      <p>Le informamos que se ha procesado un archivo para la casilla <strong>{{casilla_nombre}}</strong>.</p>
+    </div>
+    
+    <div style="margin-bottom: 20px;">
+      <h3 style="color: #4a5568;">Información Detallada</h3>
+      <ul style="list-style-type: none; padding-left: 0;">
+        <li style="padding: 8px 0; border-bottom: 1px solid #edf2f7;">
+          <strong>Archivo:</strong> {{nombre_archivo}}
+        </li>
+        <li style="padding: 8px 0; border-bottom: 1px solid #edf2f7;">
+          <strong>Emisor:</strong> {{emisor_nombre}}
+        </li>
+        <li style="padding: 8px 0; border-bottom: 1px solid #edf2f7;">
+          <strong>Fecha de recepción:</strong> {{fecha_recepcion}}
+        </li>
+        <li style="padding: 8px 0; border-bottom: 1px solid #edf2f7;">
+          <strong>Fecha de procesamiento:</strong> {{fecha_procesamiento}}
+        </li>
+        <li style="padding: 8px 0;">
+          <strong>Estado:</strong> <span style="color: #48bb78; font-weight: bold;">{{estado_procesamiento}}</span>
+        </li>
+      </ul>
+    </div>
+    
+    <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e2e8f0; text-align: center; color: #a0aec0; font-size: 12px;">
+      <p>Este es un mensaje automático del sistema SAGE.</p>
+      <p>Por favor no responda a este correo electrónico.</p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+const TEMPLATE_RESUMIDO_EMISOR_HTML_REACT = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Resumen de Procesamiento por Emisor</title>
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4;">
+  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 20px; border-radius: 5px; box-shadow: 0 0 10px rgba(0,0,0,0.1);">
+    <div style="text-align: center; margin-bottom: 20px;">
+      <h1 style="color: #2c5282; margin-bottom: 5px;">Resumen de Procesamiento por Emisor</h1>
+      <p style="color: #718096; font-size: 14px;">Fecha: {{fecha}}</p>
+    </div>
+    
+    <div style="margin-bottom: 20px; padding: 15px; background-color: #ebf8ff; border-radius: 5px;">
+      <h2 style="color: #2b6cb0; margin-top: 0;">Resumen Diario</h2>
+      <p>Estimado usuario del Portal <strong>{{portal_nombre}}</strong>,</p>
+      <p>A continuación se presenta un resumen de los archivos procesados por emisor durante el día de hoy.</p>
+    </div>
+    
+    <div style="margin-bottom: 20px;">
+      <h3 style="color: #4a5568;">Resumen por Emisor</h3>
+      {{resumen_emisor}}
+    </div>
+    
+    <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e2e8f0; text-align: center; color: #a0aec0; font-size: 12px;">
+      <p>Este es un mensaje automático del sistema SAGE.</p>
+      <p>Por favor no responda a este correo electrónico.</p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+const TEMPLATE_RESUMIDO_CASILLA_HTML_REACT = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Resumen de Procesamiento por Casilla</title>
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4;">
+  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 20px; border-radius: 5px; box-shadow: 0 0 10px rgba(0,0,0,0.1);">
+    <div style="text-align: center; margin-bottom: 20px;">
+      <h1 style="color: #2c5282; margin-bottom: 5px;">Resumen de Procesamiento por Casilla</h1>
+      <p style="color: #718096; font-size: 14px;">Fecha: {{fecha}}</p>
+    </div>
+    
+    <div style="margin-bottom: 20px; padding: 15px; background-color: #ebf8ff; border-radius: 5px;">
+      <h2 style="color: #2b6cb0; margin-top: 0;">Resumen Diario</h2>
+      <p>Estimado usuario del Portal <strong>{{portal_nombre}}</strong>,</p>
+      <p>A continuación se presenta un resumen de los archivos procesados por casilla durante el día de hoy.</p>
+    </div>
+    
+    <div style="margin-bottom: 20px;">
+      <h3 style="color: #4a5568;">Resumen por Casilla</h3>
+      {{resumen_casilla}}
+    </div>
+    
+    <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e2e8f0; text-align: center; color: #a0aec0; font-size: 12px;">
+      <p>Este es un mensaje automático del sistema SAGE.</p>
+      <p>Por favor no responda a este correo electrónico.</p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+const TEMPLATE_REMITENTE_NO_AUTORIZADO_HTML_REACT = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Remitente No Autorizado</title>
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4;">
+  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 20px; border-radius: 5px; box-shadow: 0 0 10px rgba(0,0,0,0.1);">
+    <div style="text-align: center; margin-bottom: 20px;">
+      <h1 style="color: #e53e3e; margin-bottom: 5px;">Remitente No Autorizado</h1>
+      <p style="color: #718096; font-size: 14px;">Fecha: {{fecha}}</p>
+    </div>
+    
+    <div style="margin-bottom: 20px; padding: 15px; background-color: #fff5f5; border-radius: 5px; border-left: 4px solid #e53e3e;">
+      <h2 style="color: #c53030; margin-top: 0;">Acceso Denegado</h2>
+      <p>Estimado usuario,</p>
+      <p>Hemos recibido su correo electrónico a la casilla <strong>{{email_casilla}}</strong> con el asunto "<strong>{{asunto_original}}</strong>", pero lamentamos informarle que su dirección de correo <strong>{{email_remitente}}</strong> no está autorizada para enviar archivos a esta casilla.</p>
+    </div>
+    
+    <div style="margin-bottom: 20px;">
+      <h3 style="color: #4a5568;">¿Qué puede hacer?</h3>
+      <ul style="list-style-type: none; padding-left: 0;">
+        <li style="padding: 8px 0; border-bottom: 1px solid #edf2f7;">
+          1. Verifique que está utilizando la dirección de correo electrónico correcta.
+        </li>
+        <li style="padding: 8px 0; border-bottom: 1px solid #edf2f7;">
+          2. Contacte al administrador del sistema para solicitar autorización.
+        </li>
+        <li style="padding: 8px 0;">
+          3. Si cree que esto es un error, responda a este correo con los detalles.
+        </li>
+      </ul>
+    </div>
+    
+    <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e2e8f0; text-align: center; color: #a0aec0; font-size: 12px;">
+      <p>Este es un mensaje automático del sistema SAGE.</p>
+      <p>Para ayuda adicional, responda a este correo o contacte a soporte@sage.vidahub.ai</p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+const TEMPLATE_SIN_ADJUNTO_HTML_REACT = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Falta de Adjunto</title>
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4;">
+  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 20px; border-radius: 5px; box-shadow: 0 0 10px rgba(0,0,0,0.1);">
+    <div style="text-align: center; margin-bottom: 20px;">
+      <h1 style="color: #dd6b20; margin-bottom: 5px;">Falta Archivo Adjunto</h1>
+      <p style="color: #718096; font-size: 14px;">Fecha: {{fecha}}</p>
+    </div>
+    
+    <div style="margin-bottom: 20px; padding: 15px; background-color: #fffaf0; border-radius: 5px; border-left: 4px solid #dd6b20;">
+      <h2 style="color: #c05621; margin-top: 0;">Correo Sin Adjunto</h2>
+      <p>Estimado usuario,</p>
+      <p>Hemos recibido su correo electrónico a la casilla <strong>{{email_casilla}}</strong> con el asunto "<strong>{{asunto_original}}</strong>", pero no encontramos ningún archivo adjunto para procesar.</p>
+    </div>
+    
+    <div style="margin-bottom: 20px;">
+      <h3 style="color: #4a5568;">¿Qué puede hacer?</h3>
+      <ul style="list-style-type: none; padding-left: 0;">
+        <li style="padding: 8px 0; border-bottom: 1px solid #edf2f7;">
+          1. Asegúrese de adjuntar el archivo al correo electrónico.
+        </li>
+        <li style="padding: 8px 0; border-bottom: 1px solid #edf2f7;">
+          2. Verifique que el archivo no exceda el tamaño máximo permitido (25MB).
+        </li>
+        <li style="padding: 8px 0;">
+          3. Envíe nuevamente el correo con el archivo adjunto correspondiente.
+        </li>
+      </ul>
+    </div>
+    
+    <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e2e8f0; text-align: center; color: #a0aec0; font-size: 12px;">
+      <p>Este es un mensaje automático del sistema SAGE.</p>
+      <p>Para ayuda adicional, responda a este correo o contacte a soporte@sage.vidahub.ai</p>
+    </div>
+  </div>
+</body>
+</html>`;
+
 // Componente principal
 export default function PlantillasEmail() {
   const router = useRouter();
@@ -138,9 +340,71 @@ export default function PlantillasEmail() {
     setIsCreating(false);
   };
   
+  // Obtener plantilla HTML predeterminada según el tipo y subtipo
+  const getDefaultHtmlTemplate = (tipo, subtipo) => {
+    switch(tipo) {
+      case 'notificacion':
+        if (subtipo === 'detallado') {
+          return TEMPLATE_DETALLADO_HTML_REACT;
+        } else if (subtipo === 'resumido_emisor') {
+          return TEMPLATE_RESUMIDO_EMISOR_HTML_REACT;
+        } else if (subtipo === 'resumido_casilla') {
+          return TEMPLATE_RESUMIDO_CASILLA_HTML_REACT;
+        }
+        break;
+      case 'respuesta_daemon':
+        if (subtipo === 'remitente_no_autorizado') {
+          return TEMPLATE_REMITENTE_NO_AUTORIZADO_HTML_REACT;
+        } else if (subtipo === 'sin_adjunto' || subtipo === 'falta_adjunto') {
+          return TEMPLATE_SIN_ADJUNTO_HTML_REACT;
+        }
+        break;
+      default:
+        return '';
+    }
+    return '';
+  };
+  
+  // Obtener plantilla de texto predeterminada según el tipo y subtipo
+  const getDefaultTextTemplate = (tipo, subtipo) => {
+    // Versión simplificada de texto plano
+    return `Plantilla de texto para ${tipo} - ${subtipo}. 
+Esta es una versión de texto plano para clientes que no soportan HTML.
+    
+Incluya aquí toda la información relevante, usando las mismas variables
+que en la versión HTML:
+- {{fecha}}
+- {{portal_nombre}}
+- {{casilla_nombre}}
+- {{email_remitente}}
+- {{email_casilla}}
+- {{asunto_original}}
+    
+Atentamente,
+Sistema SAGE`;
+  };
+
   const handleCreateTemplate = () => {
     setSelectedTemplate(null);
-    resetForm();
+    
+    // Configurar valores predeterminados para una nueva plantilla
+    const defaultTipo = 'notificacion';
+    const defaultSubtipo = 'detallado';
+    
+    setFormData({
+      nombre: '',
+      descripcion: '',
+      tipo: defaultTipo,
+      subtipo: defaultSubtipo,
+      variante: 'standard',
+      canal: 'email',
+      idioma: 'es',
+      asunto: '',
+      contenido_html: getDefaultHtmlTemplate(defaultTipo, defaultSubtipo),
+      contenido_texto: getDefaultTextTemplate(defaultTipo, defaultSubtipo),
+      es_predeterminada: false
+    });
+    
     setIsEditing(false);
     setIsCreating(true);
   };
@@ -164,10 +428,29 @@ export default function PlantillasEmail() {
   
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setFormData({
+    
+    // Si cambia tipo o subtipo, actualizar las plantillas predeterminadas
+    let updatedFormData = {
       ...formData,
       [name]: type === 'checkbox' ? checked : value
-    });
+    };
+    
+    if (name === 'tipo' || name === 'subtipo') {
+      // Al cambiar tipo o subtipo, actualizar las plantillas HTML y texto
+      const newTipo = name === 'tipo' ? value : formData.tipo;
+      const newSubtipo = name === 'subtipo' ? value : formData.subtipo;
+      
+      // Solo actualizar si los campos están vacíos o si es una plantilla nueva (isCreating)
+      if (isCreating || !formData.contenido_html.trim()) {
+        updatedFormData.contenido_html = getDefaultHtmlTemplate(newTipo, newSubtipo);
+      }
+      
+      if (isCreating || !formData.contenido_texto.trim()) {
+        updatedFormData.contenido_texto = getDefaultTextTemplate(newTipo, newSubtipo);
+      }
+    }
+    
+    setFormData(updatedFormData);
   };
   
   const resetForm = () => {
@@ -246,31 +529,30 @@ export default function PlantillasEmail() {
   ];
   
   return (
-    <>
+    <Layout>
       <Head>
         <title>Gestión de Plantillas de Email | SAGE</title>
       </Head>
       
-      <Layout>
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">
-          <div className="sm:flex sm:items-center sm:justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Plantillas de Email</h1>
-              <p className="mt-2 text-sm text-gray-500">
-                Gestiona las plantillas para diferentes tipos de notificaciones y respuestas automáticas.
-              </p>
-            </div>
-            <div className="mt-4 sm:mt-0">
-              <button
-                type="button"
-                onClick={handleCreateTemplate}
-                className="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
-              >
-                <PlusIcon className="-ml-0.5 mr-1.5 h-5 w-5" aria-hidden="true" />
-                Nueva Plantilla
-              </button>
-            </div>
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">
+        <div className="sm:flex sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Plantillas de Email</h1>
+            <p className="mt-2 text-sm text-gray-500">
+              Gestiona las plantillas para diferentes tipos de notificaciones y respuestas automáticas.
+            </p>
           </div>
+          <div className="mt-4 sm:mt-0">
+            <button
+              type="button"
+              onClick={handleCreateTemplate}
+              className="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+            >
+              <PlusIcon className="-ml-0.5 mr-1.5 h-5 w-5" aria-hidden="true" />
+              Nueva Plantilla
+            </button>
+          </div>
+        </div>
 
           {/* Filtros */}
           <div className="mt-6 grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-6">
@@ -696,6 +978,5 @@ export default function PlantillasEmail() {
           </div>
         </div>
       </Layout>
-    </>
   );
 }
