@@ -67,13 +67,37 @@ class YAMLStudioCLI:
             print(f"\n❌ Error generando prompt: {str(e)}")
             sys.exit(1)
             
-    def generate_yaml(self, input_file: str, output_file: str, instructions_file: Optional[str] = None) -> str:
+    def generate_yaml(self, input_file: str, output_file: str, 
+                 instructions_file: Optional[str] = None,
+                 original_filename: Optional[str] = None) -> str:
         """Generate YAML configuration using AI"""
         try:
             self.print_section("INICIANDO GENERACIÓN", "Procesando archivo de entrada...", "🚀")
 
+            # Obtener información del archivo
+            file_info = self.generator.analyze_file_structure(input_file)
+            
+            # Si se proporciona el nombre original, usarlo
+            if original_filename:
+                file_info['filename'] = original_filename
+                        
+            # Obtener instrucciones y especificaciones
+            instructions = self.generator.get_instructions(instructions_file)
+            yaml_spec = self.generator.load_yaml_spec()
+            
+            # Modificar el analizador del generador para usar el nombre original del archivo
+            original_analyze_func = self.generator.analyze_file_structure
+            def modified_analyze(*args, **kwargs):
+                return file_info
+            
+            # Reemplazar temporalmente la función de análisis
+            self.generator.analyze_file_structure = modified_analyze
+            
             # Generate YAML
             yaml_content = self.generator.generate_yaml(input_file, instructions_file)
+            
+            # Restaurar la función original
+            self.generator.analyze_file_structure = original_analyze_func
 
             # Save YAML
             output_dir = os.path.dirname(output_file)
@@ -107,6 +131,7 @@ def main():
     generate_yaml_parser.add_argument("input_file", help="Input file to analyze (.csv, .xlsx, .zip)")
     generate_yaml_parser.add_argument("output_file", help="Output YAML file path")
     generate_yaml_parser.add_argument("--instructions", help="File with additional instructions")
+    generate_yaml_parser.add_argument("--original-filename", help="Original filename of the uploaded file")
 
     # Generate prompt only command
     generate_prompt_parser = subparsers.add_parser("generate-prompt", help="Generate only the prompt without calling the API")
@@ -124,7 +149,7 @@ def main():
     cli = YAMLStudioCLI()
 
     if args.command == "generate":
-        cli.generate_yaml(args.input_file, args.output_file, args.instructions)
+        cli.generate_yaml(args.input_file, args.output_file, args.instructions, getattr(args, 'original_filename', None))
     elif args.command == "generate-prompt":
         cli.generate_prompt_only(args.input_file, args.output_file, args.instructions, getattr(args, 'original_filename', None))
     elif args.command == "validate":

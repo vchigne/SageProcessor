@@ -45,8 +45,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Generar nombre único para el archivo YAML de salida
     const outputPath = path.join(tmpDir, `output_${Date.now()}.yaml`);
 
-    // Construir el comando con las rutas exactas
-    const command = `python3 -m sage.yaml_studio_cli generate "${inputFile.filepath}" "${outputPath}" --instructions "${instructionsPath}"`;
+    // Construir el comando con las rutas exactas y nombre original del archivo
+    const command = `python3 -m sage.yaml_studio_cli generate "${inputFile.filepath}" "${outputPath}" --instructions "${instructionsPath}" --original-filename "${inputFile.originalFilename}"`;
     console.log('Executing command:', command);
     console.log('Input file details:', {
       originalFilename: inputFile.originalFilename,
