@@ -336,36 +336,60 @@ class YAMLGenerator:
             # Detectar el delimitador correcto para el archivo
             delimiter = best_delimiter if 'best_delimiter' in locals() else '|'
             
-            try:
-                # Obtener las primeras líneas del archivo original (máximo 10)
-                with open(file_path, 'rb') as f:
-                    content = f.read()
-                    
-                # Manejar archivos con BOM
-                if has_bom:
-                    text_content = content[3:].decode('utf-8')
-                else:
-                    try:
-                        text_content = content.decode('utf-8')
-                    except UnicodeDecodeError:
-                        text_content = content.decode('latin1')
-                
-                # Obtener las primeras 10 líneas como máximo
-                lines = text_content.split('\n')
-                for i in range(min(10, len(lines))):
-                    if lines[i].strip():  # Solo incluir líneas no vacías
-                        raw_examples.append(lines[i].strip())
-            except Exception as e:
-                self.logger.warning(f"Error obteniendo ejemplos de texto plano: {str(e)}")
-                # Si falla, crear ejemplos a partir del DataFrame como respaldo
+            # Para archivos Excel, creamos ejemplos directamente del dataframe
+            if file_path.lower().endswith(('.xlsx', '.xls')):
                 try:
+                    # Crear ejemplos directamente del DataFrame para Excel
                     headers = df.columns.tolist()
-                    for _, row in df.head(5).iterrows():
+                    # Agregar primero la línea de cabecera
+                    raw_examples.append(','.join(headers))
+                    
+                    # Luego agregar las filas de datos
+                    for _, row in df.head(10).iterrows():
                         values = [str(row[col]) if not pd.isna(row[col]) else "" for col in headers]
-                        raw_examples.append(delimiter.join(values))
-                except Exception as e2:
-                    self.logger.warning(f"Error creando ejemplos de respaldo: {str(e2)}")
-                    raw_examples = ["No se pudieron obtener ejemplos en formato de texto"]
+                        raw_examples.append(','.join(values))
+                    
+                    self.logger.message(f"✓ Ejemplos extraídos del Excel: {len(raw_examples)} líneas")
+                except Exception as excel_err:
+                    self.logger.warning(f"Error creando ejemplos de Excel: {str(excel_err)}")
+                    raw_examples = ["No se pudieron obtener ejemplos en formato de texto del Excel"]
+            else:
+                # Para archivos CSV, intentamos leer directamente del archivo
+                try:
+                    # Obtener las primeras líneas del archivo original (máximo 10)
+                    with open(file_path, 'rb') as f:
+                        content = f.read()
+                        
+                    # Manejar archivos con BOM
+                    if has_bom:
+                        text_content = content[3:].decode('utf-8')
+                    else:
+                        try:
+                            text_content = content.decode('utf-8')
+                        except UnicodeDecodeError:
+                            text_content = content.decode('latin1')
+                    
+                    # Obtener las primeras 10 líneas como máximo
+                    lines = text_content.split('\n')
+                    for i in range(min(10, len(lines))):
+                        if lines[i].strip():  # Solo incluir líneas no vacías
+                            raw_examples.append(lines[i].strip())
+                except Exception as e:
+                    self.logger.warning(f"Error obteniendo ejemplos de texto plano: {str(e)}")
+                    # Si falla, crear ejemplos a partir del DataFrame como respaldo
+                    try:
+                        headers = df.columns.tolist()
+                        for _, row in df.head(5).iterrows():
+                            values = [str(row[col]) if not pd.isna(row[col]) else "" for col in headers]
+                            raw_examples.append(delimiter.join(values))
+                    except Exception as e2:
+                        self.logger.warning(f"Error creando ejemplos de respaldo: {str(e2)}")
+                        raw_examples = ["No se pudieron obtener ejemplos en formato de texto"]
+            
+            # Determinar el tipo de archivo para información
+            file_type = 'csv'
+            if file_path.lower().endswith(('.xlsx', '.xls')):
+                file_type = 'excel'
             
             # Guardar información sobre la presencia de BOM y el delimitador
             result = {
@@ -373,7 +397,8 @@ class YAMLGenerator:
                 'data_samples': processed_samples,
                 'raw_examples': raw_examples,  # Ejemplos sin procesar (formato de texto)
                 'has_bom': has_bom,
-                'delimiter': best_delimiter if 'best_delimiter' in locals() else ','
+                'delimiter': best_delimiter if 'best_delimiter' in locals() else ',',
+                'file_type': file_type
             }
             
             # Registrar el resultado del análisis
@@ -701,7 +726,10 @@ packages:
         nombre_archivo = file_info['filename']
         
         # Obtener tipo de archivo
-        tipo_archivo = file_info['extension'].upper()[1:]
+        if 'file_type' in file_info and file_info['file_type'] == 'excel':
+            tipo_archivo = 'EXCEL'
+        else:
+            tipo_archivo = file_info['extension'].upper()[1:]
         
         # Número de archivos en el ZIP
         if file_info['extension'] == '.zip' and 'contained_files' in file_info:

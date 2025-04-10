@@ -28,13 +28,18 @@ class YAMLStudioCLI:
         if content:
             print(f"{content}")
 
-    def generate_prompt_only(self, input_file: str, output_file: str, instructions_file: Optional[str] = None) -> str:
+    def generate_prompt_only(self, input_file: str, output_file: str, instructions_file: Optional[str] = None, 
+                             original_filename: Optional[str] = None) -> str:
         """Generate and save only the prompt without calling the API"""
         try:
             self.print_section("GENERANDO PROMPT", "Procesando archivo de entrada...", "📝")
             
             # Analizar la estructura del archivo
             file_info = self.generator.analyze_file_structure(input_file)
+            
+            # Si tenemos el nombre original, actualizamos el filename en file_info
+            if original_filename:
+                file_info['filename'] = original_filename
             
             # Obtener instrucciones y especificaciones
             instructions = self.generator.get_instructions(instructions_file)
@@ -108,6 +113,7 @@ def main():
     generate_prompt_parser.add_argument("input_file", help="Input file to analyze (.csv, .xlsx, .zip)")
     generate_prompt_parser.add_argument("output_file", help="Output file path for saving the prompt")
     generate_prompt_parser.add_argument("--instructions", help="File with additional instructions")
+    generate_prompt_parser.add_argument("--original-filename", help="Original filename of the uploaded file")
 
     # Validate command
     validate_parser = subparsers.add_parser("validate", help="Validate YAML file")
@@ -120,7 +126,7 @@ def main():
     if args.command == "generate":
         cli.generate_yaml(args.input_file, args.output_file, args.instructions)
     elif args.command == "generate-prompt":
-        cli.generate_prompt_only(args.input_file, args.output_file, args.instructions)
+        cli.generate_prompt_only(args.input_file, args.output_file, args.instructions, getattr(args, 'original_filename', None))
     elif args.command == "validate":
         if cli.validator.load_and_validate(args.yaml_file):
             print("✅ YAML válido")

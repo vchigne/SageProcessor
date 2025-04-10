@@ -46,7 +46,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const outputPath = path.join(tmpDir, `prompt_${Date.now()}.txt`);
 
     // Construir el comando con las rutas exactas para generar sólo el prompt
-    const command = `python3 -m sage.yaml_studio_cli generate-prompt "${inputFile.filepath}" "${outputPath}" --instructions "${instructionsPath}"`;
+    const command = `python3 -m sage.yaml_studio_cli generate-prompt "${inputFile.filepath}" "${outputPath}" --instructions "${instructionsPath}" --original-filename "${inputFile.originalFilename}"`;
     console.log('Executing command:', command);
     console.log('Input file details:', {
       originalFilename: inputFile.originalFilename,
