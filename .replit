@@ -47,15 +47,6 @@ task = "shell.exec"
 args = "python run_sage_daemon.py"
 
 [[workflows.workflow]]
-name = "Run SAGE"
-author = 39710120
-mode = "sequential"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "python run_sage_daemon.py"
-
-[[workflows.workflow]]
 name = "SAGE Daemon 2"
 author = "agent"
 
