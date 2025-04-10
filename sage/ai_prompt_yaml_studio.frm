@@ -38,7 +38,7 @@ El usuario ha proporcionado los siguientes archivos para analizar:
 Ejemplos de datos extraídos de los archivos:
 {ejemplos_de_datos}
 Datos en formato JSON:
-{datos en json}
+{datos_json}
 
 === REGLAS GENERALES ===
 1. **Tipos de datos permitidos en el YAML:**
