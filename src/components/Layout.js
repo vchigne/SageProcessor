@@ -26,12 +26,6 @@ import { useRouter } from 'next/router'
 const navigation = [
   { name: 'Dashboard', href: '/', icon: HomeIcon },
   { name: 'YAML Studio', href: '/studio', icon: CodeBracketSquareIcon },
-  { 
-    name: 'YAML Editor', 
-    href: '/yaml-editor',  // Usar nuestra nueva página de redirección
-    icon: PencilSquareIcon, 
-    external: true,
-  },
   { name: 'Casillas de Datos', href: '/admin/data-boxes', icon: InboxStackIcon },
   { name: 'Portales', href: '/admin/portales', icon: WindowIcon },
   { name: 'Control de Acceso', href: '/access', icon: ShieldCheckIcon },
