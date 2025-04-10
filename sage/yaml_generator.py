@@ -737,8 +737,9 @@ packages:
             # Lista de archivos dentro del ZIP
             lista_archivos_zip = "\n".join(f"  - {f}" for f in file_info['contained_files'])
         else:
-            num_archivos = 1
-            lista_archivos_zip = nombre_archivo
+            # Para archivos individuales, indicar claramente que no es un ZIP
+            num_archivos = "0 (No aplica - Este es un archivo individual, no un ZIP)"
+            lista_archivos_zip = "No hay archivos contenidos - Este es un archivo individual de tipo " + tipo_archivo
         
         # Preparar ejemplos de datos (5 primeras líneas, 5 del medio y 5 finales de cada archivo)
         ejemplos_de_datos = []
