@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
-import Layout from '../../components/Layout';
 import { 
   DocumentTextIcon, 
   PlusIcon, 
@@ -529,7 +528,7 @@ Sistema SAGE`;
   ];
   
   return (
-    <Layout>
+    <>
       <Head>
         <title>Gestión de Plantillas de Email | SAGE</title>
       </Head>
@@ -859,7 +858,7 @@ Sistema SAGE`;
                             Contenido HTML
                           </label>
                           <p className="mt-1 text-xs text-gray-500">
-                            Utilice variables como {'{{fecha}}'}, {'{{portal_nombre}}'}, etc. según el tipo de plantilla.
+                            Utilice variables entre llaves dobles según el tipo de plantilla.
                           </p>
                           <textarea
                             id="contenido_html"
@@ -977,6 +976,7 @@ Sistema SAGE`;
             </div>
           </div>
         </div>
-      </Layout>
+      </div>
+    </>
   );
 }
