@@ -40,7 +40,7 @@ export default async function handler(req, res) {
     
     switch (method) {
       case 'GET':
-        // Obtener lista de casillas para el portal
+        // Obtener lista de casillas para el portal usando la instalación como nexo
         const casillasQuery = `
           SELECT 
             c.id, 
@@ -60,8 +60,7 @@ export default async function handler(req, res) {
           JOIN organizaciones o ON i.organizacion_id = o.id
           JOIN productos p ON i.producto_id = p.id
           JOIN paises pa ON i.pais_id = pa.id
-          JOIN portales_casillas pc ON c.id = pc.casilla_id
-          WHERE pc.portal_id = $1
+          WHERE c.instalacion_id = (SELECT instalacion_id FROM portales WHERE id = $1)
           ORDER BY c.nombre
         `
         const { rows: casillas } = await pool.query(casillasQuery, [portal.id])
