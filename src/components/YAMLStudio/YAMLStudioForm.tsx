@@ -16,6 +16,7 @@ export const YAMLStudioForm: React.FC = () => {
   const [validationError, setValidationError] = useState<string | null>(null);
   const [validationDetails, setValidationDetails] = useState<string | null>(null);
   const [validationSuccess, setValidationSuccess] = useState(false);
+  const [promptSuccess, setPromptSuccess] = useState(false);
   const [showYamlEditor, setShowYamlEditor] = useState(false);
   const [filePreview, setFilePreview] = useState<{[key: string]: any}>({});
   const [showPreview, setShowPreview] = useState(false);
@@ -32,9 +33,11 @@ export const YAMLStudioForm: React.FC = () => {
     if (selectedFile) {
       setFile(selectedFile);
       setYamlContent('');
+      setPromptContent('');
       setValidationError(null);
       setValidationDetails(null);
       setValidationSuccess(false);
+      setPromptSuccess(false);
       setFilePreview({});
       setShowPreview(false);
     }
@@ -159,6 +162,7 @@ export const YAMLStudioForm: React.FC = () => {
     setIsGeneratingPrompt(true);
     setValidationError(null);
     setValidationDetails(null);
+    setPromptSuccess(false);
 
     const formData = new FormData();
     formData.append('file', file);
@@ -179,6 +183,24 @@ export const YAMLStudioForm: React.FC = () => {
       }
 
       setPromptContent(data.prompt);
+      
+      // Iniciar descarga automáticamente
+      const promptText = data.prompt;
+      const element = document.createElement('a');
+      const promptFile = new Blob([promptText], {type: 'text/plain;charset=utf-8'});
+      element.href = URL.createObjectURL(promptFile);
+      element.download = 'prompt_yaml_studio.txt';
+      document.body.appendChild(element);
+      element.click();
+      document.body.removeChild(element);
+      URL.revokeObjectURL(element.href);
+      
+      // Mostrar mensaje de éxito
+      setPromptSuccess(true);
+      // Ocultar el mensaje después de 5 segundos
+      setTimeout(() => {
+        setPromptSuccess(false);
+      }, 5000);
       
     } catch (error: any) {
       setValidationError(error.message);
@@ -409,6 +431,13 @@ export const YAMLStudioForm: React.FC = () => {
           <div className="p-4 bg-green-50 border border-green-200 rounded-md text-green-700">
             <p className="text-sm">¡YAML validado correctamente! ✅</p>
             <p className="text-xs mt-1">La estructura y configuración cumplen con los requisitos de SAGE.</p>
+          </div>
+        )}
+        
+        {promptSuccess && (
+          <div className="p-4 bg-green-50 border border-green-200 rounded-md text-green-700">
+            <p className="text-sm">¡Prompt generado y descargado correctamente! ✅</p>
+            <p className="text-xs mt-1">El archivo prompt_yaml_studio.txt ha sido guardado en tu dispositivo.</p>
           </div>
         )}
 
