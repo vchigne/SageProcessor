@@ -129,50 +129,271 @@ export default async function handler(req, res) {
                           )
                       ) = 0 THEN false
                       WHEN er.frecuencia_tipo_id IS NULL THEN false
+                      WHEN er.configuracion_frecuencia IS NULL THEN false
                       ELSE (
                         CASE
-                          -- Para frecuencia diaria
-                          WHEN ft.nombre = 'Diario' THEN 
-                            EXTRACT(EPOCH FROM (NOW() - (
-                              SELECT MAX(fecha_ejecucion) 
+                          -- Frecuencia diaria con lógica detallada
+                          WHEN ft.nombre = 'Diario' AND er.configuracion_frecuencia->>'tipo' IS NOT NULL THEN (
+                            WITH config AS (
+                              SELECT 
+                                (er.configuracion_frecuencia->>'hora')::time as hora_config
+                            ),
+                            ultima_ejecucion AS (
+                              SELECT MAX(fecha_ejecucion) as fecha
                               FROM ejecuciones_yaml ey
                               WHERE ey.casilla_id = cr.id
-                                AND (
-                                  ey.emisor_id = er.emisor_id
-                                  OR ey.emisor_id IS NULL
-                                )
-                            ))) / 3600 > 24
-                          -- Para frecuencia semanal (aproximación simplificada)
-                          WHEN ft.nombre = 'Semanal' THEN 
-                            EXTRACT(EPOCH FROM (NOW() - (
-                              SELECT MAX(fecha_ejecucion) 
+                              AND (ey.emisor_id = er.emisor_id OR ey.emisor_id IS NULL)
+                            )
+                            SELECT
+                              CASE
+                                -- Si pasó la hora configurada hoy y no hay ejecución de hoy
+                                WHEN CURRENT_TIME > config.hora_config AND 
+                                    (ultima_ejecucion.fecha IS NULL OR 
+                                     DATE(ultima_ejecucion.fecha) < CURRENT_DATE) THEN true
+                                -- Si es un día anterior, verificar si pasaron más de 24 horas
+                                WHEN ultima_ejecucion.fecha IS NOT NULL AND 
+                                    DATE(ultima_ejecucion.fecha) < CURRENT_DATE THEN true
+                                ELSE false
+                              END
+                            FROM config, ultima_ejecucion
+                          )
+                          
+                          -- Frecuencia semanal con lógica detallada
+                          WHEN ft.nombre = 'Semanal' AND er.configuracion_frecuencia->>'tipo' IS NOT NULL THEN (
+                            WITH config AS (
+                              SELECT 
+                                (er.configuracion_frecuencia->>'hora')::time as hora_config,
+                                jsonb_array_elements_text(er.configuracion_frecuencia->'dias_semana')::integer as dia_semana
+                            ),
+                            ultima_ejecucion AS (
+                              SELECT MAX(fecha_ejecucion) as fecha
                               FROM ejecuciones_yaml ey
                               WHERE ey.casilla_id = cr.id
-                                AND (
-                                  ey.emisor_id = er.emisor_id
-                                  OR ey.emisor_id IS NULL
-                                )
-                            ))) / 3600 > 24 * 7
-                          -- Para frecuencia mensual (aproximación simplificada)
-                          WHEN ft.nombre = 'Mensual' THEN 
-                            EXTRACT(EPOCH FROM (NOW() - (
-                              SELECT MAX(fecha_ejecucion) 
+                              AND (ey.emisor_id = er.emisor_id OR ey.emisor_id IS NULL)
+                            ),
+                            dia_actual AS (
+                              SELECT EXTRACT(DOW FROM CURRENT_DATE) as dia
+                            ),
+                            es_dia_configurado AS (
+                              SELECT EXISTS (
+                                SELECT 1 FROM config 
+                                WHERE dia_semana = (SELECT dia FROM dia_actual)
+                              ) as es_dia
+                            )
+                            SELECT
+                              CASE
+                                -- Si hoy es día configurado, verificar hora y última ejecución
+                                WHEN es_dia_configurado.es_dia = true AND 
+                                    CURRENT_TIME > config.hora_config AND 
+                                    (ultima_ejecucion.fecha IS NULL OR 
+                                     DATE(ultima_ejecucion.fecha) < CURRENT_DATE) THEN true
+                                -- Si no es día configurado, verificar última ejecución respecto al último día configurado
+                                WHEN es_dia_configurado.es_dia = false AND 
+                                    ultima_ejecucion.fecha IS NOT NULL AND
+                                    EXTRACT(EPOCH FROM (NOW() - ultima_ejecucion.fecha)) / 3600 > 24 * 7 THEN true
+                                ELSE false
+                              END
+                            FROM config, ultima_ejecucion, es_dia_configurado
+                            LIMIT 1
+                          )
+                          
+                          -- Frecuencia mensual con lógica detallada
+                          WHEN ft.nombre = 'Mensual' AND er.configuracion_frecuencia->>'tipo' IS NOT NULL THEN (
+                            WITH config AS (
+                              SELECT 
+                                (er.configuracion_frecuencia->>'hora')::time as hora_config,
+                                jsonb_array_elements_text(er.configuracion_frecuencia->'dias_mes')::integer as dia_mes
+                            ),
+                            ultima_ejecucion AS (
+                              SELECT MAX(fecha_ejecucion) as fecha
                               FROM ejecuciones_yaml ey
                               WHERE ey.casilla_id = cr.id
-                                AND (
-                                  ey.emisor_id = er.emisor_id
-                                  OR ey.emisor_id IS NULL
-                                )
-                            ))) / 3600 > 24 * 30
-                          ELSE false
+                              AND (ey.emisor_id = er.emisor_id OR ey.emisor_id IS NULL)
+                            ),
+                            dia_actual AS (
+                              SELECT EXTRACT(DAY FROM CURRENT_DATE) as dia
+                            ),
+                            es_dia_configurado AS (
+                              SELECT EXISTS (
+                                SELECT 1 FROM config 
+                                WHERE dia_mes = (SELECT dia FROM dia_actual)
+                              ) as es_dia
+                            )
+                            SELECT
+                              CASE
+                                -- Si hoy es día configurado, verificar hora y última ejecución
+                                WHEN es_dia_configurado.es_dia = true AND 
+                                    CURRENT_TIME > config.hora_config AND 
+                                    (ultima_ejecucion.fecha IS NULL OR 
+                                     DATE(ultima_ejecucion.fecha) < CURRENT_DATE) THEN true
+                                -- Si no es día configurado, verificar última ejecución respecto al último día configurado
+                                WHEN es_dia_configurado.es_dia = false AND 
+                                    ultima_ejecucion.fecha IS NOT NULL AND
+                                    EXTRACT(EPOCH FROM (NOW() - ultima_ejecucion.fecha)) / 3600 > 24 * 30 THEN true
+                                ELSE false
+                              END
+                            FROM config, ultima_ejecucion, es_dia_configurado
+                            LIMIT 1
+                          )
+                          
+                          -- Si no tenemos un caso específico o la configuración es inválida, usar los default
+                          ELSE (
+                            CASE
+                              WHEN ft.nombre = 'Diario' THEN 
+                                EXTRACT(EPOCH FROM (NOW() - (
+                                  SELECT MAX(fecha_ejecucion) 
+                                  FROM ejecuciones_yaml ey
+                                  WHERE ey.casilla_id = cr.id
+                                    AND (
+                                      ey.emisor_id = er.emisor_id
+                                      OR ey.emisor_id IS NULL
+                                    )
+                                ))) / 3600 > 24
+                              WHEN ft.nombre = 'Semanal' THEN 
+                                EXTRACT(EPOCH FROM (NOW() - (
+                                  SELECT MAX(fecha_ejecucion) 
+                                  FROM ejecuciones_yaml ey
+                                  WHERE ey.casilla_id = cr.id
+                                    AND (
+                                      ey.emisor_id = er.emisor_id
+                                      OR ey.emisor_id IS NULL
+                                    )
+                                ))) / 3600 > 24 * 7
+                              WHEN ft.nombre = 'Mensual' THEN 
+                                EXTRACT(EPOCH FROM (NOW() - (
+                                  SELECT MAX(fecha_ejecucion) 
+                                  FROM ejecuciones_yaml ey
+                                  WHERE ey.casilla_id = cr.id
+                                    AND (
+                                      ey.emisor_id = er.emisor_id
+                                      OR ey.emisor_id IS NULL
+                                    )
+                                ))) / 3600 > 24 * 30
+                              ELSE false
+                            END
+                          )
                         END
                       )
                     END as estado_retraso,
                     CASE 
                       WHEN er.frecuencia_tipo_id IS NULL THEN 0
+                      WHEN er.configuracion_frecuencia IS NULL THEN 0
                       ELSE (
                         CASE
-                          -- Para frecuencia diaria, calcular horas de retraso
+                          -- Frecuencia diaria con cálculo preciso
+                          WHEN ft.nombre = 'Diario' AND er.configuracion_frecuencia->>'tipo' IS NOT NULL THEN (
+                            WITH config AS (
+                              SELECT 
+                                (er.configuracion_frecuencia->>'hora')::time as hora_config
+                            ),
+                            ultima_ejecucion AS (
+                              SELECT MAX(fecha_ejecucion) as fecha
+                              FROM ejecuciones_yaml ey
+                              WHERE ey.casilla_id = cr.id
+                              AND (ey.emisor_id = er.emisor_id OR ey.emisor_id IS NULL)
+                            ),
+                            fecha_esperada AS (
+                              SELECT 
+                                CASE
+                                  -- Si hoy es el día y ya pasó la hora configurada
+                                  WHEN CURRENT_TIME > config.hora_config THEN
+                                    CURRENT_DATE + config.hora_config
+                                  -- Si es un día anterior
+                                  ELSE
+                                    (CURRENT_DATE - INTERVAL '1 day') + config.hora_config
+                                END as fecha
+                              FROM config
+                            )
+                            SELECT 
+                              CASE
+                                WHEN ultima_ejecucion.fecha IS NULL THEN
+                                  -- Si no hay ejecuciones, calcular desde la fecha esperada
+                                  EXTRACT(EPOCH FROM (NOW() - fecha_esperada.fecha)) / 3600
+                                WHEN DATE(ultima_ejecucion.fecha) < CURRENT_DATE THEN
+                                  -- Si la última ejecución es anterior a hoy, calcular desde entonces
+                                  EXTRACT(EPOCH FROM (NOW() - ultima_ejecucion.fecha)) / 3600
+                                ELSE 0
+                              END
+                            FROM config, ultima_ejecucion, fecha_esperada
+                          )
+                          
+                          -- Frecuencia semanal con cálculo preciso
+                          WHEN ft.nombre = 'Semanal' AND er.configuracion_frecuencia->>'tipo' IS NOT NULL THEN (
+                            WITH config AS (
+                              SELECT 
+                                (er.configuracion_frecuencia->>'hora')::time as hora_config,
+                                jsonb_array_elements_text(er.configuracion_frecuencia->'dias_semana')::integer as dia_semana
+                            ),
+                            ultima_ejecucion AS (
+                              SELECT MAX(fecha_ejecucion) as fecha
+                              FROM ejecuciones_yaml ey
+                              WHERE ey.casilla_id = cr.id
+                              AND (ey.emisor_id = er.emisor_id OR ey.emisor_id IS NULL)
+                            ),
+                            dia_actual AS (
+                              SELECT EXTRACT(DOW FROM CURRENT_DATE) as dia
+                            ),
+                            es_dia_configurado AS (
+                              SELECT EXISTS (
+                                SELECT 1 FROM config 
+                                WHERE dia_semana = (SELECT dia FROM dia_actual)
+                              ) as es_dia
+                            )
+                            SELECT
+                              CASE
+                                WHEN ultima_ejecucion.fecha IS NULL THEN
+                                  -- Si no hay ejecuciones, usar el tiempo base para la frecuencia
+                                  24 * 7
+                                WHEN es_dia_configurado.es_dia = true AND CURRENT_TIME > config.hora_config THEN
+                                  -- Si hoy es día configurado y ya pasó la hora, calcular desde la hora configurada
+                                  EXTRACT(EPOCH FROM (NOW() - (CURRENT_DATE + config.hora_config))) / 3600
+                                ELSE
+                                  -- Usar el cálculo existente como default
+                                  GREATEST(0, EXTRACT(EPOCH FROM (NOW() - ultima_ejecucion.fecha)) / 3600 - 24 * 7)
+                              END
+                            FROM config, ultima_ejecucion, es_dia_configurado
+                            LIMIT 1
+                          )
+                          
+                          -- Frecuencia mensual con cálculo preciso
+                          WHEN ft.nombre = 'Mensual' AND er.configuracion_frecuencia->>'tipo' IS NOT NULL THEN (
+                            WITH config AS (
+                              SELECT 
+                                (er.configuracion_frecuencia->>'hora')::time as hora_config,
+                                jsonb_array_elements_text(er.configuracion_frecuencia->'dias_mes')::integer as dia_mes
+                            ),
+                            ultima_ejecucion AS (
+                              SELECT MAX(fecha_ejecucion) as fecha
+                              FROM ejecuciones_yaml ey
+                              WHERE ey.casilla_id = cr.id
+                              AND (ey.emisor_id = er.emisor_id OR ey.emisor_id IS NULL)
+                            ),
+                            dia_actual AS (
+                              SELECT EXTRACT(DAY FROM CURRENT_DATE) as dia
+                            ),
+                            es_dia_configurado AS (
+                              SELECT EXISTS (
+                                SELECT 1 FROM config 
+                                WHERE dia_mes = (SELECT dia FROM dia_actual)
+                              ) as es_dia
+                            )
+                            SELECT
+                              CASE
+                                WHEN ultima_ejecucion.fecha IS NULL THEN
+                                  -- Si no hay ejecuciones, usar el tiempo base para la frecuencia
+                                  24 * 30
+                                WHEN es_dia_configurado.es_dia = true AND CURRENT_TIME > config.hora_config THEN
+                                  -- Si hoy es día configurado y ya pasó la hora, calcular desde la hora configurada
+                                  EXTRACT(EPOCH FROM (NOW() - (CURRENT_DATE + config.hora_config))) / 3600
+                                ELSE
+                                  -- Usar el cálculo existente como default
+                                  GREATEST(0, EXTRACT(EPOCH FROM (NOW() - ultima_ejecucion.fecha)) / 3600 - 24 * 30)
+                              END
+                            FROM config, ultima_ejecucion, es_dia_configurado
+                            LIMIT 1
+                          )
+                          
+                          -- Casos predeterminados para fallback
                           WHEN ft.nombre = 'Diario' AND (
                             SELECT COUNT(*) FROM ejecuciones_yaml ey
                             WHERE ey.casilla_id = cr.id
