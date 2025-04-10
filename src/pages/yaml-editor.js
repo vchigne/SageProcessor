@@ -1,46 +1,43 @@
-import { useEffect } from 'react'
-import { Title } from '@tremor/react'
-import Head from 'next/head'
+import { useEffect } from 'react';
+import { useRouter } from 'next/router';
+import Layout from '@/components/Layout';
+import Head from 'next/head';
 
-// Componente que redirige al usuario al YAML Editor independiente
-export default function YAMLEditorRedirect() {
+// Un componente que redirige a un YAML Editor externo
+const YAMLEditorPage = () => {
+  const router = useRouter();
+  
+  // Al cargar, abrir el YAML Editor en una nueva ventana
   useEffect(() => {
-    // Construir la URL base 
-    const baseUrl = window.location.origin;
+    // URL de la aplicación YAML Editor externa que se alojará en un servidor separado
+    // Por ahora, usamos una ruta en el mismo dominio que apunta a la carpeta public/yaml_editor
+    const yamlEditorUrl = window.location.origin + "/yaml_editor/";
     
-    // Abrir en una nueva pestaña la aplicación YAML Editor
-    window.open(`${baseUrl}/yaml_editor/`, '_blank');
+    // Abrir en una nueva ventana/pestaña
+    window.open(yamlEditorUrl, "_blank", "noopener,noreferrer");
     
-    // Opcional: redirigir a la página principal después de abrir
-    setTimeout(() => {
-      window.location.href = '/';
-    }, 500);
+    // Redirigir al usuario de vuelta al dashboard después de abrir la aplicación
+    // para que no se quede en una página en blanco
+    router.push('/');
   }, []);
-
+  
   return (
     <>
       <Head>
-        <title>Abriendo YAML Editor - SAGE</title>
+        <title>Redirigiendo a YAML Editor - SAGE</title>
       </Head>
-      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-4">
-        <div className="bg-white p-8 rounded-lg shadow-md max-w-md w-full text-center">
-          <Title className="mb-4">Abriendo YAML Editor</Title>
-          <p className="text-gray-600 mb-4">
-            Estamos abriendo la aplicación YAML Editor en una nueva pestaña...
-          </p>
-          <p className="text-gray-500 text-sm">
-            Si la aplicación no se abre automáticamente, 
-            <a 
-              href="/yaml_editor/" 
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-indigo-600 hover:text-indigo-800 ml-1"
-            >
-              haga clic aquí
-            </a>.
-          </p>
+      <div className="flex flex-col items-center justify-center min-h-[50vh]">
+        <div className="animate-pulse text-gray-500 dark:text-gray-400 text-center">
+          <p className="text-lg mb-4">Abriendo YAML Editor en una nueva ventana...</p>
+          <p>Si no se abre automáticamente, por favor verifica que no está siendo bloqueado por tu navegador.</p>
         </div>
       </div>
     </>
-  )
-}
+  );
+};
+
+YAMLEditorPage.getLayout = function getLayout(page) {
+  return <Layout>{page}</Layout>;
+};
+
+export default YAMLEditorPage;
