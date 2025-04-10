@@ -26,7 +26,13 @@ import { useRouter } from 'next/router'
 const navigation = [
   { name: 'Dashboard', href: '/', icon: HomeIcon },
   { name: 'YAML Studio', href: '/studio', icon: CodeBracketSquareIcon },
-  { name: 'YAML Editor', href: '/yaml-editor', icon: PencilSquareIcon },
+  { 
+    name: 'YAML Editor', 
+    href: '/yaml_editor/', 
+    icon: PencilSquareIcon, 
+    external: true, // Marcar como enlace externo que debe abrirse en nueva pestaña
+    target: '_blank'
+  },
   { name: 'Casillas de Datos', href: '/admin/data-boxes', icon: InboxStackIcon },
   { name: 'Portales', href: '/admin/portales', icon: WindowIcon },
   { name: 'Control de Acceso', href: '/access', icon: ShieldCheckIcon },
@@ -152,6 +158,8 @@ const MobileMenu = ({ isOpen, setIsOpen, navigation, currentPath, openSubmenus, 
                     ) : (
                       <Link
                         href={item.href}
+                        target={item.external ? item.target : undefined}
+                        rel={item.external ? "noopener noreferrer" : undefined}
                         className={`
                           group flex gap-x-3 rounded-md p-2 text-sm md:text-base leading-6 font-semibold
                           ${currentPath === item.href
@@ -168,6 +176,22 @@ const MobileMenu = ({ isOpen, setIsOpen, navigation, currentPath, openSubmenus, 
                           aria-hidden="true"
                         />
                         {item.name}
+                        {item.external && (
+                          <svg 
+                            xmlns="http://www.w3.org/2000/svg" 
+                            className="h-4 w-4 ml-1 opacity-70" 
+                            fill="none" 
+                            viewBox="0 0 24 24" 
+                            stroke="currentColor"
+                          >
+                            <path 
+                              strokeLinecap="round" 
+                              strokeLinejoin="round" 
+                              strokeWidth={2} 
+                              d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" 
+                            />
+                          </svg>
+                        )}
                       </Link>
                     )}
                   </li>
@@ -284,6 +308,8 @@ export default function Layout({ children }) {
                       ) : (
                         <Link
                           href={item.href}
+                          target={item.external ? item.target : undefined}
+                          rel={item.external ? "noopener noreferrer" : undefined}
                           className={`
                             group flex gap-x-3 rounded-md p-2 text-sm md:text-base lg:text-lg leading-6 font-semibold
                             ${router.pathname === item.href
@@ -299,6 +325,22 @@ export default function Layout({ children }) {
                             aria-hidden="true"
                           />
                           {item.name}
+                          {item.external && (
+                            <svg 
+                              xmlns="http://www.w3.org/2000/svg" 
+                              className="h-4 w-4 ml-1 opacity-70" 
+                              fill="none" 
+                              viewBox="0 0 24 24" 
+                              stroke="currentColor"
+                            >
+                              <path 
+                                strokeLinecap="round" 
+                                strokeLinejoin="round" 
+                                strokeWidth={2} 
+                                d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" 
+                              />
+                            </svg>
+                          )}
                         </Link>
                       )}
                     </li>
