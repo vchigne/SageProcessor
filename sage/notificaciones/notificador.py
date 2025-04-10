@@ -283,7 +283,8 @@ class Notificador:
                     eventos_relevantes, 
                     suscripcion['nivel_detalle'],
                     None,  # portal_id ya no se utiliza
-                    casilla_id
+                    casilla_id,
+                    suscripcion['id']  # Pasar el ID del suscriptor para personalización
                 )
                 
                 # Enviar email
@@ -308,7 +309,8 @@ class Notificador:
     def _generar_contenido_notificacion(self, eventos: List[Dict[str, Any]], 
                                        nivel_detalle: str, 
                                        portal_id: Optional[int] = None,
-                                       casilla_id: Optional[int] = None) -> tuple:
+                                       casilla_id: Optional[int] = None,
+                                       suscriptor_id: Optional[int] = None) -> tuple:
         """Genera el contenido de la notificación según el nivel de detalle
         
         Args:
@@ -316,10 +318,36 @@ class Notificador:
             nivel_detalle: Nivel de detalle ('detallado', 'resumido_emisor', 'resumido_casilla')
             portal_id: (Obsoleto) Se mantiene por compatibilidad
             casilla_id: ID de la casilla (opcional)
+            suscriptor_id: ID del suscriptor (opcional, para personalización)
             
         Returns:
             Tupla con (asunto, contenido_html)
         """
+        # Si el sistema de plantillas está disponible y funcionando, intentamos usarlo
+        if HAS_TEMPLATE_SYSTEM and self.template_adapter:
+            try:
+                # Intentar generar el contenido con el sistema de plantillas
+                asunto, contenido_html = self.template_adapter.generar_contenido_notificacion(
+                    eventos, 
+                    nivel_detalle,
+                    portal_id,
+                    casilla_id,
+                    suscriptor_id
+                )
+                
+                # Si se generó contenido correcto, lo devolvemos
+                if asunto and contenido_html:
+                    logger.info(f"Contenido generado con sistema de plantillas para nivel_detalle={nivel_detalle}")
+                    return asunto, contenido_html
+                
+                # Si no se generó contenido, continuamos con el método tradicional
+                # (esto asegura compatibilidad hacia atrás)
+                logger.info("No se pudo generar contenido con sistema de plantillas, usando método tradicional")
+            except Exception as e:
+                logger.error(f"Error al generar contenido con sistema de plantillas: {e}")
+                # Continuamos con el método tradicional
+        
+        # Método tradicional (asegura compatibilidad hacia atrás)
         fecha = datetime.datetime.now().strftime('%d/%m/%Y %H:%M')
         
         # Obtener información de la casilla

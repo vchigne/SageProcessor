@@ -10,7 +10,7 @@ import json
 import logging
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from typing import Dict, Any, Optional, Tuple, List, Union
+from typing import Dict, Any, Optional, Tuple, List, Union, Sequence
 
 logger = logging.getLogger(__name__)
 
@@ -290,14 +290,14 @@ class TemplateManager:
         
         return content
     
-    def get_all_templates(self, filter_params: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    def get_all_templates(self, filter_params: Optional[Dict[str, Any]] = None) -> Sequence[Dict[str, Any]]:
         """Obtiene todas las plantillas según filtros opcionales
         
         Args:
             filter_params: Parámetros de filtrado (tipo, subtipo, etc.)
             
         Returns:
-            List[Dict]: Lista de plantillas
+            Sequence[Dict]: Lista de plantillas
         """
         try:
             conn = self._get_db_connection()
@@ -340,6 +340,7 @@ class TemplateManager:
         Returns:
             int or None: ID de la plantilla creada o None si hay error
         """
+        conn = None
         try:
             conn = self._get_db_connection()
             cursor = conn.cursor()
@@ -380,7 +381,8 @@ class TemplateManager:
             ]
             
             cursor.execute(query, params)
-            template_id = cursor.fetchone()[0]
+            result = cursor.fetchone()
+            template_id = result[0] if result else None
             
             conn.commit()
             cursor.close()
@@ -406,6 +408,7 @@ class TemplateManager:
         Returns:
             bool: True si se actualizó correctamente
         """
+        conn = None
         try:
             conn = self._get_db_connection()
             cursor = conn.cursor()
@@ -463,7 +466,7 @@ class TemplateManager:
                 conn.rollback()
             return False
     
-    def _ensure_single_default_template(self, tipo: str, subtipo: Optional[str], canal: str) -> None:
+    def _ensure_single_default_template(self, tipo: Optional[str], subtipo: Optional[str], canal: str) -> None:
         """Asegura que solo exista una plantilla predeterminada por tipo/subtipo/canal
         
         Args:
@@ -471,6 +474,9 @@ class TemplateManager:
             subtipo: Subtipo de plantilla
             canal: Canal de comunicación
         """
+        if tipo is None:
+            logger.warning("Tipo de plantilla no especificado en _ensure_single_default_template")
+            return
         conn = self._get_db_connection()
         cursor = conn.cursor()
         
@@ -508,6 +514,7 @@ class TemplateManager:
         Returns:
             bool: True si se asignó correctamente
         """
+        conn = None
         try:
             conn = self._get_db_connection()
             cursor = conn.cursor()
@@ -540,6 +547,7 @@ class TemplateManager:
         Returns:
             Dict or None: Datos de la plantilla asignada o None si no tiene
         """
+        conn = None
         try:
             conn = self._get_db_connection()
             cursor = conn.cursor(cursor_factory=RealDictCursor)
