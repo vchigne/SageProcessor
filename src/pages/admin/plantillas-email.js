@@ -313,69 +313,71 @@ export default function PlantillasEmail() {
                 No se encontraron plantillas con los criterios seleccionados.
               </div>
             ) : (
-              <table className="min-w-full divide-y divide-gray-300">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-6">
-                      Nombre
-                    </th>
-                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                      Tipo
-                    </th>
-                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                      Subtipo
-                    </th>
-                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                      Predeterminada
-                    </th>
-                    <th scope="col" className="relative py-3.5 pl-3 pr-4 sm:pr-6">
-                      <span className="sr-only">Acciones</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200 bg-white">
-                  {filteredTemplates?.map((template) => (
-                    <tr key={template.id} className="hover:bg-gray-50">
-                      <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-6">
-                        {template.nombre}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                        {template.tipo === 'notificacion' ? 'Notificación' : 
-                         template.tipo === 'respuesta_daemon' ? 'Respuesta Automática' : 
-                         template.tipo}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                        {template.subtipo}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                        {template.es_predeterminada ? (
-                          <CheckIcon className="h-5 w-5 text-green-500" aria-hidden="true" />
-                        ) : (
-                          <XMarkIcon className="h-5 w-5 text-gray-300" aria-hidden="true" />
-                        )}
-                      </td>
-                      <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
-                        <button
-                          type="button"
-                          onClick={() => handleEditTemplate(template)}
-                          className="text-indigo-600 hover:text-indigo-900 mr-4"
-                        >
-                          <PencilIcon className="h-5 w-5" aria-hidden="true" />
-                          <span className="sr-only">Editar</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteTemplate(template.id)}
-                          className="text-red-600 hover:text-red-900"
-                        >
-                          <TrashIcon className="h-5 w-5" aria-hidden="true" />
-                          <span className="sr-only">Eliminar</span>
-                        </button>
-                      </td>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-300">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-6">
+                        Nombre
+                      </th>
+                      <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                        Tipo
+                      </th>
+                      <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                        Subtipo
+                      </th>
+                      <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                        Predeterminada
+                      </th>
+                      <th scope="col" className="relative py-3.5 pl-3 pr-4 sm:pr-6">
+                        <span className="sr-only">Acciones</span>
+                      </th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 bg-white">
+                    {filteredTemplates?.map((template) => (
+                      <tr key={template.id} className="hover:bg-gray-50">
+                        <td className="py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-6">
+                          {template.nombre}
+                        </td>
+                        <td className="px-3 py-4 text-sm text-gray-500">
+                          {template.tipo === 'notificacion' ? 'Notificación' : 
+                           template.tipo === 'respuesta_daemon' ? 'Respuesta Automática' : 
+                           template.tipo}
+                        </td>
+                        <td className="px-3 py-4 text-sm text-gray-500">
+                          {template.subtipo}
+                        </td>
+                        <td className="px-3 py-4 text-sm text-gray-500">
+                          {template.es_predeterminada ? (
+                            <CheckIcon className="h-5 w-5 text-green-500" aria-hidden="true" />
+                          ) : (
+                            <XMarkIcon className="h-5 w-5 text-gray-300" aria-hidden="true" />
+                          )}
+                        </td>
+                        <td className="relative py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
+                          <button
+                            type="button"
+                            onClick={() => handleEditTemplate(template)}
+                            className="text-indigo-600 hover:text-indigo-900 mr-4"
+                          >
+                            <PencilIcon className="h-5 w-5" aria-hidden="true" />
+                            <span className="sr-only">Editar</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteTemplate(template.id)}
+                            className="text-red-600 hover:text-red-900"
+                          >
+                            <TrashIcon className="h-5 w-5" aria-hidden="true" />
+                            <span className="sr-only">Eliminar</span>
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
 
