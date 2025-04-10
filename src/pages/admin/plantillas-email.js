@@ -117,10 +117,23 @@ export default function PlantillasEmail() {
   // Manejadores de eventos
   const handleEditTemplate = (template) => {
     setSelectedTemplate(template);
+    
+    // Asegurarse de que todos los campos necesarios estén presentes y con valores por defecto si faltan
     setFormData({
-      ...template,
+      id: template.id,
+      nombre: template.nombre || '',
+      descripcion: template.descripcion || '',
+      tipo: template.tipo || 'notificacion',
+      subtipo: template.subtipo || 'detallado',
+      variante: template.variante || 'standard',
+      canal: template.canal || 'email',
+      idioma: template.idioma || 'es',
+      asunto: template.asunto || '',
+      contenido_html: template.contenido_html || '',
+      contenido_texto: template.contenido_texto || '',
       es_predeterminada: template.es_predeterminada || false
     });
+    
     setIsEditing(true);
     setIsCreating(false);
   };
