@@ -4,7 +4,8 @@ import {
   WrenchScrewdriverIcon, 
   ServerIcon,
   Cog6ToothIcon,
-  CodeBracketIcon
+  CodeBracketIcon,
+  DocumentTextIcon
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 
@@ -31,6 +32,12 @@ export default function ConfigMenu() {
       href: '/admin/configuraciones-api', 
       icon: CodeBracketIcon, 
       description: 'Gestionar APIs externas y claves' 
+    },
+    { 
+      name: 'Configuración de Plantillas de Email', 
+      href: '/admin/plantillas-email', 
+      icon: DocumentTextIcon, 
+      description: 'Personalizar plantillas para diferentes tipos de notificaciones' 
     },
     { 
       name: 'Configuración General', 
