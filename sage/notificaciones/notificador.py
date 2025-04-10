@@ -14,6 +14,13 @@ from typing import Dict, List, Any, Optional, Union, Sequence
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
+# Importar adaptador de plantillas si está disponible
+try:
+    from sage.templates.email.notificador_adapter import NotificadorAdapter
+    HAS_TEMPLATE_SYSTEM = True
+except ImportError:
+    HAS_TEMPLATE_SYSTEM = False
+
 logger = logging.getLogger(__name__)
 
 class Notificador:
@@ -27,6 +34,16 @@ class Notificador:
         """
         self.db_connection = db_connection
         self.smtp_config = self._get_smtp_config()
+        
+        # Inicializar el adaptador de plantillas si está disponible
+        self.template_adapter = None
+        if HAS_TEMPLATE_SYSTEM:
+            try:
+                self.template_adapter = NotificadorAdapter(db_connection)
+                logger.info("Sistema de plantillas de email inicializado correctamente")
+            except Exception as e:
+                logger.error(f"Error al inicializar sistema de plantillas: {e}")
+                self.template_adapter = None
         
     def _get_smtp_config(self) -> Dict[str, Union[str, int]]:
         """Obtiene la configuración SMTP desde la base de datos o variables de entorno"""
