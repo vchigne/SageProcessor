@@ -128,12 +128,11 @@ export default async function handler(req, res) {
                             OR ey.emisor_id IS NULL
                           )
                       ) = 0 THEN false
-                      WHEN er.frecuencia_tipo_id IS NULL THEN false
-                      WHEN er.configuracion_frecuencia IS NULL THEN false
+                      WHEN er.configuracion_frecuencia IS NULL OR er.configuracion_frecuencia->>'tipo' IS NULL THEN false
                       ELSE (
                         CASE
                           -- Frecuencia diaria con lógica detallada
-                          WHEN ft.nombre = 'Diario' AND er.configuracion_frecuencia->>'tipo' IS NOT NULL THEN (
+                          WHEN (ft.nombre = 'Diario' OR ft.nombre = 'diaria' OR er.configuracion_frecuencia->>'tipo' = 'diario') THEN (
                             WITH config AS (
                               SELECT 
                                 (er.configuracion_frecuencia->>'hora')::time as hora_config
@@ -159,7 +158,7 @@ export default async function handler(req, res) {
                           )
                           
                           -- Frecuencia semanal con lógica detallada
-                          WHEN ft.nombre = 'Semanal' AND er.configuracion_frecuencia->>'tipo' IS NOT NULL THEN (
+                          WHEN (ft.nombre = 'Semanal' OR ft.nombre = 'semanal' OR er.configuracion_frecuencia->>'tipo' = 'semanal') THEN (
                             WITH config AS (
                               SELECT 
                                 (er.configuracion_frecuencia->>'hora')::time as hora_config,
@@ -198,7 +197,7 @@ export default async function handler(req, res) {
                           )
                           
                           -- Frecuencia mensual con lógica detallada
-                          WHEN ft.nombre = 'Mensual' AND er.configuracion_frecuencia->>'tipo' IS NOT NULL THEN (
+                          WHEN (ft.nombre = 'Mensual' OR ft.nombre = 'mensual' OR er.configuracion_frecuencia->>'tipo' = 'mensual') THEN (
                             WITH config AS (
                               SELECT 
                                 (er.configuracion_frecuencia->>'hora')::time as hora_config,
@@ -276,8 +275,7 @@ export default async function handler(req, res) {
                       )
                     END as estado_retraso,
                     CASE 
-                      WHEN er.frecuencia_tipo_id IS NULL THEN 0
-                      WHEN er.configuracion_frecuencia IS NULL THEN 0
+                      WHEN er.configuracion_frecuencia IS NULL OR er.configuracion_frecuencia->>'tipo' IS NULL THEN 0
                       ELSE (
                         CASE
                           -- Frecuencia diaria con cálculo preciso
