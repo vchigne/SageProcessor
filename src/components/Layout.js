@@ -28,7 +28,7 @@ const navigation = [
   { name: 'YAML Studio', href: '/studio', icon: CodeBracketSquareIcon },
   { 
     name: 'YAML Editor', 
-    href: '/yaml_editor/', 
+    href: '/yaml_editor_app', 
     icon: PencilSquareIcon, 
     external: true, // Marcar como enlace externo que debe abrirse en nueva pestaña
     target: '_blank'

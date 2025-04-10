@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SAGE YAML Editor</title>
+    <meta name="description" content="Editor avanzado de YAML para SAGE" />
+    <meta name="author" content="SAGE" />
+
+    <meta property="og:title" content="SAGE YAML Editor" />
+    <meta property="og:description" content="Editor avanzado de YAML para SAGE" />
+    <meta property="og:type" content="website" />
+    
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap">
+    <style>
+      body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+        background-color: #f9fafb;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+      }
+      
+      .header {
+        background-color: white;
+        border-bottom: 1px solid #e5e7eb;
+        padding: 1rem 1.5rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+      }
+      
+      .logo {
+        display: flex;
+        align-items: center;
+        color: #4f46e5;
+        font-weight: 600;
+        font-size: 1.25rem;
+      }
+      
+      .back-button {
+        background-color: white;
+        border: 1px solid #e5e7eb;
+        color: #374151;
+        padding: 0.5rem 1rem;
+        border-radius: 0.375rem;
+        font-size: 0.875rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        transition: all 0.2s;
+      }
+      
+      .back-button:hover {
+        background-color: #f9fafb;
+        color: #4f46e5;
+        border-color: #d1d5db;
+      }
+      
+      .main-content {
+        flex: 1;
+        display: flex;
+        padding: 2rem;
+      }
+      
+      .editor-container {
+        flex: 1;
+        background-color: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.5rem;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        display: flex;
+        flex-direction: column;
+      }
+      
+      .editor-header {
+        padding: 1rem;
+        border-bottom: 1px solid #e5e7eb;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      
+      .editor-title {
+        font-weight: 600;
+        font-size: 1.125rem;
+        color: #111827;
+      }
+      
+      .editor-content {
+        flex: 1;
+        padding: 1rem;
+      }
+      
+      .icon {
+        margin-right: 0.5rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <div class="logo">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon">
+          <rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect>
+          <rect x="9" y="9" width="6" height="6"></rect>
+          <line x1="9" y1="2" x2="9" y2="4"></line>
+          <line x1="15" y1="2" x2="15" y2="4"></line>
+          <line x1="9" y1="20" x2="9" y2="22"></line>
+          <line x1="15" y1="20" x2="15" y2="22"></line>
+          <line x1="20" y1="9" x2="22" y2="9"></line>
+          <line x1="20" y1="14" x2="22" y2="14"></line>
+          <line x1="2" y1="9" x2="4" y2="9"></line>
+          <line x1="2" y1="14" x2="4" y2="14"></line>
+        </svg>
+        SAGE YAML Editor
+      </div>
+      <button class="back-button" onclick="window.location.href='/'">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon">
+          <line x1="19" y1="12" x2="5" y2="12"></line>
+          <polyline points="12 19 5 12 12 5"></polyline>
+        </svg>
+        Volver a SAGE
+      </button>
+    </div>
+    
+    <div class="main-content">
+      <div class="editor-container">
+        <div class="editor-header">
+          <div class="editor-title">Editor de YAML</div>
+          <div>
+            <button class="back-button" id="load-button">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+              </svg>
+              Cargar YAML
+            </button>
+            <button class="back-button" id="save-button">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              Guardar YAML
+            </button>
+          </div>
+        </div>
+        <div class="editor-content">
+          <div style="text-align: center; padding: 2rem;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin: 0 auto 1.5rem;">
+              <path d="M12 20h9"></path>
+              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+            </svg>
+            <h1 style="font-size: 1.875rem; font-weight: 700; color: #111827; margin-bottom: 1rem;">YAML Editor - Próximamente</h1>
+            <p style="color: #4b5563; max-width: 36rem; margin: 0 auto 1.5rem;">
+              Estamos trabajando en una nueva y mejorada versión del Editor YAML para SAGE. 
+              Esta herramienta ofrecerá una experiencia interactiva para la creación y edición de configuraciones YAML.
+            </p>
+            <div style="background-color: #f3f4f6; padding: 1.5rem; border-radius: 0.5rem; margin-bottom: 2rem; text-align: left;">
+              <h2 style="font-size: 1.25rem; font-weight: 600; color: #111827; margin-bottom: 1rem;">Características próximas:</h2>
+              <ul style="list-style-type: none; padding-left: 0; margin-bottom: 0;">
+                <li style="display: flex; align-items: center; margin-bottom: 0.75rem;">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 0.5rem;">
+                    <path d="M20 6 9 17l-5-5"></path>
+                  </svg>
+                  <span>Interfaz visual para catálogos y paquetes</span>
+                </li>
+                <li style="display: flex; align-items: center; margin-bottom: 0.75rem;">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 0.5rem;">
+                    <path d="M20 6 9 17l-5-5"></path>
+                  </svg>
+                  <span>Validación en tiempo real de sintaxis YAML</span>
+                </li>
+                <li style="display: flex; align-items: center; margin-bottom: 0.75rem;">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 0.5rem;">
+                    <path d="M20 6 9 17l-5-5"></path>
+                  </svg>
+                  <span>Importación y exportación de archivos YAML</span>
+                </li>
+                <li style="display: flex; align-items: center;">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 0.5rem;">
+                    <path d="M20 6 9 17l-5-5"></path>
+                  </svg>
+                  <span>Integración completa con SAGE</span>
+                </li>
+              </ul>
+            </div>
+            <a href="/studio" style="display: inline-flex; align-items: center; padding: 0.75rem 1.5rem; background-color: #4f46e5; color: white; font-weight: 500; border-radius: 0.5rem; text-decoration: none; transition: all 0.2s;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 0.5rem;">
+                <path d="M3 12h18"></path>
+                <path d="M3 6h18"></path>
+                <path d="M3 18h18"></path>
+              </svg>
+              Ir a YAML Studio
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      document.getElementById('load-button').addEventListener('click', function() {
+        alert('La funcionalidad de cargar YAML estará disponible pronto.');
+      });
+      
+      document.getElementById('save-button').addEventListener('click', function() {
+        alert('La funcionalidad de guardar YAML estará disponible pronto.');
+      });
+    </script>
+  </body>
+</html>
