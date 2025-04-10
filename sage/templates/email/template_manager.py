@@ -1,41 +1,42 @@
 """
 Gestor de plantillas de email para SAGE
 
-Este módulo proporciona las funcionalidades necesarias para gestionar
-las plantillas de email utilizadas en el sistema SAGE.
+Este módulo proporciona la funcionalidad para gestionar plantillas de email,
+permitiendo cargar, guardar, actualizar y asignar plantillas a suscriptores.
 """
 
 import logging
 import os
 import time
-from typing import Optional, Dict, Any, Tuple, List, Union
 import psycopg2
 from psycopg2.extras import DictCursor
+import json
+from typing import Dict, Any, List, Optional, Tuple, Union
 
 logger = logging.getLogger(__name__)
 
 class TemplateManager:
     """
-    Gestor de plantillas de email para el sistema SAGE
+    Gestor de plantillas de email
     
     Esta clase proporciona métodos para:
-    - Obtener plantillas por tipo/subtipo
-    - Obtener plantillas asignadas a suscriptores específicos
-    - Gestionar la caché de plantillas para optimizar rendimiento
+    - Obtener plantillas predeterminadas por tipo
+    - Asignar plantillas personalizadas a suscriptores
+    - Guardar y actualizar plantillas
     """
     
-    def __init__(self, cache_ttl: int = 300):
+    def __init__(self, cache_ttl: int = 3600):
         """
         Inicializa el gestor de plantillas
         
         Args:
-            cache_ttl (int): Tiempo de vida de la caché en segundos (default: 5 minutos)
+            cache_ttl: Tiempo de vida de la caché en segundos
         """
-        self._cache: Dict[str, Dict[str, Any]] = {}
-        self._cache_timestamps: Dict[str, float] = {}
-        self._cache_ttl = cache_ttl
-        self._db_connection = None
-        
+        self.db_connection = None
+        self._cache = {}
+        self._cache_timestamps = {}
+        self.cache_ttl = cache_ttl
+    
     def _get_db_connection(self):
         """
         Obtiene una conexión a la base de datos
@@ -43,193 +44,479 @@ class TemplateManager:
         Returns:
             connection: Conexión a la base de datos PostgreSQL
         """
-        if self._db_connection is None or self._db_connection.closed:
+        if not self.db_connection or self.db_connection.closed:
             database_url = os.environ.get('DATABASE_URL')
             if not database_url:
                 raise ValueError("No se ha configurado DATABASE_URL en el entorno")
                 
-            self._db_connection = psycopg2.connect(database_url)
+            self.db_connection = psycopg2.connect(database_url)
             
-        return self._db_connection
+        return self.db_connection
     
     def _close_db_connection(self):
-        """Cierra la conexión a la base de datos si está abierta"""
-        if self._db_connection and not self._db_connection.closed:
-            self._db_connection.close()
-            self._db_connection = None
+        """Cierra la conexión a la base de datos"""
+        if self.db_connection and not self.db_connection.closed:
+            self.db_connection.close()
+            self.db_connection = None
     
-    def _generate_cache_key(self, template_type: str, subtype: str, 
-                          variant: str = 'standard', language: str = 'es',
-                          channel: str = 'email') -> str:
+    def _get_from_cache(self, key: str) -> Optional[Dict[str, Any]]:
         """
-        Genera una clave única para la caché de plantillas
+        Obtiene un valor de la caché si existe y no ha expirado
         
         Args:
-            template_type: Tipo de plantilla (ej. 'notificacion', 'respuesta_daemon')
-            subtype: Subtipo de plantilla (ej. 'detallado', 'resumido_emisor')
-            variant: Variante de plantilla (ej. 'standard', 'marketing')
-            language: Idioma de la plantilla (ej. 'es', 'en')
-            channel: Canal de comunicación (ej. 'email', 'whatsapp')
+            key: Clave de la caché
             
         Returns:
-            str: Clave única para la caché
+            Dict[str, Any] o None: Valor de la caché o None si no existe o ha expirado
         """
-        return f"{template_type}:{subtype}:{variant}:{language}:{channel}"
+        if key not in self._cache:
+            return None
+            
+        timestamp = self._cache_timestamps.get(key, 0)
+        if time.time() - timestamp > self.cache_ttl:
+            # La caché ha expirado
+            self._cache.pop(key, None)
+            self._cache_timestamps.pop(key, None)
+            return None
+            
+        return self._cache[key]
     
-    def _is_cache_valid(self, cache_key: str) -> bool:
+    def _set_in_cache(self, key: str, value: Dict[str, Any]):
         """
-        Verifica si la caché para una clave es válida
+        Almacena un valor en la caché
         
         Args:
-            cache_key: Clave de caché a verificar
-            
-        Returns:
-            bool: True si la caché es válida, False en caso contrario
+            key: Clave de la caché
+            value: Valor a almacenar
         """
-        if cache_key not in self._cache_timestamps:
-            return False
-            
-        timestamp = self._cache_timestamps.get(cache_key, 0)
-        current_time = time.time()
-        
-        return (current_time - timestamp) < self._cache_ttl
+        self._cache[key] = value
+        self._cache_timestamps[key] = time.time()
     
-    def clear_cache(self):
-        """Limpia toda la caché de plantillas"""
-        self._cache.clear()
-        self._cache_timestamps.clear()
-        logger.debug("Caché de plantillas limpiada")
-    
-    def get_template(self, template_type: str, subtype: str, 
-                    variant: str = 'standard', language: str = 'es',
-                    channel: str = 'email') -> Optional[Dict[str, Any]]:
+    def get_template(self, template_type: str, subtype: Optional[str] = None, 
+                    variant: str = 'standard', channel: str = 'email', 
+                    language: str = 'es', is_default: bool = True) -> Optional[Dict[str, Any]]:
         """
-        Obtiene una plantilla con los parámetros especificados
+        Obtiene una plantilla según los criterios especificados
         
         Args:
-            template_type: Tipo de plantilla (ej. 'notificacion', 'respuesta_daemon')
-            subtype: Subtipo de plantilla (ej. 'detallado', 'resumido_emisor')
-            variant: Variante de plantilla (ej. 'standard', 'marketing')
-            language: Idioma de la plantilla (ej. 'es', 'en')
-            channel: Canal de comunicación (ej. 'email', 'whatsapp')
+            template_type: Tipo de plantilla (notificacion, respuesta_daemon, etc.)
+            subtype: Subtipo de plantilla (detallado, resumido_emisor, etc.)
+            variant: Variante de la plantilla (standard, marketing, etc.)
+            channel: Canal de comunicación (email, whatsapp, telegram)
+            language: Idioma de la plantilla (es, en, etc.)
+            is_default: Si se debe obtener la plantilla predeterminada
             
         Returns:
-            Optional[Dict[str, Any]]: Datos de la plantilla, o None si no se encuentra
+            Dict[str, Any] o None: Plantilla encontrada o None si no existe
         """
-        cache_key = self._generate_cache_key(template_type, subtype, variant, language, channel)
+        # Generar clave para la caché
+        cache_key = f"template:{template_type}:{subtype}:{variant}:{channel}:{language}:{is_default}"
         
-        # Verificar si existe en caché y es válida
-        if cache_key in self._cache and self._is_cache_valid(cache_key):
-            logger.debug(f"Usando plantilla desde caché: {cache_key}")
-            return self._cache[cache_key]
+        # Verificar si está en caché
+        cached = self._get_from_cache(cache_key)
+        if cached:
+            logger.debug(f"Plantilla obtenida de caché: {cache_key}")
+            return cached
         
-        logger.debug(f"Buscando plantilla en base de datos: {cache_key}")
+        logger.debug(f"Buscando plantilla: {template_type}, {subtype}, {variant}, {channel}, {language}, {is_default}")
         
         try:
             conn = self._get_db_connection()
             with conn.cursor(cursor_factory=DictCursor) as cursor:
-                # Primero intentar obtener la plantilla predeterminada para los criterios especificados
-                cursor.execute("""
-                    SELECT * FROM plantillas_email
-                    WHERE tipo = %s AND subtipo = %s AND variante = %s 
-                          AND idioma = %s AND canal = %s AND es_predeterminada = TRUE
-                """, (template_type, subtype, variant, language, channel))
+                query = """
+                    SELECT *
+                    FROM plantillas_email
+                    WHERE tipo = %s
+                    AND (subtipo = %s OR %s IS NULL)
+                    AND variante = %s
+                    AND canal = %s
+                    AND idioma = %s
+                    AND es_predeterminada = %s
+                    AND estado = 'activo'
+                    LIMIT 1
+                """
                 
-                row = cursor.fetchone()
+                cursor.execute(query, (
+                    template_type, 
+                    subtype, 
+                    subtype,  # Parámetro repetido para la condición NULL
+                    variant, 
+                    channel, 
+                    language, 
+                    is_default
+                ))
                 
-                # Si no se encuentra una predeterminada, intentar obtener cualquier plantilla que coincida
-                if not row:
-                    cursor.execute("""
-                        SELECT * FROM plantillas_email
-                        WHERE tipo = %s AND subtipo = %s AND variante = %s 
-                              AND idioma = %s AND canal = %s
-                        LIMIT 1
-                    """, (template_type, subtype, variant, language, channel))
+                result = cursor.fetchone()
+                
+                if result:
+                    template = dict(result)
+                    # Almacenar en caché
+                    self._set_in_cache(cache_key, template)
+                    return template
+                else:
+                    logger.debug(f"No se encontró plantilla para: {template_type}, {subtype}")
+                    return None
                     
-                    row = cursor.fetchone()
-                
-                if row:
-                    # Convertir a diccionario para caché y retorno
-                    template_data = dict(row)
-                    self._cache[cache_key] = template_data
-                    self._cache_timestamps[cache_key] = time.time()
-                    return template_data
-                    
-                logger.warning(f"No se encontró plantilla para: {cache_key}")
-                return None
-                
         except Exception as e:
             logger.error(f"Error al obtener plantilla: {e}")
             return None
             
         finally:
-            # Mantener la conexión abierta para futuras consultas
+            # Mantenemos la conexión abierta
             pass
     
     def get_template_for_subscriber(self, subscriber_id: int, template_type: str, 
-                                   subtype: str, variant: str = 'standard',
-                                   language: str = 'es', channel: str = 'email') -> Optional[Dict[str, Any]]:
+                                  subtype: Optional[str] = None, variant: str = 'standard', 
+                                  channel: str = 'email', language: str = 'es') -> Optional[Dict[str, Any]]:
         """
-        Obtiene la plantilla asignada a un suscriptor específico,
-        o la plantilla predeterminada si no tiene una asignada
+        Obtiene una plantilla asignada a un suscriptor específico
         
         Args:
             subscriber_id: ID del suscriptor
             template_type: Tipo de plantilla
             subtype: Subtipo de plantilla
-            variant: Variante de plantilla (default: 'standard')
-            language: Idioma de la plantilla (default: 'es')
-            channel: Canal de comunicación (default: 'email')
+            variant: Variante de la plantilla
+            channel: Canal de comunicación
+            language: Idioma de la plantilla
             
         Returns:
-            Optional[Dict[str, Any]]: Datos de la plantilla, o None si no se encuentra
+            Dict[str, Any] o None: Plantilla asignada al suscriptor o None si no existe
         """
-        cache_key = f"subscriber:{subscriber_id}:{template_type}:{subtype}:{variant}:{language}:{channel}"
+        # Generar clave para la caché
+        cache_key = f"subscriber:{subscriber_id}:{template_type}:{subtype}:{variant}:{channel}:{language}"
         
-        # Verificar si existe en caché y es válida
-        if cache_key in self._cache and self._is_cache_valid(cache_key):
-            logger.debug(f"Usando plantilla de suscriptor desde caché: {cache_key}")
-            return self._cache[cache_key]
+        # Verificar si está en caché
+        cached = self._get_from_cache(cache_key)
+        if cached:
+            logger.debug(f"Plantilla de suscriptor obtenida de caché: {cache_key}")
+            return cached
         
-        logger.debug(f"Buscando plantilla para suscriptor {subscriber_id}")
+        logger.debug(f"Buscando plantilla para suscriptor {subscriber_id}: {template_type}, {subtype}")
         
         try:
             conn = self._get_db_connection()
             with conn.cursor(cursor_factory=DictCursor) as cursor:
-                # Buscar si el suscriptor tiene una plantilla asignada
+                # Primero verificamos si el suscriptor tiene una plantilla asignada
                 cursor.execute("""
-                    SELECT p.*
-                    FROM plantillas_email p
-                    JOIN suscripciones s ON p.id = s.plantilla_id
-                    WHERE s.id = %s AND p.tipo = %s AND p.subtipo = %s
-                """, (subscriber_id, template_type, subtype))
+                    SELECT plantilla_id 
+                    FROM suscripciones 
+                    WHERE id = %s
+                """, (subscriber_id,))
                 
                 row = cursor.fetchone()
+                if not row or not row[0]:
+                    # El suscriptor no tiene plantilla asignada
+                    logger.debug(f"El suscriptor {subscriber_id} no tiene plantilla asignada")
+                    return None
                 
-                # Si el suscriptor tiene una plantilla asignada, usarla
-                if row:
-                    template_data = dict(row)
-                    self._cache[cache_key] = template_data
-                    self._cache_timestamps[cache_key] = time.time()
-                    return template_data
+                plantilla_id = row[0]
                 
-                # Si no tiene plantilla asignada, usar la predeterminada
-                logger.debug(f"No se encontró plantilla asignada para suscriptor {subscriber_id}, "
-                            f"usando plantilla predeterminada")
+                # Obtenemos la plantilla asignada
+                cursor.execute("""
+                    SELECT *
+                    FROM plantillas_email
+                    WHERE id = %s
+                    AND tipo = %s
+                    AND (subtipo = %s OR %s IS NULL)
+                    AND variante = %s
+                    AND canal = %s
+                    AND idioma = %s
+                    AND estado = 'activo'
+                """, (
+                    plantilla_id,
+                    template_type, 
+                    subtype, 
+                    subtype,  # Parámetro repetido para la condición NULL
+                    variant, 
+                    channel, 
+                    language
+                ))
                 
-                return self.get_template(template_type, subtype, variant, language, channel)
+                result = cursor.fetchone()
                 
+                if result:
+                    template = dict(result)
+                    # Almacenar en caché
+                    self._set_in_cache(cache_key, template)
+                    return template
+                else:
+                    logger.debug(f"No se encontró plantilla asignada para suscriptor {subscriber_id}")
+                    return None
+                    
         except Exception as e:
-            logger.error(f"Error al obtener plantilla para suscriptor: {e}")
+            logger.error(f"Error al obtener plantilla de suscriptor: {e}")
             return None
             
         finally:
-            # Mantener la conexión abierta para futuras consultas
+            # Mantenemos la conexión abierta
+            pass
+    
+    def save_template(self, template_data: Dict[str, Any]) -> Optional[int]:
+        """
+        Guarda una nueva plantilla
+        
+        Args:
+            template_data: Datos de la plantilla a guardar
+            
+        Returns:
+            int o None: ID de la plantilla guardada o None en caso de error
+        """
+        logger.info(f"Guardando nueva plantilla: {template_data.get('nombre')}")
+        
+        conn = None
+        try:
+            conn = self._get_db_connection()
+            
+            # Si es predeterminada, verificar que no haya otra predeterminada con las mismas características
+            if template_data.get('es_predeterminada', False):
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        UPDATE plantillas_email
+                        SET es_predeterminada = FALSE
+                        WHERE tipo = %s
+                        AND (subtipo = %s OR (%s IS NULL AND subtipo IS NULL))
+                        AND variante = %s
+                        AND canal = %s
+                        AND idioma = %s
+                        AND es_predeterminada = TRUE
+                    """, (
+                        template_data.get('tipo'),
+                        template_data.get('subtipo'),
+                        template_data.get('subtipo'),
+                        template_data.get('variante', 'standard'),
+                        template_data.get('canal', 'email'),
+                        template_data.get('idioma', 'es')
+                    ))
+            
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO plantillas_email (
+                        nombre, descripcion, tipo, subtipo, variante, 
+                        canal, idioma, asunto, contenido_html, contenido_texto, 
+                        es_predeterminada, creador_id, estado
+                    ) VALUES (
+                        %s, %s, %s, %s, %s, 
+                        %s, %s, %s, %s, %s, 
+                        %s, %s, %s
+                    ) RETURNING id
+                """, (
+                    template_data.get('nombre'),
+                    template_data.get('descripcion', ''),
+                    template_data.get('tipo'),
+                    template_data.get('subtipo'),
+                    template_data.get('variante', 'standard'),
+                    template_data.get('canal', 'email'),
+                    template_data.get('idioma', 'es'),
+                    template_data.get('asunto', ''),
+                    template_data.get('contenido_html', ''),
+                    template_data.get('contenido_texto', ''),
+                    template_data.get('es_predeterminada', False),
+                    template_data.get('creador_id'),
+                    'activo'
+                ))
+                
+                result = cursor.fetchone()
+                template_id = result[0]
+                
+                conn.commit()
+                
+                # Limpiar caché relacionada
+                self._clear_cache_by_keys(
+                    template_data.get('tipo'),
+                    template_data.get('subtipo'),
+                    template_data.get('variante', 'standard'),
+                    template_data.get('canal', 'email'),
+                    template_data.get('idioma', 'es')
+                )
+                
+                logger.info(f"Plantilla guardada con ID: {template_id}")
+                return template_id
+                
+        except Exception as e:
+            logger.error(f"Error al guardar plantilla: {e}")
+            try:
+                if conn and not conn.closed:
+                    conn.rollback()
+            except:
+                pass
+            return None
+            
+        finally:
+            # Mantenemos la conexión abierta
+            pass
+    
+    def update_template(self, template_id: int, template_data: Dict[str, Any]) -> bool:
+        """
+        Actualiza una plantilla existente
+        
+        Args:
+            template_id: ID de la plantilla a actualizar
+            template_data: Datos actualizados de la plantilla
+            
+        Returns:
+            bool: True si la actualización fue exitosa, False en caso contrario
+        """
+        logger.info(f"Actualizando plantilla con ID {template_id}: {template_data.get('nombre')}")
+        
+        try:
+            conn = self._get_db_connection()
+            
+            # Si es predeterminada, verificar que no haya otra predeterminada con las mismas características
+            if template_data.get('es_predeterminada', False):
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        UPDATE plantillas_email
+                        SET es_predeterminada = FALSE
+                        WHERE tipo = %s
+                        AND (subtipo = %s OR (%s IS NULL AND subtipo IS NULL))
+                        AND variante = %s
+                        AND canal = %s
+                        AND idioma = %s
+                        AND es_predeterminada = TRUE
+                        AND id != %s
+                    """, (
+                        template_data.get('tipo'),
+                        template_data.get('subtipo'),
+                        template_data.get('subtipo'),
+                        template_data.get('variante', 'standard'),
+                        template_data.get('canal', 'email'),
+                        template_data.get('idioma', 'es'),
+                        template_id
+                    ))
+            
+            # Actualizar la versión y fecha de modificación
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    UPDATE plantillas_email
+                    SET nombre = %s,
+                        descripcion = %s,
+                        tipo = %s,
+                        subtipo = %s,
+                        variante = %s,
+                        canal = %s,
+                        idioma = %s,
+                        asunto = %s,
+                        contenido_html = %s,
+                        contenido_texto = %s,
+                        es_predeterminada = %s,
+                        fecha_modificacion = CURRENT_TIMESTAMP,
+                        version = version + 1
+                    WHERE id = %s
+                """, (
+                    template_data.get('nombre'),
+                    template_data.get('descripcion', ''),
+                    template_data.get('tipo'),
+                    template_data.get('subtipo'),
+                    template_data.get('variante', 'standard'),
+                    template_data.get('canal', 'email'),
+                    template_data.get('idioma', 'es'),
+                    template_data.get('asunto', ''),
+                    template_data.get('contenido_html', ''),
+                    template_data.get('contenido_texto', ''),
+                    template_data.get('es_predeterminada', False),
+                    template_id
+                ))
+                
+                affected_rows = cursor.rowcount
+                conn.commit()
+                
+                # Limpiar caché relacionada
+                self._clear_cache_by_keys(
+                    template_data.get('tipo'),
+                    template_data.get('subtipo'),
+                    template_data.get('variante', 'standard'),
+                    template_data.get('canal', 'email'),
+                    template_data.get('idioma', 'es')
+                )
+                
+                # Limpiar caché específica
+                self._clear_template_cache(template_id)
+                
+                logger.info(f"Plantilla actualizada: {affected_rows} filas afectadas")
+                return affected_rows > 0
+                
+        except Exception as e:
+            logger.error(f"Error al actualizar plantilla: {e}")
+            try:
+                if conn and not conn.closed:
+                    conn.rollback()
+            except:
+                pass
+            return False
+            
+        finally:
+            # Mantenemos la conexión abierta
+            pass
+    
+    def delete_template(self, template_id: int) -> bool:
+        """
+        Elimina una plantilla (marca como inactiva)
+        
+        Args:
+            template_id: ID de la plantilla a eliminar
+            
+        Returns:
+            bool: True si la eliminación fue exitosa, False en caso contrario
+        """
+        logger.info(f"Eliminando plantilla con ID {template_id}")
+        
+        try:
+            conn = self._get_db_connection()
+            
+            # Primero obtenemos la plantilla para poder limpiar la caché después
+            with conn.cursor(cursor_factory=DictCursor) as cursor:
+                cursor.execute("SELECT * FROM plantillas_email WHERE id = %s", (template_id,))
+                template = cursor.fetchone()
+                
+                if not template:
+                    logger.warning(f"No se encontró plantilla con ID {template_id}")
+                    return False
+                
+                # Marcamos la plantilla como inactiva en lugar de eliminarla
+                cursor.execute("""
+                    UPDATE plantillas_email
+                    SET estado = 'inactivo', fecha_modificacion = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                """, (template_id,))
+                
+                affected_rows = cursor.rowcount
+                conn.commit()
+                
+                if affected_rows > 0:
+                    # Limpiar caché relacionada
+                    template_dict = dict(template)
+                    self._clear_cache_by_keys(
+                        template_dict.get('tipo'),
+                        template_dict.get('subtipo'),
+                        template_dict.get('variante'),
+                        template_dict.get('canal'),
+                        template_dict.get('idioma')
+                    )
+                    
+                    # Limpiar caché específica
+                    self._clear_template_cache(template_id)
+                    
+                    logger.info(f"Plantilla eliminada (marcada como inactiva)")
+                    return True
+                else:
+                    return False
+                
+        except Exception as e:
+            logger.error(f"Error al eliminar plantilla: {e}")
+            try:
+                if conn and not conn.closed:
+                    conn.rollback()
+            except:
+                pass
+            return False
+            
+        finally:
+            # Mantenemos la conexión abierta
             pass
     
     def assign_template_to_subscriber(self, subscriber_id: int, template_id: int) -> bool:
         """
-        Asigna una plantilla a un suscriptor específico
+        Asigna una plantilla a un suscriptor
         
         Args:
             subscriber_id: ID del suscriptor
@@ -243,18 +530,6 @@ class TemplateManager:
         try:
             conn = self._get_db_connection()
             with conn.cursor() as cursor:
-                # Verificar que la plantilla existe
-                cursor.execute("SELECT id FROM plantillas_email WHERE id = %s", (template_id,))
-                if cursor.fetchone() is None:
-                    logger.error(f"No se encontró la plantilla con ID {template_id}")
-                    return False
-                
-                # Verificar que el suscriptor existe
-                cursor.execute("SELECT id FROM suscripciones WHERE id = %s", (subscriber_id,))
-                if cursor.fetchone() is None:
-                    logger.error(f"No se encontró el suscriptor con ID {subscriber_id}")
-                    return False
-                
                 # Actualizar la asignación de plantilla
                 cursor.execute("""
                     UPDATE suscripciones
@@ -262,6 +537,7 @@ class TemplateManager:
                     WHERE id = %s
                 """, (template_id, subscriber_id))
                 
+                affected_rows = cursor.rowcount
                 conn.commit()
                 
                 # Limpiar caché para este suscriptor
@@ -379,6 +655,103 @@ class TemplateManager:
         finally:
             # Mantenemos la conexión abierta
             pass
+    
+    def get_template_by_id(self, template_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Obtiene una plantilla por su ID
+        
+        Args:
+            template_id: ID de la plantilla
+            
+        Returns:
+            Dict[str, Any] o None: Plantilla encontrada o None si no existe
+        """
+        logger.debug(f"Obteniendo plantilla con ID {template_id}")
+        
+        # Generar clave para la caché
+        cache_key = f"template_id:{template_id}"
+        
+        # Verificar si está en caché
+        cached = self._get_from_cache(cache_key)
+        if cached:
+            logger.debug(f"Plantilla obtenida de caché: {cache_key}")
+            return cached
+        
+        try:
+            conn = self._get_db_connection()
+            with conn.cursor(cursor_factory=DictCursor) as cursor:
+                cursor.execute("""
+                    SELECT * FROM plantillas_email WHERE id = %s
+                """, (template_id,))
+                
+                row = cursor.fetchone()
+                if row:
+                    template = dict(row)
+                    # Almacenar en caché
+                    self._set_in_cache(cache_key, template)
+                    return template
+                    
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error al obtener plantilla por ID: {e}")
+            return None
+            
+        finally:
+            # Mantenemos la conexión abierta
+            pass
+    
+    def _clear_template_cache(self, template_id: int):
+        """
+        Limpia la caché específica de una plantilla
+        
+        Args:
+            template_id: ID de la plantilla
+        """
+        # Limpiar caché directa por ID
+        cache_key = f"template_id:{template_id}"
+        if cache_key in self._cache:
+            self._cache.pop(cache_key)
+            self._cache_timestamps.pop(cache_key, None)
+            
+        logger.debug(f"Limpiada caché específica para plantilla {template_id}")
+    
+    def _clear_cache_by_keys(self, tipo: str, subtipo: Optional[str], 
+                           variante: str, canal: str, idioma: str):
+        """
+        Limpia la caché relacionada con ciertas claves
+        
+        Args:
+            tipo: Tipo de plantilla
+            subtipo: Subtipo de plantilla
+            variante: Variante de la plantilla
+            canal: Canal de comunicación
+            idioma: Idioma de la plantilla
+        """
+        # Patrón para caché de plantillas
+        pattern = f"template:{tipo}:"
+        
+        # Encontrar claves que coincidan con el patrón
+        keys_to_remove = [k for k in self._cache.keys() if k.startswith(pattern)]
+        
+        # Eliminar de la caché
+        for key in keys_to_remove:
+            self._cache.pop(key, None)
+            self._cache_timestamps.pop(key, None)
+            
+        # También limpiar caché de suscriptores relacionados
+        # (esto es más agresivo pero asegura consistencia)
+        subscriber_pattern = f"subscriber:"
+        subscriber_keys_to_remove = [
+            k for k in self._cache.keys() 
+            if k.startswith(subscriber_pattern) and f":{tipo}:" in k
+        ]
+        
+        for key in subscriber_keys_to_remove:
+            self._cache.pop(key, None)
+            self._cache_timestamps.pop(key, None)
+            
+        logger.debug(f"Limpiadas {len(keys_to_remove) + len(subscriber_keys_to_remove)} entradas de caché relacionadas")
     
     def __del__(self):
         """Destructor: cierra la conexión a la base de datos"""

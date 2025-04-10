@@ -7,11 +7,14 @@ y el Notificador existente, asegurando compatibilidad con el código actual.
 
 import logging
 import os
-import datetime
-from typing import Dict, Any, Tuple, Optional, List, Union
+import psycopg2
+from psycopg2.extras import DictCursor
+from typing import Dict, Any, List, Optional, Tuple, Union
+from datetime import datetime
+import json
 
-from .template_manager import TemplateManager
-from .template_renderer import TemplateRenderer
+from sage.templates.email.template_manager import TemplateManager
+from sage.templates.email.template_renderer import TemplateRenderer
 
 logger = logging.getLogger(__name__)
 
@@ -30,9 +33,10 @@ class NotificadorAdapter:
         Args:
             config (dict, optional): Configuración del adaptador
         """
-        self.template_manager = TemplateManager(cache_ttl=300)  # 5 minutos de caché
-        self.template_renderer = TemplateRenderer()
         self.config = config or {}
+        self.template_manager = TemplateManager()
+        self.template_renderer = TemplateRenderer()
+        self.db_connection = None
     
     def generar_contenido_notificacion(self, eventos=None, nivel_detalle=None, 
                                       portal_id=None, casilla_id=None, suscriptor_id=None,
@@ -51,53 +55,57 @@ class NotificadorAdapter:
         Returns:
             Tuple[str, str]: (asunto, contenido HTML)
         """
-        logger.debug(f"Generando contenido para notificación con nivel {nivel_detalle}")
-        
-        # Si no hay nivel de detalle, usar 'detallado' por defecto
-        if not nivel_detalle:
-            nivel_detalle = 'detallado'
-        
-        # Si no hay eventos, no enviar notificación
-        if not eventos or len(eventos) == 0:
+        if not eventos:
             logger.warning("No hay eventos para generar la notificación")
-            return None, None
+            return ("", "")
             
+        if not nivel_detalle:
+            nivel_detalle = 'detallado'  # Nivel de detalle por defecto
+
+        # Preparar el tipo de plantilla según el nivel de detalle
+        template_type = 'notificacion'
+        subtype = nivel_detalle
+        
         try:
-            # Preparar el contexto para la plantilla
-            context = self._preparar_contexto(eventos, nivel_detalle, portal_id, casilla_id, **kwargs)
-            
-            # Obtener la plantilla adecuada
+            # Primero intentamos obtener una plantilla específica para el suscriptor
             template = None
-            
-            # Si hay suscriptor, intentar obtener una plantilla específica para él
             if suscriptor_id:
                 template = self.template_manager.get_template_for_subscriber(
                     subscriber_id=suscriptor_id,
-                    template_type='notificacion',
-                    subtype=nivel_detalle
+                    template_type=template_type,
+                    subtype=subtype
                 )
             
-            # Si no hay plantilla específica, obtener la predeterminada
+            # Si no hay plantilla específica para el suscriptor, usamos la predeterminada
             if not template:
                 template = self.template_manager.get_template(
-                    template_type='notificacion',
-                    subtype=nivel_detalle
+                    template_type=template_type,
+                    subtype=subtype,
+                    is_default=True
                 )
-            
-            # Si no se encontró ninguna plantilla, usar el método tradicional
-            if not template:
-                logger.warning(f"No se encontró plantilla para notificación {nivel_detalle}")
-                return None, None
                 
-            # Renderizar la plantilla
-            subject = self.template_renderer.render_subject(template, context)
-            html_content, _ = self.template_renderer.render(template, context)
+            if not template:
+                logger.error(f"No se encontró plantilla para: {template_type}, {subtype}")
+                return ("", "")
+                
+            # Preparar el contexto para la plantilla
+            context = self._preparar_contexto(
+                eventos=eventos, 
+                nivel_detalle=nivel_detalle,
+                portal_id=portal_id,
+                casilla_id=casilla_id,
+                **kwargs
+            )
             
-            return subject, html_content
+            # Renderizar plantilla
+            asunto = self.template_renderer.render_string(template['asunto'], context)
+            contenido_html = self.template_renderer.render_string(template['contenido_html'], context)
+            
+            return (asunto, contenido_html)
             
         except Exception as e:
             logger.error(f"Error al generar contenido de notificación: {e}")
-            return None, None
+            return ("", "")
     
     def _preparar_contexto(self, eventos, nivel_detalle, portal_id=None, casilla_id=None, **kwargs) -> Dict[str, Any]:
         """
@@ -115,28 +123,16 @@ class NotificadorAdapter:
         """
         # Contexto básico
         context = {
-            'fecha': datetime.datetime.now().strftime('%d/%m/%Y %H:%M'),
-            'portal_nombre': 'SAGE',  # Valor por defecto
-            'casilla_nombre': 'Sin nombre',  # Valor por defecto
-            'eventos': eventos,
-            'evento_resumen': f"{len(eventos)} eventos para revisar",
-            'email_remitente': kwargs.get('email_remitente', ''),
-            'email_casilla': kwargs.get('email_casilla', ''),
-            'asunto_original': kwargs.get('asunto_original', '')
+            'fecha': datetime.now().strftime('%d/%m/%Y %H:%M:%S'),
+            'portal_nombre': self._obtener_nombre_portal(portal_id) if portal_id else 'N/A',
+            'casilla_nombre': self._obtener_nombre_casilla(casilla_id) if casilla_id else 'N/A',
+            'eventos': eventos
         }
         
-        # Obtener nombre del portal y casilla desde la base de datos
-        try:
-            if portal_id:
-                context['portal_nombre'] = self._obtener_nombre_portal(portal_id) or context['portal_nombre']
-                
-            if casilla_id:
-                context['casilla_nombre'] = self._obtener_nombre_casilla(casilla_id) or context['casilla_nombre']
-                
-        except Exception as e:
-            logger.error(f"Error al obtener datos para contexto: {e}")
+        # Incluir argumentos adicionales
+        context.update(kwargs)
         
-        # Preparar contenido según el nivel de detalle
+        # Preparar contexto específico según el nivel de detalle
         if nivel_detalle == 'detallado':
             self._preparar_contexto_detallado(context, eventos)
         elif nivel_detalle == 'resumido_emisor':
@@ -156,10 +152,19 @@ class NotificadorAdapter:
         Returns:
             str: Nombre del portal o None si no se encuentra
         """
-        # En una implementación real, esta información se obtendría de la base de datos
-        # Aquí usamos una implementación simple por ahora
-        portales = {'1': 'Portal Principal', '2': 'Portal Secundario'}
-        return portales.get(str(portal_id))
+        try:
+            conn = self._get_db_connection()
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    SELECT nombre FROM portales WHERE id = %s
+                """, (portal_id,))
+                
+                result = cursor.fetchone()
+                return result[0] if result else 'Portal desconocido'
+                
+        except Exception as e:
+            logger.error(f"Error al obtener nombre de portal: {e}")
+            return 'Portal desconocido'
     
     def _obtener_nombre_casilla(self, casilla_id):
         """
@@ -171,15 +176,19 @@ class NotificadorAdapter:
         Returns:
             str: Nombre de la casilla o None si no se encuentra
         """
-        # En una implementación real, esta información se obtendría de la base de datos
-        # Aquí usamos una implementación simple por ahora
-        casillas = {
-            '1': 'Recepción General', 
-            '45': 'Casilla de Procesamiento', 
-            '50': 'Validación de Datos',
-            '61': 'Casilla de Ventas'
-        }
-        return casillas.get(str(casilla_id))
+        try:
+            conn = self._get_db_connection()
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    SELECT nombre FROM casillas WHERE id = %s
+                """, (casilla_id,))
+                
+                result = cursor.fetchone()
+                return result[0] if result else 'Casilla desconocida'
+                
+        except Exception as e:
+            logger.error(f"Error al obtener nombre de casilla: {e}")
+            return 'Casilla desconocida'
     
     def _preparar_contexto_detallado(self, context, eventos):
         """
@@ -189,32 +198,29 @@ class NotificadorAdapter:
             context: Contexto a modificar
             eventos: Lista de eventos
         """
-        detalle_eventos_html = ""
-        detalle_eventos_texto = ""
-        
+        # Generar contenido detallado para cada evento
+        detalle_html = []
         for evento in eventos:
-            tipo = evento.get('tipo', 'info')
-            clase_css = tipo if tipo in ['error', 'warning', 'info', 'success'] else 'info'
-            
-            detalle_eventos_html += f"""
-            <tr>
-                <td class="{clase_css}">{tipo.upper()}</td>
-                <td>{evento.get('emisor', 'N/A')}</td>
-                <td>{evento.get('mensaje', 'Sin mensaje')}</td>
-                <td>{evento.get('fecha', 'N/A')}</td>
-            </tr>
+            evento_html = f"""
+            <div class="evento">
+                <h3>Archivo: {evento.get('nombre_archivo', 'N/A')}</h3>
+                <p><strong>Estado:</strong> {evento.get('estado', 'N/A')}</p>
+                <p><strong>Fecha:</strong> {evento.get('fecha', 'N/A')}</p>
+                <p><strong>Emisor:</strong> {evento.get('emisor', 'N/A')}</p>
+                <p><strong>Detalles:</strong> {evento.get('detalles', 'N/A')}</p>
+            </div>
             """
+            detalle_html.append(evento_html)
             
-            detalle_eventos_texto += f"""
-Tipo: {tipo.upper()}
-Emisor: {evento.get('emisor', 'N/A')}
-Mensaje: {evento.get('mensaje', 'Sin mensaje')}
-Fecha: {evento.get('fecha', 'N/A')}
---------------------------------------------------
-"""
+        # Agregar al contexto
+        context['detalle_eventos'] = '\n'.join(detalle_html)
+        context['evento_resumen'] = f"Se procesaron {len(eventos)} archivos"
         
-        context['detalle_eventos'] = detalle_eventos_html
-        context['detalle_eventos_texto'] = detalle_eventos_texto
+        # Extraer información de correo electrónico y asunto si está disponible
+        if eventos and len(eventos) > 0:
+            context['email_remitente'] = eventos[0].get('email_remitente', 'N/A')
+            context['email_casilla'] = eventos[0].get('email_casilla', 'N/A')
+            context['asunto_original'] = eventos[0].get('asunto_original', 'N/A')
     
     def _preparar_contexto_resumido_emisor(self, context, eventos):
         """
@@ -225,42 +231,40 @@ Fecha: {evento.get('fecha', 'N/A')}
             eventos: Lista de eventos
         """
         # Agrupar eventos por emisor
-        por_emisor = {}
+        emisores = {}
         for evento in eventos:
             emisor = evento.get('emisor', 'Desconocido')
-            if emisor not in por_emisor:
-                por_emisor[emisor] = {'error': 0, 'warning': 0, 'info': 0, 'success': 0}
+            if emisor not in emisores:
+                emisores[emisor] = []
+            emisores[emisor].append(evento)
+        
+        # Generar resumen HTML por emisor
+        resumen_html = []
+        for emisor, eventos_emisor in emisores.items():
+            exitos = sum(1 for e in eventos_emisor if e.get('estado') == 'Éxito')
+            fallidos = sum(1 for e in eventos_emisor if e.get('estado') == 'Fallido')
+            warnings = sum(1 for e in eventos_emisor if e.get('warnings_detectados', 0) > 0)
             
-            tipo = evento.get('tipo', 'info')
-            if tipo in por_emisor[emisor]:
-                por_emisor[emisor][tipo] += 1
-        
-        # Generar HTML para el resumen
-        resumen_emisor_html = ""
-        resumen_emisor_texto = ""
-        
-        for emisor, conteo in por_emisor.items():
-            resumen_emisor_html += f"""
-            <tr>
-                <td><strong>{emisor}</strong></td>
-                <td class="error">{conteo['error']}</td>
-                <td class="warning">{conteo['warning']}</td>
-                <td class="info">{conteo['info']}</td>
-                <td class="success">{conteo['success']}</td>
-            </tr>
+            emisor_html = f"""
+            <div class="emisor">
+                <h3>Emisor: {emisor}</h3>
+                <p>Total archivos: {len(eventos_emisor)}</p>
+                <p>Exitosos: {exitos}</p>
+                <p>Fallidos: {fallidos}</p>
+                <p>Con advertencias: {warnings}</p>
+            </div>
             """
+            resumen_html.append(emisor_html)
             
-            resumen_emisor_texto += f"""
-Emisor: {emisor}
-Errores: {conteo['error']}
-Advertencias: {conteo['warning']}
-Información: {conteo['info']}
-Exitosos: {conteo['success']}
---------------------------------------------------
-"""
+        # Agregar al contexto
+        context['resumen_emisor'] = '\n'.join(resumen_html)
+        context['evento_resumen'] = f"Se procesaron {len(eventos)} archivos de {len(emisores)} emisores"
         
-        context['resumen_emisor'] = resumen_emisor_html
-        context['resumen_emisor_texto'] = resumen_emisor_texto
+        # Extraer información de correo electrónico y asunto si está disponible
+        if eventos and len(eventos) > 0:
+            context['email_remitente'] = eventos[0].get('email_remitente', 'N/A')
+            context['email_casilla'] = eventos[0].get('email_casilla', 'N/A')
+            context['asunto_original'] = eventos[0].get('asunto_original', 'N/A')
     
     def _preparar_contexto_resumido_casilla(self, context, eventos):
         """
@@ -270,40 +274,47 @@ Exitosos: {conteo['success']}
             context: Contexto a modificar
             eventos: Lista de eventos
         """
-        # Contar eventos por tipo
-        conteo = {'error': 0, 'warning': 0, 'info': 0, 'success': 0}
+        # Contar estadísticas generales
+        total = len(eventos)
+        exitos = sum(1 for e in eventos if e.get('estado') == 'Éxito')
+        fallidos = sum(1 for e in eventos if e.get('estado') == 'Fallido')
+        warnings = sum(1 for e in eventos if e.get('warnings_detectados', 0) > 0)
+        otros = total - exitos - fallidos
         
-        for evento in eventos:
-            tipo = evento.get('tipo', 'info')
-            if tipo in conteo:
-                conteo[tipo] += 1
+        # Generar resumen HTML
+        resumen_html = f"""
+        <div class="resumen-casilla">
+            <h3>Resumen de Archivos Procesados</h3>
+            <p>Total archivos: {total}</p>
+            <p>Exitosos: {exitos}</p>
+            <p>Fallidos: {fallidos}</p>
+            <p>Con advertencias: {warnings}</p>
+            <p>Otros estados: {otros}</p>
+        </div>
+        """
         
-        # Generar HTML para el resumen
-        resumen_casilla_html = ""
-        resumen_casilla_texto = ""
+        # Agregar al contexto
+        context['resumen_casilla'] = resumen_html
+        context['evento_resumen'] = f"Se procesaron {total} archivos en la casilla {context['casilla_nombre']}"
         
-        for tipo, cantidad in conteo.items():
-            clase_css = tipo
-            tipo_texto = tipo.capitalize()
-            if tipo == 'error':
-                tipo_texto = 'Errores'
-            elif tipo == 'warning':
-                tipo_texto = 'Advertencias'
-            elif tipo == 'info':
-                tipo_texto = 'Información'
-            elif tipo == 'success':
-                tipo_texto = 'Exitosos'
+        # Extraer información de correo electrónico y asunto si está disponible
+        if eventos and len(eventos) > 0:
+            context['email_remitente'] = eventos[0].get('email_remitente', 'N/A')
+            context['email_casilla'] = eventos[0].get('email_casilla', 'N/A')
+            context['asunto_original'] = eventos[0].get('asunto_original', 'N/A')
             
-            resumen_casilla_html += f"""
-            <tr>
-                <td class="{clase_css}"><strong>{tipo_texto}</strong></td>
-                <td>{cantidad}</td>
-            </tr>
-            """
-            
-            resumen_casilla_texto += f"""
-{tipo_texto}: {cantidad}
-"""
+    def _get_db_connection(self):
+        """
+        Obtiene una conexión a la base de datos
         
-        context['resumen_casilla'] = resumen_casilla_html
-        context['resumen_casilla_texto'] = resumen_casilla_texto
+        Returns:
+            connection: Conexión a la base de datos PostgreSQL
+        """
+        if not self.db_connection or self.db_connection.closed:
+            database_url = os.environ.get('DATABASE_URL')
+            if not database_url:
+                raise ValueError("No se ha configurado DATABASE_URL en el entorno")
+                
+            self.db_connection = psycopg2.connect(database_url)
+            
+        return self.db_connection

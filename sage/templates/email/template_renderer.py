@@ -1,205 +1,110 @@
 """
-Renderizador de plantillas de email para SAGE
+Sistema de renderizado de plantillas para SAGE
 
-Este módulo proporciona la funcionalidad para renderizar plantillas de email,
-remplazando las variables con valores dinámicos del contexto.
+Este módulo proporciona la funcionalidad para renderizar plantillas,
+reemplazando variables con valores reales.
 """
 
 import logging
 import re
-from typing import Dict, Any, Tuple, Optional, List, Union
+from typing import Dict, Any, Optional, Match
 
 logger = logging.getLogger(__name__)
 
 class TemplateRenderer:
     """
-    Renderizador de plantillas de email
+    Renderizador de plantillas
     
-    Esta clase proporciona métodos para:
-    - Renderizar plantillas HTML y texto plano
-    - Reemplazar variables con valores dinámicos
-    - Sanitizar contenido para evitar problemas de seguridad
+    Esta clase proporciona métodos para renderizar plantillas,
+    tanto en formato HTML como texto plano.
     """
     
     def __init__(self):
         """Inicializa el renderizador de plantillas"""
-        # Patrón para buscar variables en la plantilla: {{variable}} o {{ variable }}
-        self._pattern = re.compile(r'{{(\s*[\w\._-]+\s*)}}')
+        # Patrón para detectar variables en la plantilla
+        self.variable_pattern = r'{{(.*?)}}'
     
-    def render_subject(self, template: Dict[str, Any], context: Dict[str, Any]) -> str:
+    def render_string(self, template_string: Optional[str], context: Dict[str, Any]) -> str:
         """
-        Renderiza el asunto de una plantilla
+        Renderiza una cadena de texto reemplazando variables con valores del contexto
         
         Args:
-            template: Diccionario con la plantilla
-            context: Diccionario con variables para reemplazar
+            template_string: Cadena de la plantilla con variables {{variable}}
+            context: Diccionario con valores para reemplazar las variables
             
         Returns:
-            str: Asunto renderizado
+            str: Cadena renderizada
         """
-        asunto = template.get('asunto', '')
-        if not asunto:
-            return 'Notificación SAGE'
-            
-        return self._replace_variables(asunto, context)
-    
-    def render(self, template: Dict[str, Any], context: Dict[str, Any]) -> Tuple[str, str]:
-        """
-        Renderiza una plantilla con el contexto proporcionado
-        
-        Args:
-            template: Diccionario con la plantilla
-            context: Diccionario con variables para reemplazar
-            
-        Returns:
-            Tuple[str, str]: (contenido HTML, contenido texto plano)
-        """
-        # Obtener contenido de la plantilla
-        html_content = template.get('contenido_html', '')
-        text_content = template.get('contenido_texto', '')
-        
-        # Si no hay contenido HTML pero hay contenido texto, convertir a HTML básico
-        if not html_content and text_content:
-            html_content = self._text_to_basic_html(text_content)
-        
-        # Si no hay contenido texto pero hay contenido HTML, extraer texto del HTML
-        if not text_content and html_content:
-            text_content = self._html_to_basic_text(html_content)
-        
-        # Renderizar ambos contenidos
-        rendered_html = self._replace_variables(html_content, context)
-        rendered_text = self._replace_variables(text_content, context)
-        
-        # Sanitizar contenido HTML
-        rendered_html = self._sanitize_html(rendered_html)
-        
-        return rendered_html, rendered_text
-    
-    def _replace_variables(self, content: str, context: Dict[str, Any]) -> str:
-        """
-        Reemplaza variables en el contenido con valores del contexto
-        
-        Args:
-            content: Contenido con variables
-            context: Contexto con valores para reemplazar
-            
-        Returns:
-            str: Contenido con variables reemplazadas
-        """
-        if not content:
-            return content
-            
-        # Función para reemplazar cada coincidencia
-        def replace_match(match):
-            var_name = match.group(1).strip()
-            
-            # Obtener valor del contexto, o dejar la variable intacta si no existe
-            return str(context.get(var_name, match.group(0)))
-            
-        # Reemplazar todas las variables
-        return self._pattern.sub(replace_match, content)
-    
-    def _sanitize_html(self, html_content: str) -> str:
-        """
-        Sanitiza el contenido HTML para evitar problemas de seguridad
-        
-        Args:
-            html_content: Contenido HTML
-            
-        Returns:
-            str: Contenido HTML sanitizado
-        """
-        # Por ahora, simplemente devolvemos el contenido sin modificar
-        # En una implementación real, aquí se aplicarían medidas de seguridad
-        # como filtrar scripts, etc.
-        return html_content
-    
-    def _text_to_basic_html(self, text_content: str) -> str:
-        """
-        Convierte texto plano a HTML básico
-        
-        Args:
-            text_content: Contenido en texto plano
-            
-        Returns:
-            str: Contenido convertido a HTML básico
-        """
-        if not text_content:
+        if not template_string:
+            logger.warning("Intentando renderizar una plantilla vacía")
             return ""
             
-        # Escapar entidades HTML
-        html = text_content.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-        
-        # Convertir saltos de línea a <br>
-        html = html.replace("\n", "<br>")
-        
-        # Envolver en estructura HTML básica
-        html = f"""
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <style>
-                body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
-            </style>
-        </head>
-        <body>
-            <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
-                {html}
-            </div>
-        </body>
-        </html>
-        """
-        
-        return html
+        try:
+            # Reemplazar variables con valores del contexto
+            def replace_var(match: Match) -> str:
+                var_name = match.group(1).strip()
+                
+                if '.' in var_name:
+                    # Manejar acceso a atributos anidados (e.g. user.name)
+                    parts = var_name.split('.')
+                    value = context
+                    for part in parts:
+                        if isinstance(value, dict) and part in value:
+                            value = value[part]
+                        elif hasattr(value, part):
+                            value = getattr(value, part)
+                        else:
+                            return f"<<Variable desconocida: {var_name}>>"
+                else:
+                    # Acceso directo al contexto
+                    value = context.get(var_name, f"<<Variable desconocida: {var_name}>>")
+                
+                # Convertir a string si no lo es
+                if not isinstance(value, (str, int, float, bool)):
+                    value = str(value)
+                
+                return str(value)
+                
+            # Reemplazar todas las variables en la plantilla
+            rendered = re.sub(self.variable_pattern, replace_var, template_string)
+            return rendered
+            
+        except Exception as e:
+            logger.error(f"Error al renderizar plantilla: {e}")
+            return f"Error en la plantilla: {str(e)}"
     
-    def _html_to_basic_text(self, html_content: str) -> str:
+    def render_template(self, template: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, str]:
         """
-        Extrae texto plano de contenido HTML
+        Renderiza una plantilla completa (asunto, html, texto)
         
         Args:
-            html_content: Contenido HTML
+            template: Diccionario con los elementos de la plantilla
+            context: Contexto con valores para las variables
             
         Returns:
-            str: Contenido convertido a texto plano
+            Dict[str, str]: Plantilla renderizada
         """
-        if not html_content:
-            return ""
+        rendered = {}
+        
+        try:
+            # Renderizar asunto
+            if 'asunto' in template:
+                rendered['asunto'] = self.render_string(template['asunto'], context)
+                
+            # Renderizar contenido HTML
+            if 'contenido_html' in template:
+                rendered['html'] = self.render_string(template['contenido_html'], context)
+                
+            # Renderizar contenido de texto plano
+            if 'contenido_texto' in template:
+                rendered['texto'] = self.render_string(template['contenido_texto'], context)
+                
+            return rendered
             
-        # Implementación simple para extraer texto
-        # En una implementación real, se usaría una biblioteca como BeautifulSoup
-        
-        # Eliminar etiquetas HTML comunes
-        text = html_content
-        text = re.sub(r'<head>.*?</head>', '', text, flags=re.DOTALL)
-        text = re.sub(r'<style>.*?</style>', '', text, flags=re.DOTALL)
-        text = re.sub(r'<script>.*?</script>', '', text, flags=re.DOTALL)
-        
-        # Reemplazar etiquetas de párrafo y salto de línea con saltos de línea
-        text = re.sub(r'<br\s*/?>', '\n', text)
-        text = re.sub(r'<p.*?>', '\n\n', text)
-        text = re.sub(r'</p>', '', text)
-        
-        # Eliminar todas las demás etiquetas HTML
-        text = re.sub(r'<.*?>', '', text)
-        
-        # Reemplazar entidades HTML comunes
-        text = text.replace('&nbsp;', ' ')
-        text = text.replace('&amp;', '&')
-        text = text.replace('&lt;', '<')
-        text = text.replace('&gt;', '>')
-        text = text.replace('&quot;', '"')
-        text = text.replace('&apos;', "'")
-        
-        # Eliminar espacios en blanco múltiples
-        text = re.sub(r'\s+', ' ', text)
-        
-        # Eliminar espacios al inicio y final de líneas
-        lines = text.split('\n')
-        lines = [line.strip() for line in lines]
-        text = '\n'.join(lines)
-        
-        # Eliminar líneas en blanco múltiples
-        text = re.sub(r'\n\s*\n', '\n\n', text)
-        
-        return text.strip()
+        except Exception as e:
+            logger.error(f"Error al renderizar plantilla completa: {e}")
+            return {
+                'asunto': 'Error en la plantilla',
+                'html': f'<p>Error al procesar la plantilla: {str(e)}</p>',
+                'texto': f'Error al procesar la plantilla: {str(e)}'
+            }

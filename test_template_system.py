@@ -1,17 +1,19 @@
-#!/usr/bin/env python3
 """
-Script para probar el sistema de plantillas de email
+Script de prueba para el sistema de plantillas de email
 
-Este script demuestra el uso básico del sistema de plantillas,
-generando una notificación de ejemplo con diferentes contextos.
+Este script:
+1. Inicializa la base de datos del sistema de plantillas
+2. Prueba la obtención de plantillas usando el gestor
+3. Prueba el renderizado de plantillas
+4. Prueba el adaptador para el Notificador
 """
 
 import os
 import sys
-import json
 import logging
-import datetime
-from typing import Dict, Any, List
+import psycopg2
+from datetime import datetime
+from pprint import pprint
 
 # Configurar logging
 logging.basicConfig(
@@ -21,245 +23,176 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+# Importar módulos del sistema de plantillas
 try:
-    from sage.templates.email.template_manager import TemplateManager
-    from sage.templates.email.template_renderer import TemplateRenderer
+    from sage.templates.email import TemplateManager, TemplateRenderer, NotificadorAdapter
     from sage.templates.email.initialize_db import create_tables, load_default_templates
 except ImportError:
-    logger.error("No se pudo importar los módulos del sistema de plantillas")
-    logger.error("Asegúrese de que el sistema de plantillas esté instalado correctamente")
+    logger.error("No se pudieron importar los módulos del sistema de plantillas")
     sys.exit(1)
 
-def initialize_database():
-    """Inicializa la base de datos si es necesario"""
-    try:
-        from sage.templates.email.initialize_db import get_db_connection
-        conn = get_db_connection()
-        create_tables(conn)
-        load_default_templates(conn)
-        logger.info("Base de datos inicializada correctamente")
-    except Exception as e:
-        logger.error(f"Error al inicializar la base de datos: {e}")
+def get_db_connection():
+    """Establece conexión con la base de datos PostgreSQL"""
+    database_url = os.environ.get('DATABASE_URL')
+    if not database_url:
+        logger.error("No se ha configurado DATABASE_URL en el entorno")
         sys.exit(1)
-
-def generate_sample_events(num_events: int = 5) -> List[Dict[str, Any]]:
-    """Genera eventos de ejemplo para probar las plantillas
     
-    Args:
-        num_events: Número de eventos a generar
+    return psycopg2.connect(database_url)
+
+def probar_gestor_plantillas():
+    """Prueba la funcionalidad del gestor de plantillas"""
+    logger.info("Probando gestor de plantillas...")
+    
+    manager = TemplateManager()
+    
+    # Obtener una plantilla predeterminada
+    logger.info("Buscando plantilla predeterminada para notificaciones detalladas")
+    template = manager.get_template(
+        template_type='notificacion',
+        subtype='detallado',
+        is_default=True
+    )
+    
+    if template:
+        logger.info(f"Plantilla encontrada: {template['nombre']}")
+        logger.info(f"Asunto: {template['asunto']}")
+        logger.info(f"Contenido (primeros 100 caracteres): {template['contenido_html'][:100]}...")
+    else:
+        logger.warning("No se encontró ninguna plantilla predeterminada")
+    
+    # Probar obtención de todas las plantillas
+    logger.info("Obteniendo todas las plantillas")
+    all_templates = manager.get_all_templates()
+    logger.info(f"Se encontraron {len(all_templates)} plantillas")
+    
+    # Mostrar detalles de las plantillas
+    for i, tmpl in enumerate(all_templates, 1):
+        logger.info(f"{i}. {tmpl['nombre']} (tipo: {tmpl['tipo']}, subtipo: {tmpl['subtipo']})")
+    
+    return template if template else None
+
+def probar_renderizador(template=None):
+    """Prueba la funcionalidad del renderizador de plantillas"""
+    logger.info("Probando renderizador de plantillas...")
+    
+    renderer = TemplateRenderer()
+    
+    # Crear un contexto de prueba
+    context = {
+        'fecha': datetime.now().strftime('%d/%m/%Y %H:%M:%S'),
+        'portal_nombre': 'Portal de Prueba',
+        'casilla_nombre': 'Casilla de Prueba',
+        'email_remitente': 'remitente@ejemplo.com',
+        'email_casilla': 'casilla@sage.com',
+        'asunto_original': 'Prueba de Sistema de Plantillas',
+        'evento_resumen': 'Se procesaron 5 archivos',
+        'detalle_eventos': """
+            <div class="evento">
+                <h3>Archivo: test1.csv</h3>
+                <p><strong>Estado:</strong> Éxito</p>
+                <p><strong>Fecha:</strong> 10/04/2025 15:30:45</p>
+                <p><strong>Emisor:</strong> Proveedor de Prueba</p>
+                <p><strong>Detalles:</strong> Archivo procesado correctamente</p>
+            </div>
+            <div class="evento">
+                <h3>Archivo: test2.csv</h3>
+                <p><strong>Estado:</strong> Fallido</p>
+                <p><strong>Fecha:</strong> 10/04/2025 15:32:10</p>
+                <p><strong>Emisor:</strong> Proveedor de Prueba</p>
+                <p><strong>Detalles:</strong> Error en formato de archivo</p>
+            </div>
+        """
+    }
+    
+    # Si tenemos una plantilla del paso anterior, la usamos
+    if template:
+        logger.info("Renderizando plantilla obtenida del gestor")
+        rendered_subject = renderer.render_string(template['asunto'], context)
+        rendered_content = renderer.render_string(template['contenido_html'], context)
         
-    Returns:
-        Lista de eventos de ejemplo
-    """
-    event_types = ['error', 'warning', 'info', 'success']
-    senders = ['Procesador Excel', 'Validador YAML', 'Sincronizador DB', 'Analizador CSV']
-    messages = [
-        'Archivo procesado correctamente',
-        'Formato no reconocido en la fila 23',
-        'Campo obligatorio ausente: nombre_producto',
-        'Error de conexión con la base de datos',
-        'Advertencia: valores duplicados encontrados',
-        'Sincronización completada: 234 registros actualizados',
-        'Validación exitosa de estructura YAML',
-        'Datos incompletos en columna precio'
+        logger.info(f"Asunto renderizado: {rendered_subject}")
+        logger.info(f"Contenido renderizado (primeros 200 caracteres): {rendered_content[:200]}...")
+    else:
+        # Ejemplo simple de renderizado
+        logger.info("Renderizando plantilla de ejemplo")
+        simple_template = """
+        <h1>Notificación de SAGE</h1>
+        <p>Fecha: {{fecha}}</p>
+        <p>Estimado usuario del portal {{portal_nombre}},</p>
+        <p>{{evento_resumen}} en la casilla {{casilla_nombre}}.</p>
+        <div class="detalles">
+            {{detalle_eventos}}
+        </div>
+        <p>Saludos cordiales,<br>Equipo SAGE</p>
+        """
+        
+        rendered = renderer.render_string(simple_template, context)
+        logger.info(f"Contenido renderizado (primeros 200 caracteres): {rendered[:200]}...")
+
+def probar_adaptador():
+    """Prueba la funcionalidad del adaptador para el Notificador"""
+    logger.info("Probando adaptador para el Notificador...")
+    
+    adapter = NotificadorAdapter()
+    
+    # Crear eventos de prueba
+    eventos_prueba = [
+        {
+            'nombre_archivo': 'test1.csv',
+            'estado': 'Éxito',
+            'fecha': datetime.now().strftime('%d/%m/%Y %H:%M:%S'),
+            'emisor': 'Proveedor A',
+            'detalles': 'Archivo procesado correctamente',
+            'email_remitente': 'proveedora@ejemplo.com',
+            'email_casilla': 'casilla1@sage.com',
+            'asunto_original': 'Envío de datos mensuales'
+        },
+        {
+            'nombre_archivo': 'test2.csv',
+            'estado': 'Fallido',
+            'fecha': datetime.now().strftime('%d/%m/%Y %H:%M:%S'),
+            'emisor': 'Proveedor B',
+            'detalles': 'Error en formato de archivo',
+            'email_remitente': 'proveedorb@ejemplo.com',
+            'email_casilla': 'casilla1@sage.com',
+            'asunto_original': 'Datos para procesar'
+        }
     ]
     
-    events = []
-    
-    for i in range(num_events):
-        import random
-        event_type = random.choice(event_types)
-        sender = random.choice(senders)
-        message = random.choice(messages)
+    # Probar generación de contenido con diferentes niveles de detalle
+    for nivel in ['detallado', 'resumido_emisor', 'resumido_casilla']:
+        logger.info(f"Generando notificación con nivel de detalle: {nivel}")
         
-        # Fecha aleatoria en las últimas 24 horas
-        hours_ago = random.randint(0, 23)
-        minutes_ago = random.randint(0, 59)
-        event_date = datetime.datetime.now() - datetime.timedelta(hours=hours_ago, minutes=minutes_ago)
+        asunto, contenido = adapter.generar_contenido_notificacion(
+            eventos=eventos_prueba,
+            nivel_detalle=nivel,
+            portal_id=1,  # ID ficticio
+            casilla_id=1   # ID ficticio
+        )
         
-        events.append({
-            'tipo': event_type,
-            'emisor': sender,
-            'mensaje': message,
-            'fecha': event_date.strftime('%d/%m/%Y %H:%M')
-        })
-    
-    return events
+        logger.info(f"Asunto generado: {asunto}")
+        logger.info(f"Contenido generado (primeros 200 caracteres): {contenido[:200]}...")
 
-def test_template_rendering():
-    """Prueba el renderizado de diferentes tipos de plantillas"""
-    try:
-        manager = TemplateManager()
-        renderer = TemplateRenderer()
-        
-        # Generar eventos de ejemplo
-        events = generate_sample_events(8)
-        
-        # Probar diferentes niveles de detalle
-        detail_levels = ['detallado', 'resumido_emisor', 'resumido_casilla']
-        
-        for level in detail_levels:
-            logger.info(f"Probando plantilla con nivel de detalle: {level}")
-            
-            # Obtener la plantilla
-            template = manager.get_template('notificacion', level)
-            
-            if not template:
-                logger.warning(f"No se encontró plantilla para nivel {level}")
-                continue
-            
-            # Preparar el contexto
-            context = {
-                'fecha': datetime.datetime.now().strftime('%d/%m/%Y %H:%M'),
-                'portal_nombre': 'SAGE Test',
-                'casilla_nombre': 'Casilla de Prueba',
-                'eventos': events,
-                'evento_resumen': f"{len(events)} eventos de prueba"
-            }
-            
-            # Añadir contenido específico según el nivel de detalle
-            if level == 'detallado':
-                # Generar contenido HTML para los eventos
-                detalle_eventos = ""
-                detalle_eventos_texto = ""
-                
-                for evento in events:
-                    tipo = evento.get('tipo', 'info')
-                    clase_css = tipo if tipo in ['error', 'warning', 'info', 'success'] else 'info'
-                    
-                    detalle_eventos += f"""
-                    <tr>
-                        <td class="{clase_css}">{tipo.upper()}</td>
-                        <td>{evento.get('emisor', 'N/A')}</td>
-                        <td>{evento.get('mensaje', 'Sin mensaje')}</td>
-                        <td>{evento.get('fecha', 'N/A')}</td>
-                    </tr>
-                    """
-                    
-                    detalle_eventos_texto += f"""
-Tipo: {tipo.upper()}
-Emisor: {evento.get('emisor', 'N/A')}
-Mensaje: {evento.get('mensaje', 'Sin mensaje')}
-Fecha: {evento.get('fecha', 'N/A')}
---------------------------------------------------
-"""
-                
-                context['detalle_eventos'] = detalle_eventos
-                context['detalle_eventos_texto'] = detalle_eventos_texto
-                
-            elif level == 'resumido_emisor':
-                # Agrupar eventos por emisor
-                por_emisor = {}
-                for evento in events:
-                    emisor = evento.get('emisor', 'Desconocido')
-                    if emisor not in por_emisor:
-                        por_emisor[emisor] = {'error': 0, 'warning': 0, 'info': 0, 'success': 0}
-                    
-                    tipo = evento.get('tipo', 'info')
-                    if tipo in por_emisor[emisor]:
-                        por_emisor[emisor][tipo] += 1
-                
-                # Generar contenido HTML para el resumen por emisor
-                resumen_emisor = ""
-                resumen_emisor_texto = ""
-                
-                for emisor, conteo in por_emisor.items():
-                    resumen_emisor += f"""
-                    <tr>
-                        <td><strong>{emisor}</strong></td>
-                        <td class="error">{conteo['error']}</td>
-                        <td class="warning">{conteo['warning']}</td>
-                        <td class="info">{conteo['info']}</td>
-                        <td class="success">{conteo['success']}</td>
-                    </tr>
-                    """
-                    
-                    resumen_emisor_texto += f"""
-Emisor: {emisor}
-Errores: {conteo['error']}
-Advertencias: {conteo['warning']}
-Información: {conteo['info']}
-Exitosos: {conteo['success']}
---------------------------------------------------
-"""
-                
-                context['resumen_emisor'] = resumen_emisor
-                context['resumen_emisor_texto'] = resumen_emisor_texto
-                
-            elif level == 'resumido_casilla':
-                # Contar tipos de eventos
-                conteo = {'error': 0, 'warning': 0, 'info': 0, 'success': 0}
-                
-                for evento in events:
-                    tipo = evento.get('tipo', 'info')
-                    if tipo in conteo:
-                        conteo[tipo] += 1
-                
-                # Generar contenido HTML para el resumen por casilla
-                resumen_casilla = ""
-                resumen_casilla_texto = ""
-                
-                for tipo, cantidad in conteo.items():
-                    clase_css = tipo
-                    tipo_texto = tipo.capitalize()
-                    if tipo == 'error':
-                        tipo_texto = 'Errores'
-                    elif tipo == 'warning':
-                        tipo_texto = 'Advertencias'
-                    elif tipo == 'info':
-                        tipo_texto = 'Información'
-                    elif tipo == 'success':
-                        tipo_texto = 'Exitosos'
-                    
-                    resumen_casilla += f"""
-                    <tr>
-                        <td class="{clase_css}"><strong>{tipo_texto}</strong></td>
-                        <td>{cantidad}</td>
-                    </tr>
-                    """
-                    
-                    resumen_casilla_texto += f"""
-{tipo_texto}: {cantidad}
-"""
-                
-                context['resumen_casilla'] = resumen_casilla
-                context['resumen_casilla_texto'] = resumen_casilla_texto
-            
-            # Renderizar la plantilla
-            subject = renderer.render_subject(template, context)
-            html_content, text_content = renderer.render(template, context)
-            
-            logger.info(f"Asunto: {subject}")
-            logger.info(f"Contenido HTML generado: {len(html_content)} caracteres")
-            logger.info(f"Contenido texto generado: {len(text_content)} caracteres")
-            
-            # Guardar resultados para inspección
-            output_dir = "test_output"
-            os.makedirs(output_dir, exist_ok=True)
-            
-            with open(f"{output_dir}/template_{level}_html.html", "w") as f:
-                f.write(html_content)
-            
-            with open(f"{output_dir}/template_{level}_text.txt", "w") as f:
-                f.write(text_content)
-            
-            logger.info(f"Resultados guardados en {output_dir}/template_{level}_*.html/txt")
-            print("\n")
+def main():
+    """Función principal"""
+    logger.info("Iniciando prueba del sistema de plantillas")
     
+    # Asegurarse de que la base de datos esté inicializada
+    conn = get_db_connection()
+    
+    try:
+        # Probar componentes
+        template = probar_gestor_plantillas()
+        probar_renderizador(template)
+        probar_adaptador()
+        
+        logger.info("Prueba completada con éxito")
+        
     except Exception as e:
         logger.error(f"Error durante la prueba: {e}")
-        import traceback
-        traceback.print_exc()
+    finally:
+        conn.close()
 
-if __name__ == "__main__":
-    try:
-        # Inicializar la base de datos
-        initialize_database()
-        
-        # Probar el renderizado de plantillas
-        test_template_rendering()
-        
-        logger.info("Prueba completada exitosamente")
-    except Exception as e:
-        logger.error(f"Error durante la prueba: {e}")
-        sys.exit(1)
+if __name__ == '__main__':
+    main()
