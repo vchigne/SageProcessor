@@ -1,4 +1,4 @@
-import { pool } from '@/utils/postgres';
+import { pool } from '../../../lib/db';
 
 export default async function handler(req, res) {
   const { method } = req;
