@@ -1,4 +1,9 @@
-import { pool } from '../../../lib/db';
+import { Pool } from 'pg';
+
+// Conectar a la base de datos PostgreSQL
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
 
 export default async function handler(req, res) {
   const { method } = req;
