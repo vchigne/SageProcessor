@@ -18,9 +18,6 @@ export default async function handler(req, res) {
     const { method, query: { uuid } } = req
     console.log(`Solicitud ${method} a /api/portales/${uuid}/casillas`)
 
-    // Verificación simplificada sin next-auth
-    const session = null;
-
     // Obtener información del portal por UUID
     const portalQuery = `
       SELECT id, nombre, uuid
@@ -35,7 +32,7 @@ export default async function handler(req, res) {
     
     const portal = portales[0]
     
-    // Asumimos que todos los portales permiten acceso externo
+    // Log de acceso
     console.log(`Portal ${portal.id} - ${portal.nombre} accedido`)
     
     switch (method) {
@@ -55,12 +52,13 @@ export default async function handler(req, res) {
             o.nombre as organizacion_nombre,
             p.nombre as producto_nombre,
             pa.nombre as pais_nombre
-          FROM casillas c
-          JOIN instalaciones i ON c.instalacion_id = i.id
+          FROM portales po
+          JOIN instalaciones i ON po.instalacion_id = i.id
+          JOIN casillas c ON c.instalacion_id = i.id
           JOIN organizaciones o ON i.organizacion_id = o.id
           JOIN productos p ON i.producto_id = p.id
           JOIN paises pa ON i.pais_id = pa.id
-          WHERE c.instalacion_id = (SELECT instalacion_id FROM portales WHERE id = $1)
+          WHERE po.id = $1
           ORDER BY c.nombre
         `
         const { rows: casillas } = await pool.query(casillasQuery, [portal.id])
@@ -81,20 +79,9 @@ export default async function handler(req, res) {
             `
             const { rows: emisores } = await pool.query(emisoresQuery, [casilla.id])
             
-            // Para cada emisor, obtener sus métodos de envío
-            const emisoresConMetodos = await Promise.all(
+            // Para cada emisor, obtener su historial (sin métodos de envío)
+            const emisoresConHistorial = await Promise.all(
               emisores.map(async emisor => {
-                const metodosEnvioQuery = `
-                  SELECT 
-                    me.id, 
-                    me.nombre,
-                    me.tipo,
-                    me.configuracion
-                  FROM metodos_envio me
-                  WHERE me.casilla_id = $1 AND me.emisor_id = $2
-                `
-                const { rows: metodosEnvio } = await pool.query(metodosEnvioQuery, [casilla.id, emisor.emisor_id])
-                
                 // Obtener el historial de envíos para este emisor/casilla
                 const historialQuery = `
                   SELECT 
@@ -114,7 +101,7 @@ export default async function handler(req, res) {
                 
                 return {
                   ...emisor,
-                  metodos_envio: metodosEnvio,
+                  metodos_envio: [], // Dejamos un array vacío para no romper la compatibilidad
                   historial_envios: historialEnvios
                 }
               })
@@ -122,7 +109,7 @@ export default async function handler(req, res) {
             
             // Para cada emisor, obtener los responsables con verificación de retraso
             const emisoresConResponsables = await Promise.all(
-              emisoresConMetodos.map(async emisor => {
+              emisoresConHistorial.map(async emisor => {
                 const responsablesQuery = `
                   SELECT 
                     er.id as responsable_id,
@@ -480,13 +467,12 @@ export default async function handler(req, res) {
                 return {
                   ...emisor,
                   responsables: responsables,
-                  historial_envios: historialEnvios
+                  historial_envios: emisor.historial_envios
                 }
               })
             )
 
             // Obtener el historial de ejecuciones directamente para esta casilla
-            // IMPORTANTE: Si no hay emisores, solo filtramos por casilla_id
             const casillaHistorialQuery = `
               SELECT 
                 ey.id,
@@ -502,9 +488,7 @@ export default async function handler(req, res) {
               LIMIT 5
             `;
             
-            console.log(`Buscando historial para casilla ${casilla.id} (consulta directa por casilla_id)`);
             const { rows: casillaHistorialEnvios } = await pool.query(casillaHistorialQuery, [casilla.id]);
-            console.log(`Encontradas ${casillaHistorialEnvios.length} ejecuciones para casilla ${casilla.id}`);
             
             // Usar el nombre y descripción que ya vienen de la tabla de casillas
             let yamlNombre = casilla.nombre || '';
