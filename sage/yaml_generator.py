@@ -229,6 +229,8 @@ class YAMLGenerator:
                         )
             else:  # Excel
                 df = pd.read_excel(file_path, nrows=5)
+                # Para archivos Excel no hay delimitador, pero establecemos uno para compatibilidad
+                best_delimiter = ','
             
             # Si las columnas son numéricas (1, 2, 3...), es posible que el delimitador no se haya detectado correctamente
             numeric_cols = all(str(c).isdigit() for c in df.columns)
@@ -371,7 +373,7 @@ class YAMLGenerator:
                 'data_samples': processed_samples,
                 'raw_examples': raw_examples,  # Ejemplos sin procesar (formato de texto)
                 'has_bom': has_bom,
-                'delimiter': best_delimiter
+                'delimiter': best_delimiter if 'best_delimiter' in locals() else ','
             }
             
             # Registrar el resultado del análisis
