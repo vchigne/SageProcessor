@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
-import AdminLayout from '@/components/AdminLayout';
+import Layout from '../../components/Layout';
 import { 
   DocumentTextIcon, 
   PlusIcon, 
@@ -238,7 +238,7 @@ export default function PlantillasEmail() {
         <title>Gestión de Plantillas de Email | SAGE</title>
       </Head>
       
-      <AdminLayout>
+      <Layout>
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">
           <div className="sm:flex sm:items-center sm:justify-between">
             <div>
@@ -651,36 +651,36 @@ export default function PlantillasEmail() {
             
             <div className="mt-3 grid grid-cols-1 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
               <div className="text-sm">
-                <span className="font-medium">{{'{{'}}fecha{{'}}'}}</span>: Fecha y hora actual
+                <span className="font-medium">{"{{fecha}}"}</span>: Fecha y hora actual
               </div>
               <div className="text-sm">
-                <span className="font-medium">{{'{{'}}portal_nombre{{'}}'}}</span>: Nombre del portal
+                <span className="font-medium">{"{{portal_nombre}}"}</span>: Nombre del portal
               </div>
               <div className="text-sm">
-                <span className="font-medium">{{'{{'}}casilla_nombre{{'}}'}}</span>: Nombre de la casilla
+                <span className="font-medium">{"{{casilla_nombre}}"}</span>: Nombre de la casilla
               </div>
               <div className="text-sm">
-                <span className="font-medium">{{'{{'}}email_remitente{{'}}'}}</span>: Email del remitente
+                <span className="font-medium">{"{{email_remitente}}"}</span>: Email del remitente
               </div>
               <div className="text-sm">
-                <span className="font-medium">{{'{{'}}email_casilla{{'}}'}}</span>: Email de la casilla
+                <span className="font-medium">{"{{email_casilla}}"}</span>: Email de la casilla
               </div>
               <div className="text-sm">
-                <span className="font-medium">{{'{{'}}asunto_original{{'}}'}}</span>: Asunto original
+                <span className="font-medium">{"{{asunto_original}}"}</span>: Asunto original
               </div>
               <div className="text-sm">
-                <span className="font-medium">{{'{{'}}evento_resumen{{'}}'}}</span>: Resumen de eventos
+                <span className="font-medium">{"{{evento_resumen}}"}</span>: Resumen de eventos
               </div>
               <div className="text-sm">
-                <span className="font-medium">{{'{{'}}detalle_eventos{{'}}'}}</span>: Detalles HTML (para detallado)
+                <span className="font-medium">{"{{detalle_eventos}}"}</span>: Detalles HTML (para detallado)
               </div>
               <div className="text-sm">
-                <span className="font-medium">{{'{{'}}resumen_emisor{{'}}'}}</span>: Resumen HTML por emisor
+                <span className="font-medium">{"{{resumen_emisor}}"}</span>: Resumen HTML por emisor
               </div>
             </div>
           </div>
         </div>
-      </AdminLayout>
+      </Layout>
     </>
   );
 }

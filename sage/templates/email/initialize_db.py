@@ -64,21 +64,25 @@ def create_tables(conn=None):
             """)
             
             # Agregar comentarios a la tabla y columnas
-            cursor.execute("""
-                COMMENT ON TABLE IF EXISTS plantillas_email IS 'Almacena plantillas para comunicaciones por email y otros canales'
-            """)
-            
-            cursor.execute("""
-                COMMENT ON COLUMN IF EXISTS plantillas_email.tipo IS 'Tipo principal de la plantilla (notificacion, respuesta_daemon, etc.)'
-            """)
-            
-            cursor.execute("""
-                COMMENT ON COLUMN IF EXISTS plantillas_email.subtipo IS 'Subtipo específico (detallado, resumido_emisor, etc.)'
-            """)
-            
-            cursor.execute("""
-                COMMENT ON COLUMN IF EXISTS plantillas_email.es_predeterminada IS 'Indica si esta es la plantilla predeterminada para su tipo/subtipo'
-            """)
+            try:
+                cursor.execute("""
+                    COMMENT ON TABLE plantillas_email IS 'Almacena plantillas para comunicaciones por email y otros canales'
+                """)
+                
+                cursor.execute("""
+                    COMMENT ON COLUMN plantillas_email.tipo IS 'Tipo principal de la plantilla (notificacion, respuesta_daemon, etc.)'
+                """)
+                
+                cursor.execute("""
+                    COMMENT ON COLUMN plantillas_email.subtipo IS 'Subtipo específico (detallado, resumido_emisor, etc.)'
+                """)
+                
+                cursor.execute("""
+                    COMMENT ON COLUMN plantillas_email.es_predeterminada IS 'Indica si esta es la plantilla predeterminada para su tipo/subtipo'
+                """)
+            except Exception as e:
+                logger.warning(f"No se pudieron agregar comentarios a la tabla: {e}")
+                # Continuar con la ejecución, esto no es crítico
             
             # Verificar si existe la tabla suscripciones antes de añadir la columna
             cursor.execute("""
@@ -134,7 +138,8 @@ def load_default_templates(conn=None):
         with conn.cursor() as cursor:
             # Verificar si ya existen plantillas
             cursor.execute("SELECT COUNT(*) FROM plantillas_email")
-            count = cursor.fetchone()[0]
+            result = cursor.fetchone()
+            count = result[0] if result else 0
             
             if count > 0:
                 logger.info(f"Ya existen {count} plantillas, no se cargarán predeterminadas")
