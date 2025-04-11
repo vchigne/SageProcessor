@@ -2,8 +2,9 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { Pool } from 'pg';
 import yaml from 'yaml';
 import fs from 'fs';
+import { promises as fsPromises } from 'fs';
 import path from 'path';
-import { exec } from 'child_process';
+import { exec, spawn } from 'child_process';
 import { promisify } from 'util';
 
 // Promisify exec para usar con async/await
@@ -272,16 +273,117 @@ export default async function handler(
         const ejecucionId = ejecutionResult.rows[0].id;
         console.log('Ejecución registrada con ID:', ejecucionId);
         
-        // 7. Ejecutar main.py para procesar el archivo
+        // 7. Ejecutar el procesador SAGE para procesar el archivo
         try {
-          // Ejecutar el procesador principal como proceso separado
-          const commandResult = await execAsync(`python main.py --casilla=${id} --file=${filePath} --source=portal_web`);
-          console.log('Resultado del procesamiento:', commandResult.stdout);
+          // Similar a process-files.ts, usamos el módulo sage.main
+          const processFile = (
+            filePath: string,
+            yamlContent: string,
+            casilla_id: number
+          ): Promise<{ execution_uuid: string; errors: number; warnings: number }> => {
+            return new Promise(async (resolve, reject) => {
+              try {
+                // Crear un archivo YAML temporal
+                const yamlPath = path.join(process.cwd(), 'tmp', `${Date.now()}.yaml`);
+                
+                // Asegurar que exista el directorio tmp
+                await fsPromises.mkdir(path.join(process.cwd(), 'tmp'), { recursive: true });
+                
+                // Escribir el contenido YAML en el archivo temporal
+                await fsPromises.writeFile(yamlPath, yamlContent);
+                
+                const args = ['-m', 'sage.main', yamlPath, filePath];
+                
+                // Agregar parámetros
+                args.push('--casilla-id', casilla_id.toString());
+                
+                // Indicar que el método de envío es portal_directa
+                args.push('--metodo-envio', 'portal_directa');
+                
+                console.log('Ejecutando:', 'python3', args.join(' '));
+                
+                const pythonProcess = spawn('python3', args, {
+                  env: { 
+                    ...process.env,
+                    PYTHONPATH: process.cwd()
+                  }
+                });
+                
+                let output = '';
+                let error = '';
+                
+                pythonProcess.stdout.on('data', (data) => {
+                  const dataStr = data.toString();
+                  console.log('Process stdout:', dataStr);
+                  output += dataStr;
+                });
+                
+                pythonProcess.stderr.on('data', (data) => {
+                  const dataStr = data.toString();
+                  console.error('Process stderr:', dataStr);
+                  error += dataStr;
+                });
+                
+                pythonProcess.on('close', async (code) => {
+                  // Limpiar archivo temporal
+                  try {
+                    await fsPromises.unlink(yamlPath);
+                  } catch (err) {
+                    console.error('Error al eliminar archivo YAML temporal:', err);
+                  }
+                  
+                  // SAGE puede retornar código 1 cuando encuentra errores de validación
+                  if (code === 0 || code === 1) {
+                    const uuidMatch = output.match(/Execution UUID: ([a-f0-9-]+)/);
+                    const errorsMatch = output.match(/Total errors: (\d+)/);
+                    const warningsMatch = output.match(/Total warnings: (\d+)/);
+                    
+                    if (uuidMatch && errorsMatch && warningsMatch) {
+                      resolve({
+                        execution_uuid: uuidMatch[1],
+                        errors: parseInt(errorsMatch[1]),
+                        warnings: parseInt(warningsMatch[1])
+                      });
+                    } else {
+                      reject(new Error('No se pudo analizar la salida del procesador SAGE'));
+                    }
+                  } else {
+                    reject(new Error(error || 'Error al procesar el archivo'));
+                  }
+                });
+              } catch (err) {
+                reject(err);
+              }
+            });
+          };
+          
+          // Procesar el archivo con SAGE
+          const processingResult = await processFile(filePath, yamlString, parseInt(id as string));
+          
+          // Actualizar el estado de ejecución
+          await pool.query(
+            `UPDATE ejecuciones_yaml SET 
+              estado = $1, 
+              errores_detectados = $2, 
+              warnings_detectados = $3,
+              uuid = $4
+             WHERE id = $5`,
+            [
+              processingResult.errors > 0 ? 'Fallido' : 'Éxito',
+              processingResult.errors,
+              processingResult.warnings,
+              processingResult.execution_uuid,
+              ejecucionId
+            ]
+          );
           
           // 8. Responder con éxito
           return res.status(200).json({
             success: true,
             message: 'Datos procesados correctamente',
+            execution_uuid: processingResult.execution_uuid,
+            errors: processingResult.errors,
+            warnings: processingResult.warnings,
             ejecucion_id: ejecucionId,
             fecha: now.toISOString(),
             archivo: archivoName + fileExt
@@ -297,8 +399,9 @@ export default async function handler(
           );
           
           return res.status(200).json({
-            success: true,
+            success: false,
             message: 'Datos guardados, pero hubo un error en el procesamiento',
+            error: execError.message,
             ejecucion_id: ejecucionId,
             fecha: now.toISOString(),
             warning: 'El archivo fue creado pero el procesamiento falló'
