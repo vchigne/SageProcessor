@@ -772,66 +772,124 @@ Warnings: {self.warning_count}
             
     def process_file(self, file_path: str, package_name: str) -> Tuple[int, int]:
         """Process either a single file or a ZIP package"""
-        if file_path.lower().endswith('.zip'):
-            # Para archivos ZIP, procesamos con process_zip_file
-            return self.process_zip_file(file_path, package_name)
+        # Determinar el tipo de archivo basado en su extensión
+        file_type = self._get_file_type(file_path)
+        is_zip_file = file_path.lower().endswith('.zip')
+        
+        # Verificar si es un paquete o un catálogo en la configuración
+        package = self.config.packages.get(package_name)
+        
+        # Si es un paquete en la configuración
+        if package:
+            self.logger.message(f"Configuración encontrada como paquete: '{package_name}' (tipo: {package.file_format.type})")
+            
+            # CASO 1: Paquete tipo ZIP
+            if package.file_format.type == "ZIP":
+                # Verificar que el archivo sea realmente un ZIP
+                if not is_zip_file:
+                    raise FileProcessingError(
+                        f"Error al procesar {os.path.basename(file_path)}: "
+                        f"El paquete '{package_name}' está configurado como ZIP, "
+                        f"pero se recibió un archivo de tipo {file_type or 'desconocido'}."
+                    )
+                # Procesar como paquete ZIP (múltiples catálogos)
+                return self.process_zip_file(file_path, package_name)
+            
+            # CASO 2: Paquete tipo CSV o EXCEL (un solo catálogo)
+            elif package.file_format.type in ["CSV", "EXCEL"]:
+                # Verificar que tenga exactamente un catálogo
+                if len(package.catalogs) != 1:
+                    raise FileProcessingError(
+                        f"El paquete '{package_name}' es de tipo {package.file_format.type} "
+                        f"pero tiene {len(package.catalogs)} catálogos. "
+                        f"Los paquetes no-ZIP solo pueden tener un catálogo."
+                    )
+                
+                # Verificar que el tipo de archivo coincida con la configuración
+                if file_type != package.file_format.type:
+                    raise FileProcessingError(
+                        f"Error al procesar {os.path.basename(file_path)}: "
+                        f"El paquete '{package_name}' está configurado para archivos {package.file_format.type}, "
+                        f"pero se recibió un archivo {file_type or 'desconocido'}."
+                    )
+                
+                # Obtener y procesar el único catálogo del paquete
+                catalog_name = package.catalogs[0]
+                catalog = self.config.catalogs.get(catalog_name)
+                if not catalog:
+                    raise FileProcessingError(f"El catálogo '{catalog_name}' no se encuentra en la configuración")
+                
+                self.logger.message(f"Procesando archivo {file_path} con catálogo '{catalog_name}'")
+                return self._process_single_file(file_path, catalog)
+            
+            # CASO 3: Tipo de paquete no válido
+            else:
+                raise FileProcessingError(
+                    f"Tipo de formato no válido para el paquete '{package_name}': {package.file_format.type}. "
+                    f"Los tipos permitidos son: ZIP, EXCEL, CSV."
+                )
         else:
-            # Para archivos individuales (CSV, Excel), procesamos el catálogo
+            # Si no es un paquete, buscar directamente como catálogo
             catalog = self.config.catalogs.get(package_name)
             if not catalog:
-                raise FileProcessingError(f"Catalog '{package_name}' not found in configuration")
-
-            try:
-                df = self._read_file(file_path, catalog)
-                self.logger.message(f"Processing file: {file_path}")
-                
-                # Store initial error and warning counts
-                initial_errors = self.error_count
-                initial_warnings = self.warning_count
-                
-                self.validate_catalog(df, catalog)
-                
-                # Calculate records and errors/warnings for this file
-                file_records = len(df)
-                file_errors = self.error_count - initial_errors
-                file_warnings = self.warning_count - initial_warnings
-                
-                # Log summary for this file
-                success_rate = ((file_records - file_errors) / file_records * 100) if file_records > 0 else 0
-                summary = f"""Summary for {os.path.basename(file_path)}:
+                raise FileProcessingError(f"'{package_name}' no se encuentra como paquete ni como catálogo en la configuración")
+            
+            # Procesarlo como archivo individual
+            return self._process_single_file(file_path, catalog)
+            
+    def _process_single_file(self, file_path: str, catalog) -> Tuple[int, int]:
+        """Procesa un archivo individual usando un catálogo específico"""
+        try:
+            df = self._read_file(file_path, catalog)
+            self.logger.message(f"Processing file: {file_path}")
+            
+            # Store initial error and warning counts
+            initial_errors = self.error_count
+            initial_warnings = self.warning_count
+            
+            self.validate_catalog(df, catalog)
+            
+            # Calculate records and errors/warnings for this file
+            file_records = len(df)
+            file_errors = self.error_count - initial_errors
+            file_warnings = self.warning_count - initial_warnings
+            
+            # Log summary for this file
+            success_rate = ((file_records - file_errors) / file_records * 100) if file_records > 0 else 0
+            summary = f"""Summary for {os.path.basename(file_path)}:
 Total records: {file_records}
 Errors: {file_errors}
 Warnings: {file_warnings}
 Success rate: {success_rate:.2f}%
 
 """
-                self.logger.message(summary)
-                
-                # Registrar estadísticas de este archivo para el reporte
-                self.logger.register_file_stats(
-                    os.path.basename(file_path), 
-                    file_records, 
-                    file_errors, 
-                    file_warnings
-                )
-                
-                # También mostrar resumen para archivos individuales
-                self._log_skipped_rules_summary()
+            self.logger.message(summary)
+            
+            # Registrar estadísticas de este archivo para el reporte
+            self.logger.register_file_stats(
+                os.path.basename(file_path), 
+                file_records, 
+                file_errors, 
+                file_warnings
+            )
+            
+            # También mostrar resumen para archivos individuales
+            self._log_skipped_rules_summary()
 
-                return self.error_count, self.warning_count
+            return self.error_count, self.warning_count
 
-            except Exception as e:
-                # Registrar el error y continuar
-                self.error_count += 1
-                error_msg = f"Error processing file {file_path}: {str(e)}"
-                self.logger.error(error_msg, file=os.path.basename(file_path), exception=e)
-                
-                # Registrar estadísticas con 0 registros procesados correctamente
-                self.logger.register_file_stats(
-                    os.path.basename(file_path), 
-                    0,  # ningún registro procesado correctamente
-                    1,  # un error crítico
-                    0   # sin advertencias
-                )
-                
-                return self.error_count, self.warning_count
+        except Exception as e:
+            # Registrar el error y continuar
+            self.error_count += 1
+            error_msg = f"Error processing file {file_path}: {str(e)}"
+            self.logger.error(error_msg, file=os.path.basename(file_path), exception=e)
+            
+            # Registrar estadísticas con 0 registros procesados correctamente
+            self.logger.register_file_stats(
+                os.path.basename(file_path), 
+                0,  # ningún registro procesado correctamente
+                1,  # un error crítico
+                0   # sin advertencias
+            )
+            
+            return self.error_count, self.warning_count
