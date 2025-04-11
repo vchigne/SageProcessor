@@ -185,7 +185,17 @@ function crearArchivoExcel(rows: any[], columnNames: string[], filePath: string)
         const rowObj: any = {};
         // Para cada columna, asignar el valor correspondiente o valor vacío
         columnNames.forEach(colName => {
-          rowObj[colName] = row[colName] === undefined || row[colName] === null ? '' : row[colName];
+          // Tratamiento especial para valores undefined, null, NaN o cadenas vacías
+          const value = row[colName];
+          
+          if (value === undefined || value === null || value === '' || 
+              (typeof value === 'string' && value.toLowerCase() === 'nan')) {
+            // Para campos numéricos, es mejor usar null que cadenas vacías
+            // xlsx convertirá null a celdas vacías en Excel
+            rowObj[colName] = null;
+          } else {
+            rowObj[colName] = value;
+          }
         });
         jsonData.push(rowObj);
       });
@@ -243,8 +253,16 @@ function crearArchivoCSV(rows: any[], columnNames: string[], filePath: string, d
       rows.forEach(row => {
         const rowValues = columnNames.map(col => {
           // Manejar casos especiales (delimitadores, comillas, valores nulos)
-          let cellValue = row[col] === undefined || row[col] === null ? '' : row[col];
+          const value = row[col];
           
+          // Tratamiento especial para valores undefined, null, NaN o cadenas vacías
+          if (value === undefined || value === null || value === '' || 
+              (typeof value === 'string' && value.toLowerCase() === 'nan')) {
+            // Para CSV, usamos una cadena vacía para campos nulos
+            return '';
+          }
+          
+          let cellValue = value;
           // Convertir valores booleanos
           if (typeof cellValue === 'boolean') {
             cellValue = cellValue ? 'true' : 'false';
