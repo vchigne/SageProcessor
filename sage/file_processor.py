@@ -772,23 +772,19 @@ Warnings: {self.warning_count}
             
     def process_file(self, file_path: str, package_name: str) -> Tuple[int, int]:
         """Process either a single file or a ZIP package"""
-        # Verificar si el nombre del paquete corresponde a un paquete o a un catálogo
+        # Verificar si el nombre del paquete corresponde a un paquete configurado como ZIP
         package = self.config.packages.get(package_name)
         
-        # Determinar el tipo de procesamiento basado en la configuración YAML y no solo en la extensión
+        # Si el paquete existe y está configurado como ZIP, procesarlo como ZIP
+        # independientemente de la extensión del archivo
         if package and package.file_format.type == "ZIP":
-            # Si el paquete está configurado como ZIP en el YAML, usar proceso ZIP
+            # Si el archivo no es un ZIP pero el paquete espera un ZIP, mostrar error apropiado
+            if not file_path.lower().endswith('.zip'):
+                raise FileProcessingError(f"Error al procesar {os.path.basename(file_path)}: Se esperaba un archivo ZIP para el paquete '{package_name}', pero se recibió otro tipo de archivo.")
             return self.process_zip_file(file_path, package_name)
-        elif file_path.lower().endswith('.zip') and not package:
-            # Si el archivo es ZIP pero no tenemos un paquete definido, buscar un paquete compatible
-            zip_packages = [name for name, pkg in self.config.packages.items() 
-                           if pkg.file_format and pkg.file_format.type == "ZIP"]
-            if zip_packages:
-                return self.process_zip_file(file_path, zip_packages[0])
-            else:
-                raise FileProcessingError("El archivo es ZIP pero no hay configuración de paquete ZIP en el YAML")
         else:
-            # Procesar como archivo único (CSV o Excel)
+            # Si no es un paquete o no es tipo ZIP, procesar como archivo único (CSV o Excel)
+            # Este es el caso para un catálogo simple
             catalog = self.config.catalogs.get(package_name)
             if not catalog:
                 raise FileProcessingError(f"Catalog '{package_name}' not found in configuration")
