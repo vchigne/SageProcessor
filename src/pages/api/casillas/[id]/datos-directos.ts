@@ -305,8 +305,8 @@ export default async function handler(
           `INSERT INTO ejecuciones_yaml 
            (casilla_id, fecha_ejecucion, estado, metodo_envio, 
             archivo_datos, errores_detectados, warnings_detectados,
-            nombre_yaml)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            nombre_yaml, ruta_directorio)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
            RETURNING id`,
           [
             id,
@@ -316,7 +316,8 @@ export default async function handler(
             archivoName + fileExt,
             0, // Sin errores
             0,  // Sin advertencias
-            casilla.nombre_yaml
+            casilla.nombre_yaml,
+            'pendiente' // Valor temporal que será actualizado por main.py con la ruta UUID real
           ]
         );
         
@@ -456,13 +457,15 @@ except Exception as e:
               estado = $1, 
               errores_detectados = $2, 
               warnings_detectados = $3,
-              uuid = $4
-             WHERE id = $5`,
+              uuid = $4,
+              ruta_directorio = $5
+             WHERE id = $6`,
             [
               processingResult.errors > 0 ? 'Fallido' : 'Éxito',
               processingResult.errors,
               processingResult.warnings,
               processingResult.execution_uuid,
+              path.join('executions', processingResult.execution_uuid), // Ruta del directorio usando el UUID de main.py
               ejecucionId
             ]
           );
