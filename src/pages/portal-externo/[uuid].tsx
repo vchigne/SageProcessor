@@ -909,39 +909,48 @@ export default function PortalExternoPage() {
                           </div>
                         )}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right space-x-2">
-                        {tipoCasilla !== 'multiples_emisores' && (
-                          <button
-                            className="inline-flex items-center px-3 py-1.5 border border-teal-600 text-xs font-medium rounded text-white bg-teal-600 hover:bg-teal-700"
-                            onClick={() => handleUploadClick(casilla)}
-                          >
-                            <ArrowUpTrayIcon className="h-4 w-4 mr-1" />
-                            Subir
-                          </button>
-                        )}
-                        <button
-                          className="inline-flex items-center px-3 py-1.5 border border-teal-600 text-xs font-medium rounded text-teal-600 bg-white hover:bg-teal-50"
-                          onClick={() => handleHistorialClick(casilla)}
-                        >
-                          <ClockIcon className="h-4 w-4 mr-1" />
-                          Historial
-                        </button>
-                        <button
-                          className="inline-flex items-center px-3 py-1.5 border border-blue-600 text-xs font-medium rounded text-blue-600 bg-white hover:bg-blue-50 mr-2"
-                          onClick={() => {
-                            router.push(`/portal-externo/suscripciones/${uuid}?casillaId=${casilla.id}`);
-                          }}
-                        >
-                          <BellAlertIcon className="h-4 w-4 mr-1" />
-                          Suscripciones
-                        </button>
-                        <button
-                          className="inline-flex items-center px-3 py-1.5 border border-purple-600 text-xs font-medium rounded text-white bg-purple-600 hover:bg-purple-700"
-                          onClick={() => handleDescargarPlantilla(casilla)}
-                        >
-                          <DocumentIcon className="h-4 w-4 mr-1" />
-                          Descargar Plantilla
-                        </button>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex flex-col space-y-2">
+                          {/* Primera fila de botones */}
+                          <div className="flex space-x-2 justify-end">
+                            {tipoCasilla !== 'multiples_emisores' && (
+                              <button
+                                className="inline-flex items-center px-3 py-1.5 border border-teal-600 text-xs font-medium rounded text-white bg-teal-600 hover:bg-teal-700"
+                                onClick={() => handleUploadClick(casilla)}
+                              >
+                                <ArrowUpTrayIcon className="h-4 w-4 mr-1" />
+                                Subir
+                              </button>
+                            )}
+                            <button
+                              className="inline-flex items-center px-3 py-1.5 border border-teal-600 text-xs font-medium rounded text-teal-600 bg-white hover:bg-teal-50"
+                              onClick={() => handleHistorialClick(casilla)}
+                            >
+                              <ClockIcon className="h-4 w-4 mr-1" />
+                              Historial
+                            </button>
+                          </div>
+                          
+                          {/* Segunda fila de botones */}
+                          <div className="flex space-x-2 justify-end">
+                            <button
+                              className="inline-flex items-center px-3 py-1.5 border border-blue-600 text-xs font-medium rounded text-blue-600 bg-white hover:bg-blue-50"
+                              onClick={() => {
+                                router.push(`/portal-externo/suscripciones/${uuid}?casillaId=${casilla.id}`);
+                              }}
+                            >
+                              <BellAlertIcon className="h-4 w-4 mr-1" />
+                              Suscripciones
+                            </button>
+                            <button
+                              className="inline-flex items-center px-3 py-1.5 border border-purple-600 text-xs font-medium rounded text-white bg-purple-600 hover:bg-purple-700"
+                              onClick={() => handleDescargarPlantilla(casilla)}
+                            >
+                              <DocumentIcon className="h-4 w-4 mr-1" />
+                              Descargar Plantilla
+                            </button>
+                          </div>
+                        </div>
                       </td>
                     </tr>
                     
