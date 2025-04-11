@@ -7,7 +7,6 @@ import path from 'path';
 import { exec, spawn } from 'child_process';
 import xlsx from 'xlsx';
 import { promisify } from 'util';
-import { v4 as uuidv4 } from 'uuid';
 
 // Promisify exec para usar con async/await
 const execAsync = promisify(exec);
@@ -288,14 +287,9 @@ export default async function handler(
       const formatoArchivo = obtenerFormatoArchivo(yamlContent, catalogs[0]);
       
       try {
-        // Crear un UUID para la ejecución (SAGE lo usará para crear el directorio)
-        const executionUuid = uuidv4();
-        
         // Crear directorio temporal para procesar los datos
         const tmpDir = path.join(process.cwd(), 'tmp');
         await fsPromises.mkdir(tmpDir, { recursive: true });
-        
-        console.log('UUID para esta ejecución:', executionUuid);
         
         // Nombre y ruta del archivo temporal
         const fileExt = formatoArchivo.type.toLowerCase() === 'excel' ? '.xlsx' : '.csv';
@@ -311,8 +305,8 @@ export default async function handler(
           `INSERT INTO ejecuciones_yaml 
            (casilla_id, fecha_ejecucion, estado, metodo_envio, 
             archivo_datos, errores_detectados, warnings_detectados,
-            nombre_yaml, uuid)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            nombre_yaml)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
            RETURNING id`,
           [
             id,
@@ -322,8 +316,7 @@ export default async function handler(
             archivoName + fileExt,
             0, // Sin errores
             0,  // Sin advertencias
-            casilla.nombre_yaml,
-            executionUuid
+            casilla.nombre_yaml
           ]
         );
         
@@ -428,7 +421,7 @@ except Exception as e:
                       const result = JSON.parse(output.trim());
                       
                       resolve({
-                        execution_uuid: executionUuid, // Seguimos usando el UUID que generamos al inicio
+                        execution_uuid: result.execution_uuid, // Usamos el UUID generado por main.py
                         errors: result.errors,
                         warnings: result.warnings
                       });
