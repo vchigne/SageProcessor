@@ -334,93 +334,22 @@ export default function PortalExternoPage() {
   
   // Función para manejar el clic en "Introducir datos directamente"
   const handleIntroducirDatosClick = (casilla: DataBox) => {
-    // Verificación inicial de datos de casilla
-    console.log('DEBUG - Casilla seleccionada:', {
-      id: casilla.id,
-      nombre: casilla.nombre || casilla.nombreCompleto,
-      campos: Object.keys(casilla),
-      tieneYaml: !!casilla.yaml_contenido,
-      tieneArchivoYaml: !!casilla.archivo_yaml_contenido
-    });
-    
-    // Vamos a imprimir el YAML completo para depuración de la casilla 63
-    if (casilla.id === 63) {
-      console.log('DEBUG CASILLA 63 - CAMPOS DISPONIBLES:', Object.keys(casilla));
-      
-      // Verificar de dónde obtener el contenido YAML (puede estar en diferentes propiedades)
-      const yamlContent63 = casilla.yaml_contenido || casilla.archivo_yaml_contenido;
-      console.log('DEBUG CASILLA 63 - YAML CONTENT DISPONIBLE:', !!yamlContent63);
-      
-      if (yamlContent63) {
-        console.log('DEBUG CASILLA 63 - YAML CONTENT (primeros 500 caracteres):', 
-          yamlContent63.substring(0, 500) + (yamlContent63.length > 500 ? '...' : ''));
-        
-        try {
-          const parsedYaml = yaml.parse(yamlContent63);
-          console.log('DEBUG CASILLA 63 - PARSED YAML ESTRUCTURA:', Object.keys(parsedYaml));
-          
-          // Inspeccionar el formato del paquete
-          if (parsedYaml.packages) {
-            console.log('DEBUG CASILLA 63 - PACKAGES KEYS:', Object.keys(parsedYaml.packages));
-            for (const pkgName in parsedYaml.packages) {
-              const pkg = parsedYaml.packages[pkgName];
-              console.log(`DEBUG CASILLA 63 - PACKAGE ${pkgName} KEYS:`, Object.keys(pkg));
-              if (pkg.file_format) {
-                console.log(`DEBUG CASILLA 63 - PACKAGE ${pkgName} FORMAT:`, pkg.file_format);
-              }
-            }
-          }
-          
-          // Inspeccionar catálogos
-          if (parsedYaml.catalogs) {
-            console.log('DEBUG CASILLA 63 - CATALOGS KEYS:', Object.keys(parsedYaml.catalogs));
-            for (const catName in parsedYaml.catalogs) {
-              const cat = parsedYaml.catalogs[catName];
-              console.log(`DEBUG CASILLA 63 - CATALOG ${catName} KEYS:`, Object.keys(cat));
-              if (cat.file_format) {
-                console.log(`DEBUG CASILLA 63 - CATALOG ${catName} FORMAT:`, cat.file_format);
-              }
-            }
-          }
-        } catch (error) {
-          console.error('Error al analizar YAML para debug:', error);
-        }
-      } else {
-        console.error('DEBUG CASILLA 63 - NO HAY CONTENIDO YAML DISPONIBLE');
-      }
-    }
-    
     // Analizar el formato de la casilla
     const formatoInfo = analizarFormatoCasilla(casilla);
     
-    // Mostrar información de debug para cualquier casilla
-    console.log(`DEBUG - Casilla ${casilla.id} - Resultado análisis formato:`, formatoInfo);
-    
-    // Siempre mostrar un mensaje de que la funcionalidad está en desarrollo
-    // mientras solucionamos el problema de detección de formato
-    toast.info('Funcionalidad de entrada directa de datos en desarrollo');
-    console.log('Casilla seleccionada para entrada directa:', casilla.id, casilla.nombre || casilla.nombreCompleto);
-    
-    // Comentando temporalmente la lógica de validación mientras resolvemos el problema
-    /* 
     // Verificar si el formato permite ingreso directo
     if (formatoInfo.tieneFormatoValido) {
-      if (formatoInfo.esMultiCatalogo) {
-        // Si es un archivo ZIP, mostrar mensaje informativo
-        toast.warning('Los archivos en formato ZIP no permiten el ingreso directo de datos. Por favor, utilice la opción "Descargar Plantilla" y luego suba el archivo completo.');
-      } else {
-        // El formato permite ingreso directo, proceder con la funcionalidad
-        toast.info('Funcionalidad de entrada directa de datos en desarrollo');
-        console.log('Casilla seleccionada para entrada directa:', casilla.id, casilla.nombre || casilla.nombreCompleto);
-        
-        // Aquí irá la lógica para abrir el modal de introducción de datos
-        // basado en la estructura YAML de la casilla
-      }
+      // No es necesario verificar si es multi-catálogo porque ya hemos ocultado el botón para ZIP
+      // El formato permite ingreso directo, proceder con la funcionalidad
+      toast.info('Funcionalidad de entrada directa de datos en desarrollo');
+      console.log('Casilla seleccionada para entrada directa:', casilla.id, casilla.nombre || casilla.nombreCompleto);
+      
+      // Aquí irá la lógica para abrir el modal de introducción de datos
+      // basado en la estructura YAML de la casilla
     } else {
       // Formato no compatible, mostrar mensaje informativo
       toast.warning('El formato de esta casilla no permite el ingreso directo de datos. Se admiten únicamente formatos CSV y Excel.');
     }
-    */
   };
 
   const toggleExpandCasilla = (casillaNombre: string) => {
@@ -1137,13 +1066,15 @@ export default function PortalExternoPage() {
                               Descargar Plantilla
                             </button>
                             {/* Botón para introducir datos directamente (siempre visible, con manejo inteligente de formatos) */}
-                            <button
-                              className="inline-flex items-center px-3 py-1.5 border border-green-600 text-xs font-medium rounded text-white bg-green-600 hover:bg-green-700"
-                              onClick={() => handleIntroducirDatosClick(casilla)}
-                            >
-                              <PencilSquareIcon className="h-4 w-4 mr-1" />
-                              Introducir datos {analizarFormatoCasilla(casilla).permitirIngreso ? '✓' : 'X'}
-                            </button>
+                            {!analizarFormatoCasilla(casilla).esMultiCatalogo && (
+                              <button
+                                className="inline-flex items-center px-3 py-1.5 border border-green-600 text-xs font-medium rounded text-white bg-green-600 hover:bg-green-700"
+                                onClick={() => handleIntroducirDatosClick(casilla)}
+                              >
+                                <PencilSquareIcon className="h-4 w-4 mr-1" />
+                                Introducir datos directamente
+                              </button>
+                            )}
                           </div>
                         </div>
                       </td>
