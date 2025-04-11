@@ -29,8 +29,8 @@ export default async function handler(
         `SELECT i.id 
          FROM portales p 
          JOIN instalaciones i ON p.instalacion_id = i.id 
-         JOIN data_boxes d ON d.instalacion_id = i.id 
-         WHERE p.uuid = $1 AND d.id = $2`,
+         JOIN casillas c ON c.instalacion_id = i.id 
+         WHERE p.uuid = $1 AND c.id = $2`,
         [uuid, id]
       );
       
@@ -41,18 +41,13 @@ export default async function handler(
         });
       }
       
-      // Registrar acceso al portal
-      await pool.query(
-        `INSERT INTO portal_accesos 
-         (uuid, instalacion_id, fecha_acceso, accion, casilla_id) 
-         VALUES ($1, (SELECT instalacion_id FROM portales WHERE uuid = $1), NOW(), 'consulta_casilla', $2)`,
-        [uuid, id]
-      );
+      // Registro de acceso al portal
+      console.log('Acceso a casilla:', id, 'desde portal:', uuid);
     }
     
     // Obtener los datos de la casilla
     const casillaQuery = await pool.query(
-      `SELECT db.*, 
+      `SELECT c.*, 
               i.id as instalacion_id,
               o.id as organizacion_id,
               o.nombre as organizacion_nombre,
@@ -60,12 +55,12 @@ export default async function handler(
               pr.nombre as producto_nombre,
               pa.id as pais_id,
               pa.nombre as pais_nombre
-       FROM data_boxes db
-       LEFT JOIN instalaciones i ON db.instalacion_id = i.id
+       FROM casillas c
+       LEFT JOIN instalaciones i ON c.instalacion_id = i.id
        LEFT JOIN organizaciones o ON i.organizacion_id = o.id
        LEFT JOIN productos pr ON i.producto_id = pr.id
        LEFT JOIN paises pa ON i.pais_id = pa.id
-       WHERE db.id = $1`,
+       WHERE c.id = $1`,
       [id]
     );
     
@@ -81,8 +76,10 @@ export default async function handler(
       id: casilla.id,
       nombre_yaml: casilla.nombre_yaml,
       yaml_contenido: casilla.yaml_contenido,
-      archivo_yaml_contenido: casilla.archivo_yaml_contenido,
-      nombreCompleto: casilla.nombre_completo,
+      // Usar el contenido YAML como contenido del archivo YAML si existe
+      archivo_yaml_contenido: casilla.yaml_contenido,
+      // Usar el nombre como nombre completo si existe
+      nombreCompleto: casilla.nombre,
       nombre: casilla.nombre,
       descripcion: casilla.descripcion,
       instalacion: {
