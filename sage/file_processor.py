@@ -93,13 +93,31 @@ class FileProcessor:
                 if field.type == 'fecha':
                     # Para fechas, usar pd.to_datetime en lugar de astype
                     df[field.name] = pd.to_datetime(df[field.name], errors='coerce')
+                elif field.type in ['entero', 'decimal'] and not field.required:
+                    # Para campos numéricos opcionales, usar pd.to_numeric con coerce
+                    # para convertir a numéricos pero preservar NaN donde corresponda
+                    df[field.name] = pd.to_numeric(df[field.name], errors='coerce')
                 else:
                     df[field.name] = df[field.name].astype(target_type)
 
             except (ValueError, TypeError) as e:
                 # Identificar las filas con errores de tipo
                 if field.type in ['decimal', 'entero']:
-                    invalid_mask = pd.to_numeric(df[field.name], errors='coerce').isna()
+                    # Si el campo es opcional, permitir valores NaN y cadenas vacías
+                    if not field.required:
+                        # Convertir a numérico con coerce, pero considerar válidos los NaN/vacíos originales
+                        numeric_values = pd.to_numeric(df[field.name], errors='coerce')
+                        # Solo marcar como inválidos los valores que no son numéricos y no son NaN/vacíos originales
+                        invalid_mask = numeric_values.isna() & ~(
+                            df[field.name].isna() | 
+                            (df[field.name] == '') | 
+                            (df[field.name] == 'nan') | 
+                            (df[field.name].astype(str) == 'nan')
+                        )
+                    else:
+                        # Si el campo es requerido, cualquier NaN o valor no numérico es inválido
+                        invalid_mask = pd.to_numeric(df[field.name], errors='coerce').isna()
+                    
                     invalid_rows = df[invalid_mask]
                 elif field.type == 'fecha':
                     # Para fechas, usar pd.to_datetime con coerce para detectar valores inválidos
