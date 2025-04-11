@@ -99,9 +99,12 @@ export default async function handler(
       }
     };
     
-    // Obtener emisores de la casilla
+    // Obtener emisores de la casilla a través de la tabla de relación emisores_por_casilla
     const emisoresQuery = await pool.query(
-      'SELECT id, nombre FROM emisores WHERE casilla_id = $1',
+      `SELECT e.id, e.nombre 
+       FROM emisores e
+       JOIN emisores_por_casilla epc ON e.id = epc.emisor_id
+       WHERE epc.casilla_id = $1`,
       [id]
     );
     

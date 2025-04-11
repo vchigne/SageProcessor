@@ -111,24 +111,33 @@ export default async function handler(
       // 5. Registrar la ejecución en la base de datos
       const now = new Date();
       const archivoName = 'datos_directos_' + now.toISOString().replace(/[:.]/g, '_');
-      const ejecutionResult = await pool.query(
-        `INSERT INTO ejecuciones_yaml 
-         (casilla_id, fecha_ejecucion, estado, metodo_envio, 
-          archivo_datos, errores_detectados, warnings_detectados)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
-         RETURNING id`,
-        [
-          id,
-          now,
-          'Éxito', 
-          'ENTRADA_DIRECTA',
-          archivoName,
-          0, // Sin errores
-          0  // Sin advertencias
-        ]
-      );
+      let ejecucionId;
       
-      const ejecucionId = ejecutionResult.rows[0].id;
+      try {
+        const ejecutionResult = await pool.query(
+          `INSERT INTO ejecuciones_yaml 
+           (casilla_id, fecha_ejecucion, estado, metodo_envio, 
+            archivo_datos, errores_detectados, warnings_detectados)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           RETURNING id`,
+          [
+            id,
+            now,
+            'Éxito', 
+            'ENTRADA_DIRECTA',
+            archivoName,
+            0, // Sin errores
+            0  // Sin advertencias
+          ]
+        );
+        
+        ejecucionId = ejecutionResult.rows[0].id;
+        console.log('Ejecución registrada correctamente:', ejecucionId);
+      } catch (error) {
+        console.error('Error al registrar ejecución en la base de datos:', error);
+        // No lanzamos error, solo lo registramos y continuamos
+        ejecucionId = 0; // Valor por defecto si no se puede registrar
+      }
       
       // 6. Responder con éxito
       return res.status(200).json({
