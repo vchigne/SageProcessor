@@ -55,42 +55,40 @@ def process_files(yaml_path: str, data_path: str, casilla_id: Optional[int] = No
         
         logger.message(f"Detectado archivo de tipo: {file_type or 'Desconocido'}")
         
-        # Log para diagnóstico: Verificar si hay paquetes definidos en el YAML
+        # Diagnóstico básico
         package_count = len(config.packages) if hasattr(config, 'packages') else 0
         catalog_count = len(config.catalogs) if hasattr(config, 'catalogs') else 0
-        logger.message(f"Configuración YAML - Paquetes: {package_count}, Catálogos: {catalog_count}")
+        logger.message(f"Diagnóstico YAML - Paquetes: {package_count}, Catálogos: {catalog_count}")
+        logger.message(f"Archivo a procesar: {os.path.basename(data_dest)} (tipo: {file_type or 'desconocido'})")
         
-        # Para archivos EXCEL o CSV, priorizar usar catálogos directamente si existen
-        if file_type in ["EXCEL", "CSV"] and catalog_count > 0:
-            # Usar el primer catálogo disponible (comportamiento más seguro)
-            package_name = list(config.catalogs.keys())[0]
-            logger.message(f"Seleccionando catálogo '{package_name}' para archivo {os.path.basename(data_dest)} de tipo {file_type}")
+        # REGLA #1: Archivos ZIP siempre requieren un paquete de tipo ZIP
+        if is_zip:
+            logger.message("El archivo es ZIP - Buscando paquete compatible")
             
-            # Pero intentar encontrar un catálogo que coincida exactamente con el nombre del archivo
-            for catalog_name, catalog in config.catalogs.items():
-                if catalog.filename.lower() == os.path.basename(data_dest).lower():
-                    package_name = catalog_name
-                    logger.message(f"¡Encontrado catálogo exacto! Usando '{package_name}' para {os.path.basename(data_dest)}")
-                    break
-        
-        # Para archivos ZIP, es obligatorio usar un paquete ZIP
-        elif is_zip:
-            if package_count > 0:
-                # Buscar paquetes ZIP
-                zip_packages = [
-                    pkg_name for pkg_name, pkg in config.packages.items()
-                    if pkg.file_format.type == "ZIP"
-                ]
-                if zip_packages:
-                    package_name = zip_packages[0]
-                    logger.message(f"Usando paquete ZIP '{package_name}' para archivo {os.path.basename(data_dest)}")
-                else:
-                    raise SAGEError(f"No se encontró configuración de paquete ZIP en el YAML para procesar {os.path.basename(data_dest)}")
+            # Verificar que haya paquetes definidos
+            if package_count == 0:
+                raise SAGEError(f"El archivo {os.path.basename(data_dest)} es ZIP pero no hay paquetes definidos en el YAML")
+                
+            # Buscar paquetes configurados como ZIP
+            zip_packages = [
+                pkg_name for pkg_name, pkg in config.packages.items()
+                if pkg.file_format.type == "ZIP"
+            ]
+            
+            if zip_packages:
+                package_name = zip_packages[0]
+                logger.message(f"Seleccionado paquete ZIP: '{package_name}'")
             else:
-                raise SAGEError(f"No hay paquetes definidos en YAML para procesar archivos ZIP")
-        
-        # Búsqueda de paquetes que coincidan con el tipo de archivo (vía file_format.type)
-        elif package_count > 0 and file_type:
+                raise SAGEError(
+                    f"El archivo {os.path.basename(data_dest)} es ZIP pero no hay paquetes "
+                    f"configurados como ZIP en el YAML"
+                )
+                
+        # REGLA #2: Para archivos no-ZIP, buscar paquete coincidente por tipo
+        elif file_type and package_count > 0:
+            logger.message(f"Archivo es {file_type} - Buscando paquete del mismo tipo")
+            
+            # Buscar paquetes configurados con el mismo tipo de archivo
             matching_packages = [
                 pkg_name for pkg_name, pkg in config.packages.items()
                 if pkg.file_format.type == file_type
@@ -98,21 +96,53 @@ def process_files(yaml_path: str, data_path: str, casilla_id: Optional[int] = No
             
             if matching_packages:
                 package_name = matching_packages[0]
-                logger.message(f"Usando paquete '{package_name}' de tipo {file_type} para archivo {os.path.basename(data_dest)}")
-            else:
-                # Si no encontramos paquetes que coincidan pero hay catálogos
-                if catalog_count > 0:
-                    package_name = list(config.catalogs.keys())[0]
-                    logger.message(f"No se encontró paquete para tipo {file_type}. Usando catálogo '{package_name}' como alternativa")
+                logger.message(f"Seleccionado paquete de tipo {file_type}: '{package_name}'")
+                
+                # Si hay un paquete con nombre idéntico al archivo, priorizar ese
+                base_name = os.path.splitext(os.path.basename(data_dest))[0].lower()
+                for pkg_name in matching_packages:
+                    if pkg_name.lower() == base_name:
+                        package_name = pkg_name
+                        logger.message(f"¡Priorizado paquete con nombre coincidente: '{package_name}'!")
+                        break
+                
+            # Si no hay paquetes que coincidan, buscar catálogo directo
+            elif catalog_count > 0:
+                # Primero intentar encontrar un catálogo cuyo nombre de archivo coincida exactamente
+                matching_catalog = None
+                for cat_name, cat in config.catalogs.items():
+                    if hasattr(cat, 'filename') and cat.filename.lower() == os.path.basename(data_dest).lower():
+                        matching_catalog = cat_name
+                        break
+                
+                # Si encontramos un catálogo coincidente, usarlo
+                if matching_catalog:
+                    package_name = matching_catalog
+                    logger.message(f"Usando catálogo con nombre de archivo coincidente: '{package_name}'")
+                # Si no, usar el primer catálogo disponible
                 else:
-                    raise SAGEError(f"No se encontró ningún catálogo ni paquete compatible en YAML para procesar {os.path.basename(data_dest)}")
-        else:
-            # Si no hay paquetes pero sí catálogos, usamos el primer catálogo
-            if catalog_count > 0:
-                package_name = list(config.catalogs.keys())[0]
-                logger.message(f"No hay paquetes definidos en YAML. Usando catálogo '{package_name}' para {os.path.basename(data_dest)}")
+                    package_name = list(config.catalogs.keys())[0]
+                    logger.message(f"Usando primer catálogo disponible: '{package_name}'")
             else:
-                raise SAGEError(f"No se encontró ningún catálogo ni paquete en YAML para procesar {os.path.basename(data_dest)}")
+                raise SAGEError(
+                    f"No se encontró ningún paquete de tipo {file_type} ni catálogo "
+                    f"compatible para procesar {os.path.basename(data_dest)}"
+                )
+                
+        # REGLA #3: Si no podemos determinar el tipo, pero hay catálogos, intentar con el primero
+        elif catalog_count > 0:
+            package_name = list(config.catalogs.keys())[0]
+            logger.message(
+                f"No se pudo determinar tipo de archivo o no hay paquetes compatibles. "
+                f"Intentando con catálogo: '{package_name}'"
+            )
+            
+        # REGLA #4: No hay configuración compatible
+        else:
+            raise SAGEError(
+                f"No se encontró ninguna configuración compatible para procesar "
+                f"{os.path.basename(data_dest)}"
+            )
                 
 
         error_count, warning_count = processor.process_file(data_dest, package_name)
