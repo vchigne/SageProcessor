@@ -336,6 +336,60 @@ export default function PortalExternoPage() {
       [casillaNombre]: !expandedCasillas[casillaNombre]
     });
   };
+  
+  const handleDescargarPlantilla = async (casilla: DataBox | any) => {
+    // Mostrar algún indicador de carga al usuario
+    toast.info('Generando plantilla para descarga...');
+    
+    try {
+      // Obtener la estructura del YAML para determinar qué tipo de plantilla generar
+      const response = await fetch(`/api/casillas/${casilla.id}/plantilla`);
+      
+      if (!response.ok) {
+        throw new Error(`Error al generar la plantilla: ${response.statusText}`);
+      }
+      
+      // Obtener el blob de la respuesta 
+      const blob = await response.blob();
+      
+      // Obtener el nombre del archivo del encabezado Content-Disposition, si está disponible
+      let nombreArchivo = '';
+      const contentDisposition = response.headers.get('Content-Disposition');
+      
+      if (contentDisposition) {
+        const filenameMatch = /filename="(.+)"/.exec(contentDisposition);
+        if (filenameMatch && filenameMatch[1]) {
+          nombreArchivo = filenameMatch[1];
+        }
+      }
+      
+      // Si no se pudo obtener el nombre del archivo del encabezado, generarlo
+      if (!nombreArchivo) {
+        const nombreBase = casilla.nombre_yaml ? casilla.nombre_yaml.toLowerCase().replace(/[^a-z0-9]/g, '_') : 
+                          (casilla.nombre ? casilla.nombre.toLowerCase().replace(/[^a-z0-9]/g, '_') : `casilla_${casilla.id}`);
+        nombreArchivo = `plantilla_${nombreBase}.zip`;
+      }
+      
+      // Crear un objeto URL y un enlace para la descarga
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = nombreArchivo;
+      document.body.appendChild(a);
+      a.click();
+      
+      // Liberar el objeto URL y eliminar el enlace
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      }, 0);
+      
+      toast.success('Plantilla generada correctamente');
+    } catch (error) {
+      console.error('Error al descargar plantilla:', error);
+      toast.error('No se pudo generar la plantilla. Por favor, inténtelo de nuevo.');
+    }
+  };
 
   // Determinar el tipo de casilla según su configuración
   const determinarTipoCasilla = (casilla: any): 'sin_emisores' | 'un_emisor' | 'multiples_emisores' => {
@@ -873,13 +927,20 @@ export default function PortalExternoPage() {
                           Historial
                         </button>
                         <button
-                          className="inline-flex items-center px-3 py-1.5 border border-blue-600 text-xs font-medium rounded text-blue-600 bg-white hover:bg-blue-50"
+                          className="inline-flex items-center px-3 py-1.5 border border-blue-600 text-xs font-medium rounded text-blue-600 bg-white hover:bg-blue-50 mr-2"
                           onClick={() => {
                             router.push(`/portal-externo/suscripciones/${uuid}?casillaId=${casilla.id}`);
                           }}
                         >
                           <BellAlertIcon className="h-4 w-4 mr-1" />
                           Suscripciones
+                        </button>
+                        <button
+                          className="inline-flex items-center px-3 py-1.5 border border-purple-600 text-xs font-medium rounded text-white bg-purple-600 hover:bg-purple-700"
+                          onClick={() => handleDescargarPlantilla(casilla)}
+                        >
+                          <DocumentIcon className="h-4 w-4 mr-1" />
+                          Descargar Plantilla
                         </button>
                       </td>
                     </tr>
