@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
-import AdminLayout from '../../components/layouts/AdminLayout';
+import Head from 'next/head';
 import { 
   TrashIcon, PlusIcon, CheckIcon, XMarkIcon 
 } from '@heroicons/react/24/outline';
@@ -206,7 +206,10 @@ export default function AsignacionesPlantilla() {
   };
 
   return (
-    <AdminLayout>
+    <>
+      <Head>
+        <title>Asignaciones de Plantillas por Cliente - SAGE Admin</title>
+      </Head>
       <div className="px-4 sm:px-6 lg:px-8 py-8 w-full max-w-9xl mx-auto">
         <div className="sm:flex sm:justify-between sm:items-center mb-8">
           {/* Left: Title */}
@@ -418,6 +421,6 @@ export default function AsignacionesPlantilla() {
           </ul>
         </div>
       </div>
-    </AdminLayout>
+    </>
   );
 }
