@@ -334,12 +334,26 @@ export default function PortalExternoPage() {
   
   // Función para manejar el clic en "Introducir datos directamente"
   const handleIntroducirDatosClick = (casilla: DataBox) => {
-    // Por ahora, mostrar un mensaje de que la funcionalidad está en desarrollo
-    toast.info('Funcionalidad de entrada directa de datos en desarrollo');
-    console.log('Casilla seleccionada para entrada directa:', casilla.id, casilla.nombre || casilla.nombreCompleto);
+    // Analizar el formato de la casilla
+    const formatoInfo = analizarFormatoCasilla(casilla);
     
-    // Aquí irá la lógica para abrir el modal de introducción de datos
-    // basado en la estructura YAML de la casilla
+    // Verificar si el formato permite ingreso directo
+    if (formatoInfo.tieneFormatoValido) {
+      if (formatoInfo.esMultiCatalogo) {
+        // Si es un paquete multi-catálogo, mostrar mensaje informativo
+        toast.warning('Los paquetes multi-catálogo no permiten el ingreso directo de datos. Por favor, utilice la opción "Descargar Plantilla" y luego suba el archivo completo.');
+      } else {
+        // El formato permite ingreso directo, proceder con la funcionalidad
+        toast.info('Funcionalidad de entrada directa de datos en desarrollo');
+        console.log('Casilla seleccionada para entrada directa:', casilla.id, casilla.nombre || casilla.nombreCompleto);
+        
+        // Aquí irá la lógica para abrir el modal de introducción de datos
+        // basado en la estructura YAML de la casilla
+      }
+    } else {
+      // Formato no compatible, mostrar mensaje informativo
+      toast.warning('El formato de esta casilla no permite el ingreso directo de datos. Se admiten únicamente formatos CSV y Excel no empaquetados.');
+    }
   };
 
   const toggleExpandCasilla = (casillaNombre: string) => {
@@ -419,11 +433,24 @@ export default function PortalExternoPage() {
     return 'multiples_emisores';
   };
   
-  // Determinar si una casilla permite ingreso directo de datos (CSV o Excel, pero no ZIP)
-  const permitirIngresoDirecto = (casilla: any): boolean => {
+  // Determinar si una casilla permite ingreso directo de datos
+  // y obtener información sobre el formato
+  const analizarFormatoCasilla = (casilla: any): { 
+    permitirIngreso: boolean, 
+    tieneFormatoValido: boolean, 
+    esMultiCatalogo: boolean, 
+    mensaje: string 
+  } => {
+    const resultado = {
+      permitirIngreso: false,
+      tieneFormatoValido: false,
+      esMultiCatalogo: false,
+      mensaje: 'No se puede determinar el formato del archivo'
+    };
+    
     // Si no hay contenido YAML, no podemos determinar el formato
     if (!casilla.yaml_contenido) {
-      return false;
+      return resultado;
     }
     
     try {
@@ -431,10 +458,10 @@ export default function PortalExternoPage() {
       const yamlContent = yaml.parse(casilla.yaml_contenido);
       
       // Verificar si es un paquete multi-catálogo (ZIP)
-      const esMultiCatalogo = !!(yamlContent.packages && Object.keys(yamlContent.packages).length > 0);
-      if (esMultiCatalogo) {
-        return false; // No permitir ingreso directo para paquetes ZIP
-      }
+      resultado.esMultiCatalogo = !!(yamlContent.packages && Object.keys(yamlContent.packages).length > 0);
+      
+      // Verificar si tiene formato válido (CSV o Excel)
+      let tieneCSVoExcel = false;
       
       // Verificar formato de catálogos individuales
       if (yamlContent.catalogs && Object.keys(yamlContent.catalogs).length > 0) {
@@ -443,19 +470,37 @@ export default function PortalExternoPage() {
           const catalog = yamlContent.catalogs[catalogName];
           if (catalog.file_format && catalog.file_format.type) {
             const formatoArchivo = catalog.file_format.type.toLowerCase();
-            // Permitir ingreso directo solo para formatos CSV y Excel
+            // Verificar si es CSV o Excel
             if (formatoArchivo === 'csv' || formatoArchivo === 'excel') {
-              return true;
+              tieneCSVoExcel = true;
+              break;
             }
           }
         }
       }
       
-      return false;
+      resultado.tieneFormatoValido = tieneCSVoExcel;
+      
+      // Determinar si permite ingreso directo (CSV o Excel y no multi-catálogo)
+      if (tieneCSVoExcel && !resultado.esMultiCatalogo) {
+        resultado.permitirIngreso = true;
+        resultado.mensaje = 'Formato válido para ingreso directo de datos';
+      } else if (!tieneCSVoExcel) {
+        resultado.mensaje = 'El formato de archivo no es compatible con el ingreso directo de datos';
+      } else if (resultado.esMultiCatalogo) {
+        resultado.mensaje = 'Los paquetes multi-catálogo no permiten el ingreso directo de datos';
+      }
+      
+      return resultado;
     } catch (error) {
       console.error('Error al analizar el contenido YAML:', error);
-      return false;
+      return resultado;
     }
+  };
+  
+  // Función simplificada para compatibilidad con código existente
+  const permitirIngresoDirecto = (casilla: any): boolean => {
+    return analizarFormatoCasilla(casilla).permitirIngreso;
   };
 
   // Obtener información de estado para una casilla completa
@@ -1000,16 +1045,14 @@ export default function PortalExternoPage() {
                               <DocumentIcon className="h-4 w-4 mr-1" />
                               Descargar Plantilla
                             </button>
-                            {/* Botón para introducir datos directamente (solo visible si el formato lo permite) */}
-                            {permitirIngresoDirecto(casilla) && (
-                              <button
-                                className="inline-flex items-center px-3 py-1.5 border border-green-600 text-xs font-medium rounded text-white bg-green-600 hover:bg-green-700"
-                                onClick={() => handleIntroducirDatosClick(casilla)}
-                              >
-                                <PencilSquareIcon className="h-4 w-4 mr-1" />
-                                Introducir datos directamente
-                              </button>
-                            )}
+                            {/* Botón para introducir datos directamente (siempre visible, con manejo inteligente de formatos) */}
+                            <button
+                              className="inline-flex items-center px-3 py-1.5 border border-green-600 text-xs font-medium rounded text-white bg-green-600 hover:bg-green-700"
+                              onClick={() => handleIntroducirDatosClick(casilla)}
+                            >
+                              <PencilSquareIcon className="h-4 w-4 mr-1" />
+                              Introducir datos directamente
+                            </button>
                           </div>
                         </div>
                       </td>
