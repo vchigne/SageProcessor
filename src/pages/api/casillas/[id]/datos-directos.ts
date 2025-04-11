@@ -261,7 +261,7 @@ export default async function handler(
             id,
             now,
             'Parcial', // Comenzamos con Parcial ya que la restricción no permite 'Pendiente'
-            'ENTRADA_DIRECTA',
+            'portal_upload', // Usando un valor permitido por la restricción
             archivoName + fileExt,
             0, // Sin errores
             0,  // Sin advertencias
@@ -297,8 +297,8 @@ export default async function handler(
                 // Agregar parámetros
                 args.push('--casilla-id', casilla_id.toString());
                 
-                // Indicar que el método de envío es portal_directa
-                args.push('--metodo-envio', 'portal_directa');
+                // Indicar que el método de envío es portal_upload (un valor válido)
+                args.push('--metodo-envio', 'portal_upload');
                 
                 console.log('Ejecutando:', 'python3', args.join(' '));
                 
