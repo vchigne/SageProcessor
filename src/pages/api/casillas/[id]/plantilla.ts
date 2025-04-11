@@ -42,21 +42,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const casilla = casillaQuery.rows[0];
     
-    // Obtener el contenido YAML de la tabla archivos_yaml
+    // Obtener el contenido YAML de la tabla casillas
     const yamlQuery = await pool.query(
-      `SELECT a.contenido 
-       FROM archivos_yaml a
-       WHERE a.nombre = $1`,
-      [casilla.nombre_yaml]
+      `SELECT yaml_contenido 
+       FROM casillas 
+       WHERE id = $1`,
+      [id]
     );
     
     console.log('Buscando YAML para casilla:', casilla.id, 'nombre_yaml:', casilla.nombre_yaml);
     
-    if (yamlQuery.rows.length === 0) {
+    if (yamlQuery.rows.length === 0 || !yamlQuery.rows[0].yaml_contenido) {
       return res.status(400).json({ error: 'No se ha definido una estructura en el archivo YAML para esta casilla' });
     }
     
-    const yamlContenido = yamlQuery.rows[0].contenido;
+    const yamlContenido = yamlQuery.rows[0].yaml_contenido;
     
     // Si no hay contenido YAML, no podemos generar una plantilla
     if (!yamlContenido) {
