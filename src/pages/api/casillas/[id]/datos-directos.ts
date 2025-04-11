@@ -219,7 +219,7 @@ export default async function handler(
         }
       }
       
-      // 5. Crear directorio de datos para los archivos
+      // 5. Usar sage.utils para crear un directorio de ejecución con UUID
       const now = new Date();
       const timestamp = now.toISOString().replace(/[:.]/g, '_');
       const archivoName = `datos_directos_${timestamp}`;
@@ -227,22 +227,27 @@ export default async function handler(
       // Determinar el formato del archivo (CSV o Excel) basado en el YAML
       const formatoArchivo = obtenerFormatoArchivo(yamlContent, catalogs[0]);
       
-      // Crear el directorio data/casilla_id si no existe
-      const dataDirBase = path.join(process.cwd(), 'data');
-      const dataDirCasilla = path.join(dataDirBase, id.toString());
-      
       try {
-        if (!fs.existsSync(dataDirBase)) {
-          fs.mkdirSync(dataDirBase);
+        // Alternativa: usar directamente la funcionalidad de SAGE para crear un directorio de ejecución
+        // Para esto, ejecutamos un comando para crear un directorio de ejecución
+        const createDirCommand = 'python3 -c "from sage.utils import create_execution_directory; import sys, json; dir, uuid = create_execution_directory(); print(json.dumps({\'dir\': dir, \'uuid\': uuid}))"';
+        
+        const { stdout, stderr } = await execAsync(createDirCommand);
+        if (stderr) {
+          console.error('Error al crear directorio de ejecución:', stderr);
+          throw new Error('Error al crear directorio de ejecución');
         }
         
-        if (!fs.existsSync(dataDirCasilla)) {
-          fs.mkdirSync(dataDirCasilla);
-        }
+        // Parsear el resultado para obtener el directorio y UUID
+        const execDir = JSON.parse(stdout);
+        const executionDir = execDir.dir;
+        const executionUuid = execDir.uuid;
         
-        // Nombre y ruta del archivo a crear
+        console.log('Directorio de ejecución creado:', executionDir, 'con UUID:', executionUuid);
+        
+        // Nombre y ruta del archivo a crear dentro del directorio de ejecución
         const fileExt = formatoArchivo.toLowerCase() === 'excel' ? '.xlsx' : '.csv';
-        const filePath = path.join(dataDirCasilla, archivoName + fileExt);
+        const filePath = path.join(executionDir, archivoName + fileExt);
         
         // Convertir los datos a CSV o crear Excel basado en el formato
         await crearArchivoDesdeData(data, catalogs[0], filePath, formatoArchivo);
@@ -266,7 +271,7 @@ export default async function handler(
             0, // Sin errores
             0,  // Sin advertencias
             casilla.nombre_yaml,
-            dataDirCasilla
+            executionDir
           ]
         );
         
