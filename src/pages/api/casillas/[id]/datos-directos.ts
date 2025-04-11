@@ -74,37 +74,48 @@ async function crearArchivoDesdeData(
     throw new Error('No hay datos para guardar');
   }
   
-  // Obtener TODAS las columnas definidas en el YAML para este catálogo
-  // Esto asegura que se incluyan todas las columnas esperadas, incluso vacías
-  let columnNames: string[] = [];
+  // Solución simplificada: recolectar todas las columnas posibles de todas las filas
+  // Esto asegura que se incluyan todas las columnas usadas en cualquier fila
+  const allPossibleColumns = new Set<string>();
   
+  // Primero recolectamos todas las columnas que aparecen en cualquier fila de datos
+  rows.forEach(row => {
+    Object.keys(row).forEach(col => {
+      allPossibleColumns.add(col);
+    });
+  });
+  
+  // También verificamos las columnas definidas en el YAML para asegurarnos
+  // de que todas ellas estén incluidas, incluso si no tienen datos
   try {
-    // Intentar obtener las definiciones de columnas del YAML
-    const yamlCatalog = yamlContent.catalogs[catalogName];
-    const columnDefs = yamlCatalog.columns || yamlCatalog.fields || {};
-    
-    // Extraer los nombres de columna de las definiciones
-    columnNames = Object.keys(columnDefs);
-    
-    // Si no hay columnas definidas en el YAML, usar las de los datos como fallback
-    if (columnNames.length === 0) {
-      console.warn(`No se encontraron definiciones de columnas en YAML para ${catalogName}, usando las de los datos.`);
-      columnNames = Object.keys(rows[0]);
+    if (yamlContent.catalogs && yamlContent.catalogs[catalogName]) {
+      const yamlCatalog = yamlContent.catalogs[catalogName];
+      const columnDefs = yamlCatalog.columns || yamlCatalog.fields || {};
+      
+      // Añadir todas las columnas definidas en el YAML
+      Object.keys(columnDefs).forEach(col => {
+        allPossibleColumns.add(col);
+      });
     }
   } catch (error) {
-    console.warn(`Error obteniendo columnas del YAML: ${error.message}. Usando las de los datos.`);
-    columnNames = Object.keys(rows[0]);
+    console.warn(`Error verificando columnas del YAML: ${error.message}`);
+    // Continuamos con las columnas que ya tenemos de los datos
   }
+  
+  // Convertir el Set a array para usar en la creación del archivo
+  const columnNames = Array.from(allPossibleColumns);
   
   // Asegurarse de que todas las filas tengan todas las columnas (incluso vacías)
   const completeRows = rows.map(row => {
     const completeRow: any = {};
-    // Inicializar todas las columnas definidas en el YAML con valores vacíos
+    // Inicializar todas las columnas con valores vacíos
     columnNames.forEach(col => {
       completeRow[col] = row[col] !== undefined ? row[col] : '';
     });
     return completeRow;
   });
+  
+  console.log(`Creando archivo con ${columnNames.length} columnas. Columnas: ${columnNames.join(', ')}`);
   
   if (formato.type.toLowerCase() === 'excel') {
     // Crear un archivo Excel usando la biblioteca xlsx con todas las columnas
