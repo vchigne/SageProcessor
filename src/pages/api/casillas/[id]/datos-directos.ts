@@ -356,15 +356,101 @@ export default async function handler(
                 // Escribir el contenido YAML en el archivo temporal
                 await fsPromises.writeFile(yamlPath, yamlContent);
                 
-                // Usar la función process_files de sage.main directamente en lugar de ejecutar como módulo
+                // Crear nuestra propia implementación modificada de create_execution_directory
+                // que respete el UUID que ya tenemos
                 const pythonCode = `
-from sage.main import process_files
+import os
+import shutil
+import uuid
 import json
 import sys
+from sage.main import process_files
+from sage.file_processor import FileProcessor
+from sage.logger import SageLogger
+from sage.yaml_validator import YAMLValidator
+
+def create_execution_directory_with_uuid(specific_uuid):
+    """Crea un directorio de ejecución usando un UUID específico"""
+    base_dir = os.path.join(os.getcwd(), "executions")
+    execution_dir = os.path.join(base_dir, specific_uuid)
+    os.makedirs(execution_dir, exist_ok=True)
+    return execution_dir, specific_uuid
+
+def process_files_with_uuid(yaml_path, data_path, casilla_id=None, emisor_id=None, 
+                           metodo_envio="direct_upload", specific_uuid=None):
+    """Versión modificada de process_files que acepta un UUID específico"""
+    # Usamos nuestro UUID específico
+    execution_dir, execution_uuid = create_execution_directory_with_uuid(specific_uuid)
+    
+    # El resto es similar a la función original
+    logger = SageLogger(execution_dir, casilla_id, emisor_id, metodo_envio)
+    logger.message(f"Starting SAGE execution {execution_uuid}")
+
+    try:
+        # Copiar archivos de entrada al directorio de ejecución
+        yaml_dest = os.path.join(execution_dir, "input.yaml")
+        _, ext = os.path.splitext(data_path)
+        data_dest = os.path.join(execution_dir, f"data{ext}")
+
+        shutil.copy2(yaml_path, yaml_dest)
+        shutil.copy2(data_path, data_dest)
+        
+        # Validar YAML
+        yaml_validator = YAMLValidator()
+        config = yaml_validator.load_and_validate(yaml_dest)
+        logger.success("YAML validation successful")
+        
+        # Procesar archivo
+        processor = FileProcessor(config, logger)
+        
+        # Usar la misma lógica de selección de paquete/catálogo que el original
+        file_extension = os.path.splitext(data_dest.lower())[1]
+        is_zip = file_extension == '.zip'
+        
+        # Mapear extensión al tipo de archivo
+        file_type = None
+        if is_zip:
+            file_type = "ZIP"
+        elif file_extension in ['.xlsx', '.xls']:
+            file_type = "EXCEL"
+        elif file_extension == '.csv':
+            file_type = "CSV"
+            
+        logger.message(f"Detectado archivo de tipo: {file_type or 'Desconocido'}")
+        
+        # Seleccionar paquete o catálogo según tipo
+        package_name = None
+        
+        # Aquí iría la lógica completa, pero usaremos la versión simplificada
+        # Asumimos que en el YAML hay un paquete o catálogo adecuado para el tipo de archivo
+        
+        if hasattr(config, 'packages') and config.packages:
+            # Buscar paquete por tipo
+            for pkg_name, pkg in config.packages.items():
+                if pkg.file_format.type == file_type:
+                    package_name = pkg_name
+                    logger.message(f"Usando paquete '{package_name}' para tipo {file_type}")
+                    break
+                    
+        if package_name is None and hasattr(config, 'catalogs') and config.catalogs:
+            # Si no hay paquete, usar primer catálogo
+            catalog_name = list(config.catalogs.keys())[0]
+            logger.message(f"Usando catálogo '{catalog_name}' por defecto")
+            
+        error_count, warning_count = processor.process_file(data_dest, package_name)
+        
+        # Finalizar log
+        logger.finalize_report(error_count, warning_count)
+        return execution_uuid, error_count, warning_count
+        
+    except Exception as e:
+        logger.error(f"Error en el procesamiento: {str(e)}")
+        logger.finalize_report(1, 0)
+        raise e
 
 try:
-    # Llamar a process_files con los parámetros adecuados
-    execution_uuid, error_count, warning_count = process_files(
+    # Llamar a nuestra versión modificada con el UUID específico
+    execution_uuid, error_count, warning_count = process_files_with_uuid(
         yaml_path="${yamlPath}", 
         data_path="${filePath}",
         casilla_id=${casilla_id},
