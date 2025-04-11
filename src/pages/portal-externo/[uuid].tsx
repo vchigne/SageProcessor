@@ -340,8 +340,8 @@ export default function PortalExternoPage() {
     // Verificar si el formato permite ingreso directo
     if (formatoInfo.tieneFormatoValido) {
       if (formatoInfo.esMultiCatalogo) {
-        // Si es un paquete multi-catálogo, mostrar mensaje informativo
-        toast.warning('Los paquetes multi-catálogo no permiten el ingreso directo de datos. Por favor, utilice la opción "Descargar Plantilla" y luego suba el archivo completo.');
+        // Si es un archivo ZIP, mostrar mensaje informativo
+        toast.warning('Los archivos en formato ZIP no permiten el ingreso directo de datos. Por favor, utilice la opción "Descargar Plantilla" y luego suba el archivo completo.');
       } else {
         // El formato permite ingreso directo, proceder con la funcionalidad
         toast.info('Funcionalidad de entrada directa de datos en desarrollo');
@@ -352,7 +352,7 @@ export default function PortalExternoPage() {
       }
     } else {
       // Formato no compatible, mostrar mensaje informativo
-      toast.warning('El formato de esta casilla no permite el ingreso directo de datos. Se admiten únicamente formatos CSV y Excel no empaquetados.');
+      toast.warning('El formato de esta casilla no permite el ingreso directo de datos. Se admiten únicamente formatos CSV y Excel.');
     }
   };
 
@@ -457,10 +457,24 @@ export default function PortalExternoPage() {
       // Analizar el contenido YAML
       const yamlContent = yaml.parse(casilla.yaml_contenido);
       
-      // Verificar si es un paquete multi-catálogo (ZIP)
-      resultado.esMultiCatalogo = !!(yamlContent.packages && Object.keys(yamlContent.packages).length > 0);
+      // Verificar si es un paquete multi-catálogo, pero solo nos interesa si tiene tipo ZIP
+      let formatoPackage = '';
+      if (yamlContent.packages && Object.keys(yamlContent.packages).length > 0) {
+        // Comprobar si algún paquete tiene formato ZIP
+        for (const packageName of Object.keys(yamlContent.packages)) {
+          const pkg = yamlContent.packages[packageName];
+          if (pkg.file_format && pkg.file_format.type) {
+            formatoPackage = pkg.file_format.type.toLowerCase();
+            // Si encontramos formato ZIP, marcamos multi-catálogo
+            if (formatoPackage === 'zip') {
+              resultado.esMultiCatalogo = true;
+              break;
+            }
+          }
+        }
+      }
       
-      // Verificar si tiene formato válido (CSV o Excel)
+      // Verificar si tiene formato válido (CSV o Excel) en catálogos
       let tieneCSVoExcel = false;
       
       // Verificar formato de catálogos individuales
@@ -481,14 +495,18 @@ export default function PortalExternoPage() {
       
       resultado.tieneFormatoValido = tieneCSVoExcel;
       
-      // Determinar si permite ingreso directo (CSV o Excel y no multi-catálogo)
-      if (tieneCSVoExcel && !resultado.esMultiCatalogo) {
-        resultado.permitirIngreso = true;
-        resultado.mensaje = 'Formato válido para ingreso directo de datos';
-      } else if (!tieneCSVoExcel) {
+      // Determinar si permite ingreso directo (solo debe tener formato CSV o Excel)
+      if (tieneCSVoExcel) {
+        if (!resultado.esMultiCatalogo) {
+          // Si tiene formato válido y no es ZIP, permitir ingreso directo
+          resultado.permitirIngreso = true;
+          resultado.mensaje = 'Formato válido para ingreso directo de datos';
+        } else {
+          // Si es ZIP, no permitir ingreso directo
+          resultado.mensaje = 'Los archivos ZIP no permiten el ingreso directo de datos';
+        }
+      } else {
         resultado.mensaje = 'El formato de archivo no es compatible con el ingreso directo de datos';
-      } else if (resultado.esMultiCatalogo) {
-        resultado.mensaje = 'Los paquetes multi-catálogo no permiten el ingreso directo de datos';
       }
       
       return resultado;
