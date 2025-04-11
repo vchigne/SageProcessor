@@ -237,6 +237,20 @@ execution_uuid, error_count, warning_count = process_files(
 print(f"Ejecución {execution_uuid} completada con {error_count} errores y {warning_count} advertencias")
 ```
 
+### Desde API de datos directos:
+
+El API de ingreso de datos directos (/api/casillas/[id]/datos-directos) sigue este proceso:
+
+1. Valida los datos recibidos contra la estructura YAML de la casilla
+2. Crea un archivo temporal en el directorio `tmp/` (CSV o Excel según la configuración del YAML)
+3. Genera un UUID para la ejecución
+4. Registra la ejecución en la base de datos con estado inicial "Parcial"
+5. Ejecuta SAGE a través de un script Python temporal que invoca `process_files()`
+6. Elimina los archivos temporales una vez completado el procesamiento
+7. Actualiza el registro de ejecución con el resultado (errores, advertencias)
+
+Este enfoque permite aprovechar la funcionalidad completa del procesador SAGE mientras se mantiene la integridad del proceso de ejecución, generando todos los archivos de resultados necesarios en el directorio `executions/<UUID>/` de manera estándar.
+
 ## Comportamiento de Process_Files
 
 La función `process_files` tiene un comportamiento especializado para manejar diferentes tipos de archivos:

@@ -4,10 +4,32 @@
 
 SAGE utiliza archivos YAML para definir la estructura y reglas de validación de tus datos. Esta documentación te ayudará a crear y mantener estos archivos de configuración.
 
+## Uso de tipos de archivo
+
+El sistema SAGE puede procesar varios tipos de archivos:
+
+- `CSV`: Archivos delimitados por caracteres (coma, punto y coma, etc.)
+- `EXCEL`: Hojas de cálculo Microsoft Excel (XLS, XLSX)
+- `ZIP`: Archivos comprimidos que contienen múltiples archivos CSV o Excel
+
+La configuración `file_format.type` determina qué tipo de archivo espera cada paquete o catálogo. Es crucial que esta configuración coincida con el formato real del archivo, ya que SAGE utiliza esta información para determinar cómo procesar los datos.
+
+### Importante: Procesamiento según tipo de archivo
+
+Cuando SAGE recibe un archivo para procesar:
+
+1. Primero determina el tipo de archivo por su extensión (.csv, .xlsx, .zip)
+2. Luego busca en la configuración YAML un paquete o catálogo con `file_format.type` coincidente
+3. Si encuentra una coincidencia, utiliza esa configuración para procesar el archivo
+4. Si no encuentra coincidencia, puede generar un error o intentar utilizar una configuración alternativa
+
+Para el ingreso de datos directos a través del portal, el sistema generará automáticamente el formato de archivo (CSV o Excel) que coincida con la configuración del primer catálogo disponible en el YAML, respetando configuraciones como delimitadores específicos para CSV o nombres de hojas para Excel.
+
 ## 🏗️ Estructura General
 
 Un archivo YAML de SAGE tiene tres secciones principales obligatorias:
 
+```yaml
 sage_yaml:        # Información general del YAML (requerido)
   # ... configuración general
 
@@ -37,6 +59,7 @@ SAGE soporta los siguientes tipos de datos:
 Contiene la información general del archivo de configuración. Todos los campos son obligatorios.
 
 
+```yaml
 sage_yaml:
   name: "Nombre del YAML"           # Nombre descriptivo (requerido)
   description: "Descripción"        # Explicación del propósito (requerido)
