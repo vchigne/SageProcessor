@@ -260,7 +260,7 @@ export default async function handler(
           [
             id,
             now,
-            'Pendiente', // Comienza como pendiente
+            'Parcial', // Comenzamos con Parcial ya que la restricción no permite 'Pendiente'
             'ENTRADA_DIRECTA',
             archivoName + fileExt,
             0, // Sin errores
