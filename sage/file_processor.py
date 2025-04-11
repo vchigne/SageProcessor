@@ -772,10 +772,23 @@ Warnings: {self.warning_count}
             
     def process_file(self, file_path: str, package_name: str) -> Tuple[int, int]:
         """Process either a single file or a ZIP package"""
-        if file_path.lower().endswith('.zip'):
+        # Verificar si el nombre del paquete corresponde a un paquete o a un catálogo
+        package = self.config.packages.get(package_name)
+        
+        # Determinar el tipo de procesamiento basado en la configuración YAML y no solo en la extensión
+        if package and package.file_format.type == "ZIP":
+            # Si el paquete está configurado como ZIP en el YAML, usar proceso ZIP
             return self.process_zip_file(file_path, package_name)
+        elif file_path.lower().endswith('.zip') and not package:
+            # Si el archivo es ZIP pero no tenemos un paquete definido, buscar un paquete compatible
+            zip_packages = [name for name, pkg in self.config.packages.items() 
+                           if pkg.file_format and pkg.file_format.type == "ZIP"]
+            if zip_packages:
+                return self.process_zip_file(file_path, zip_packages[0])
+            else:
+                raise FileProcessingError("El archivo es ZIP pero no hay configuración de paquete ZIP en el YAML")
         else:
-            # Legacy support for single file processing
+            # Procesar como archivo único (CSV o Excel)
             catalog = self.config.catalogs.get(package_name)
             if not catalog:
                 raise FileProcessingError(f"Catalog '{package_name}' not found in configuration")
