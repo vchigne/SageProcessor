@@ -772,81 +772,14 @@ Warnings: {self.warning_count}
             
     def process_file(self, file_path: str, package_name: str) -> Tuple[int, int]:
         """Process either a single file or a ZIP package"""
-        # Primero verificar si package_name es un catálogo (prioridad para procesar archivos individuales)
-        catalog = self.config.catalogs.get(package_name)
-        if catalog:
-            # Si es un catálogo, procesarlo directamente
-            try:
-                df = self._read_file(file_path, catalog)
-                self.logger.message(f"Processing file: {file_path}")
-                
-                # Store initial error and warning counts
-                initial_errors = self.error_count
-                initial_warnings = self.warning_count
-                
-                self.validate_catalog(df, catalog)
-                
-                # Calculate records and errors/warnings for this file
-                file_records = len(df)
-                file_errors = self.error_count - initial_errors
-                file_warnings = self.warning_count - initial_warnings
-                
-                # Log summary for this file
-                success_rate = ((file_records - file_errors) / file_records * 100) if file_records > 0 else 0
-                summary = f"""Summary for {os.path.basename(file_path)}:
-Total records: {file_records}
-Errors: {file_errors}
-Warnings: {file_warnings}
-Success rate: {success_rate:.2f}%
-
-"""
-                self.logger.message(summary)
-                
-                # Registrar estadísticas de este archivo para el reporte
-                self.logger.register_file_stats(
-                    os.path.basename(file_path), 
-                    file_records, 
-                    file_errors, 
-                    file_warnings
-                )
-                
-                # También mostrar resumen para archivos individuales
-                self._log_skipped_rules_summary()
-
-                return self.error_count, self.warning_count
-                
-            except Exception as e:
-                # Registrar el error y continuar
-                self.error_count += 1
-                error_msg = f"Error processing file {file_path}: {str(e)}"
-                self.logger.error(error_msg, file=os.path.basename(file_path), exception=e)
-                
-                # Registrar estadísticas con 0 registros procesados correctamente
-                self.logger.register_file_stats(
-                    os.path.basename(file_path), 
-                    0,  # ningún registro procesado correctamente
-                    1,  # un error crítico
-                    0   # sin advertencias
-                )
-                
-                return self.error_count, self.warning_count
-                
-        # Si no es un catálogo, verificar si es un paquete
-        package = self.config.packages.get(package_name)
-        if package:
-            # Si es un paquete, verificar que sea tipo ZIP o dar un error claro 
-            if package.file_format.type != "ZIP":
-                raise FileProcessingError(f"Error en la configuración: el paquete '{package_name}' tiene un tipo de formato incorrecto ('{package.file_format.type}'). Los paquetes deben ser de tipo 'ZIP'.")
-                
-            # Si es ZIP, pero el archivo no es un ZIP, dar un error claro
-            if not file_path.lower().endswith('.zip'):
-                raise FileProcessingError(f"Error al procesar {os.path.basename(file_path)}: Se esperaba un archivo ZIP para el paquete '{package_name}', pero se recibió otro tipo de archivo.")
-                
-            # Procesarlo como ZIP
+        if file_path.lower().endswith('.zip'):
+            # Para archivos ZIP, procesamos con process_zip_file
             return self.process_zip_file(file_path, package_name)
-            
-        # Si no se encontró ni como catálogo ni como paquete
-        raise FileProcessingError(f"No se encontró configuración para '{package_name}' ni como catálogo ni como paquete")
+        else:
+            # Para archivos individuales (CSV, Excel), procesamos el catálogo
+            catalog = self.config.catalogs.get(package_name)
+            if not catalog:
+                raise FileProcessingError(f"Catalog '{package_name}' not found in configuration")
 
             try:
                 df = self._read_file(file_path, catalog)
