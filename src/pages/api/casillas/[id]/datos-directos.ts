@@ -356,20 +356,42 @@ export default async function handler(
                 // Escribir el contenido YAML en el archivo temporal
                 await fsPromises.writeFile(yamlPath, yamlContent);
                 
-                const args = ['-m', 'sage.main', yamlPath, filePath];
+                // Usar la función process_files de sage.main directamente en lugar de ejecutar como módulo
+                const pythonCode = `
+from sage.main import process_files
+import json
+import sys
+
+try:
+    # Llamar a process_files con los parámetros adecuados
+    execution_uuid, error_count, warning_count = process_files(
+        yaml_path="${yamlPath}", 
+        data_path="${filePath}",
+        casilla_id=${casilla_id},
+        metodo_envio="portal_upload",
+        specific_uuid="${executionUuid}"
+    )
+    
+    # Imprimir el resultado como JSON para procesarlo en JavaScript
+    print(json.dumps({
+        "execution_uuid": execution_uuid,
+        "errors": error_count,
+        "warnings": warning_count
+    }))
+    sys.exit(0)
+except Exception as e:
+    print(json.dumps({
+        "error": str(e)
+    }))
+    sys.exit(1)
+`;
                 
-                // Agregar parámetros
-                args.push('--casilla-id', casilla_id.toString());
+                const pythonScriptPath = path.join(process.cwd(), 'tmp', `process_${Date.now()}.py`);
+                await fsPromises.writeFile(pythonScriptPath, pythonCode);
                 
-                // Usar el UUID que ya generamos para asegurar que SAGE use el mismo
-                args.push('--uuid', executionUuid);
+                console.log('Ejecutando SAGE con script temporal:', pythonScriptPath);
                 
-                // Indicar que el método de envío es portal_upload (un valor válido)
-                args.push('--metodo-envio', 'portal_upload');
-                
-                console.log('Ejecutando:', 'python3', args.join(' '));
-                
-                const pythonProcess = spawn('python3', args, {
+                const pythonProcess = spawn('python3', [pythonScriptPath], {
                   env: { 
                     ...process.env,
                     PYTHONPATH: process.cwd()
@@ -399,20 +421,35 @@ export default async function handler(
                     console.error('Error al eliminar archivo YAML temporal:', err);
                   }
                   
-                  // SAGE puede retornar código 1 cuando encuentra errores de validación
-                  if (code === 0 || code === 1) {
-                    // Ya no buscamos el UUID en la salida, usamos el que generamos anteriormente
-                    const errorsMatch = output.match(/Total errors: (\d+)/);
-                    const warningsMatch = output.match(/Total warnings: (\d+)/);
-                    
-                    if (errorsMatch && warningsMatch) {
+                  // Limpiar el script temporal también
+                  try {
+                    await fsPromises.unlink(pythonScriptPath);
+                  } catch (err) {
+                    console.error('Error al eliminar script Python temporal:', err);
+                  }
+                  
+                  // Procesamos la respuesta en formato JSON
+                  if (code === 0) {
+                    try {
+                      // Parsear la salida como JSON
+                      const result = JSON.parse(output.trim());
+                      
                       resolve({
-                        execution_uuid: executionUuid, // Usamos el UUID que generamos al inicio
-                        errors: parseInt(errorsMatch[1]),
-                        warnings: parseInt(warningsMatch[1])
+                        execution_uuid: executionUuid, // Seguimos usando el UUID que generamos al inicio
+                        errors: result.errors,
+                        warnings: result.warnings
                       });
-                    } else {
-                      reject(new Error('No se pudo analizar la salida del procesador SAGE'));
+                    } catch (err) {
+                      console.error('Error al parsear la salida JSON:', err, output);
+                      reject(new Error('Error al parsear la salida del procesador SAGE'));
+                    }
+                  } else if (code === 1) {
+                    // Si hubo un error en el procesamiento, intentamos parsear el mensaje de error
+                    try {
+                      const errorResult = JSON.parse(output.trim());
+                      reject(new Error(errorResult.error || 'Error desconocido en el procesador SAGE'));
+                    } catch (err) {
+                      reject(new Error('Error en el procesador SAGE: ' + output));
                     }
                   } else {
                     reject(new Error(error || 'Error al procesar el archivo'));
