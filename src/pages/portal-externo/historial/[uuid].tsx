@@ -115,13 +115,16 @@ export default function HistorialPage() {
   useEffect(() => {
     if (!router.isReady) return;
     
-    const { uuid, casilla_id, emisor_id } = router.query;
+    const { uuid, casillaId, casilla_id, emisor_id } = router.query;
     
-    console.log('Params en historial:', { uuid, casilla_id, emisor_id });
+    // Usamos casillaId (de la URL) o casilla_id (como fallback)
+    const idCasilla = casillaId || casilla_id;
     
-    // Validar que tengamos un casilla_id válido
-    if (!casilla_id || casilla_id === 'undefined') {
-      console.error('ID de casilla no válido en la URL:', casilla_id);
+    console.log('Params en historial:', { uuid, casillaId, casilla_id, emisor_id, idCasilla });
+    
+    // Validar que tengamos un id de casilla válido
+    if (!idCasilla || idCasilla === 'undefined') {
+      console.error('ID de casilla no válido en la URL:', idCasilla);
       return;
     }
     
@@ -133,7 +136,7 @@ export default function HistorialPage() {
         setDatosPortal({
           titulo: datos.titulo || 'Historial de ejecuciones',
           uuid: uuid as string,
-          casilla_id: Number(casilla_id),
+          casilla_id: Number(idCasilla),
           emisor_id: emisor_id && emisor_id !== 'undefined' ? Number(emisor_id) : null
         });
       } else {
@@ -141,7 +144,7 @@ export default function HistorialPage() {
         setDatosPortal({
           titulo: 'Historial de ejecuciones',
           uuid: uuid as string,
-          casilla_id: Number(casilla_id),
+          casilla_id: Number(idCasilla),
           emisor_id: emisor_id && emisor_id !== 'undefined' ? Number(emisor_id) : null
         });
       }
@@ -151,7 +154,7 @@ export default function HistorialPage() {
       setDatosPortal({
         titulo: 'Historial de ejecuciones',
         uuid: uuid as string,
-        casilla_id: Number(casilla_id),
+        casilla_id: Number(idCasilla),
         emisor_id: emisor_id && emisor_id !== 'undefined' ? Number(emisor_id) : null
       });
     }
