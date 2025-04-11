@@ -772,76 +772,85 @@ Warnings: {self.warning_count}
             
     def process_file(self, file_path: str, package_name: str) -> Tuple[int, int]:
         """Process either a single file or a ZIP package"""
-        # Determinar el tipo de archivo basado en su extensión
-        file_type = self._get_file_type(file_path)
-        is_zip_file = file_path.lower().endswith('.zip')
+        # ==== PRIORIDAD #1: Comprobar primero el tipo real del archivo ====
+        file_extension = os.path.splitext(file_path.lower())[1]
+        is_zip_file = file_extension == '.zip'
+        file_type = self._get_file_type(file_path)  # Mapea extensión a tipo SAGE (CSV, EXCEL, etc.)
         
-        # Verificar si es un paquete o un catálogo en la configuración
-        package = self.config.packages.get(package_name)
-        catalog = self.config.catalogs.get(package_name)
+        # ==== DIAGNÓSTICO DETALLADO ====
+        self.logger.message("=" * 80)
+        self.logger.message(f"DIAGNÓSTICO DE PROCESAMIENTO DE ARCHIVO")
+        self.logger.message(f"Archivo: {os.path.basename(file_path)}")
+        self.logger.message(f"Extensión: {file_extension}")
+        self.logger.message(f"Tipo detectado: {file_type or 'DESCONOCIDO'}")
+        self.logger.message(f"Configuración a usar: '{package_name}'")
         
-        # Log para depuración
-        self.logger.message(f"Procesando archivo: {os.path.basename(file_path)} (tipo: {file_type or 'desconocido'})")
-        self.logger.message(f"Usando configuración: '{package_name}' (tipo: {'paquete' if package else 'catálogo'})")
+        # ==== DETECCIÓN SI ES CATÁLOGO O PAQUETE ====
+        package = self.config.packages.get(package_name) if hasattr(self.config, 'packages') else None
+        catalog = self.config.catalogs.get(package_name) if hasattr(self.config, 'catalogs') else None
         
-        # CASO 1: Es un paquete en la configuración
-        if package:
-            self.logger.message(f"Configuración encontrada como paquete: '{package_name}' (tipo: {package.file_format.type})")
+        self.logger.message(f"¿Existe como paquete? {'Sí' if package else 'No'}")
+        self.logger.message(f"¿Existe como catálogo? {'Sí' if catalog else 'No'}")
+        
+        # ==== PROTECCIÓN CONTRA INTENTOS DE PROCESAR NO-ZIP COMO ZIP ====
+        # Si NO es un archivo ZIP, NUNCA usar process_zip_file
+        if not is_zip_file:
+            self.logger.message(f"SEGURIDAD: El archivo NO es ZIP, no se usará process_zip_file")
             
-            # CASO 1.1: Paquete tipo ZIP
-            if package.file_format.type == "ZIP":
-                # Verificar que el archivo sea realmente un ZIP
-                if not is_zip_file:
-                    raise FileProcessingError(
-                        f"Error al procesar {os.path.basename(file_path)}: "
-                        f"El paquete '{package_name}' está configurado como ZIP, "
-                        f"pero se recibió un archivo de tipo {file_type or 'desconocido'}."
-                    )
-                # Procesar como paquete ZIP (múltiples catálogos)
-                self.logger.message(f"Procesando como paquete ZIP con múltiples catálogos")
-                return self.process_zip_file(file_path, package_name)
+            # Si es un catálogo directo, usarlo
+            if catalog:
+                self.logger.message(f"Procesando archivo mediante el catálogo '{package_name}'")
+                return self._process_single_file(file_path, catalog)
             
-            # CASO 1.2: Paquete tipo CSV o EXCEL (un solo catálogo)
-            elif package.file_format.type in ["CSV", "EXCEL"]:
-                # Verificar que tenga exactamente un catálogo
-                if len(package.catalogs) != 1:
-                    raise FileProcessingError(
-                        f"El paquete '{package_name}' es de tipo {package.file_format.type} "
-                        f"pero tiene {len(package.catalogs)} catálogos. "
-                        f"Los paquetes no-ZIP solo pueden tener un catálogo."
-                    )
-                
-                # Verificar que el tipo de archivo coincida con la configuración
-                if file_type != package.file_format.type:
-                    raise FileProcessingError(
-                        f"Error al procesar {os.path.basename(file_path)}: "
-                        f"El paquete '{package_name}' está configurado para archivos {package.file_format.type}, "
-                        f"pero se recibió un archivo {file_type or 'desconocido'}."
-                    )
-                
-                # Obtener y procesar el único catálogo del paquete
+            # Si es un paquete con un solo catálogo y tipo compatible
+            elif package and package.file_format.type == file_type and len(package.catalogs) == 1:
                 catalog_name = package.catalogs[0]
                 catalog = self.config.catalogs.get(catalog_name)
                 if not catalog:
                     raise FileProcessingError(f"El catálogo '{catalog_name}' no se encuentra en la configuración")
                 
-                self.logger.message(f"Procesando archivo {os.path.basename(file_path)} con catálogo '{catalog_name}'")
+                self.logger.message(f"Procesando archivo mediante el catálogo '{catalog_name}' del paquete '{package_name}'")
                 return self._process_single_file(file_path, catalog)
             
-            # CASO 1.3: Tipo de paquete no válido
+            # Si es un paquete pero incompatible
+            elif package:
+                if package.file_format.type == "ZIP":
+                    raise FileProcessingError(
+                        f"Error al procesar {os.path.basename(file_path)}: "
+                        f"El paquete '{package_name}' está configurado como ZIP, "
+                        f"pero se recibió un archivo {file_type or 'de tipo desconocido'}."
+                    )
+                elif package.file_format.type != file_type:
+                    raise FileProcessingError(
+                        f"Error al procesar {os.path.basename(file_path)}: "
+                        f"El paquete '{package_name}' está configurado para archivos {package.file_format.type}, "
+                        f"pero se recibió un archivo {file_type or 'de tipo desconocido'}."
+                    )
+                else:
+                    raise FileProcessingError(
+                        f"Error al procesar {os.path.basename(file_path)}: "
+                        f"El paquete '{package_name}' no es compatible con este tipo de archivo o tiene múltiples catálogos."
+                    )
+            
+            # No se encontró ni como catálogo ni como paquete compatible
+            raise FileProcessingError(
+                f"Error al procesar {os.path.basename(file_path)}: "
+                f"No se encontró '{package_name}' como catálogo ni como paquete compatible para este tipo de archivo."
+            )
+        
+        # ==== PROCESAMIENTO PARA ARCHIVOS ZIP ====
+        else:
+            self.logger.message(f"El archivo es ZIP, verificando compatibilidad")
+            
+            # Solo procesar archivo ZIP si es con un paquete de tipo ZIP
+            if package and package.file_format.type == "ZIP":
+                self.logger.message(f"Procesando archivo ZIP con paquete '{package_name}'")
+                return self.process_zip_file(file_path, package_name)
             else:
                 raise FileProcessingError(
-                    f"Tipo de formato no válido para el paquete '{package_name}': {package.file_format.type}. "
-                    f"Los tipos permitidos son: ZIP, EXCEL, CSV."
+                    f"Error al procesar {os.path.basename(file_path)}: "
+                    f"El archivo es ZIP pero '{package_name}' no es un paquete configurado como ZIP."
                 )
-        else:
-            # Si no es un paquete, buscar directamente como catálogo
-            catalog = self.config.catalogs.get(package_name)
-            if not catalog:
-                raise FileProcessingError(f"'{package_name}' no se encuentra como paquete ni como catálogo en la configuración")
-            
-            # Procesarlo como archivo individual
-            return self._process_single_file(file_path, catalog)
             
     def _process_single_file(self, file_path: str, catalog) -> Tuple[int, int]:
         """Procesa un archivo individual usando un catálogo específico"""
