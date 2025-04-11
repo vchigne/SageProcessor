@@ -461,7 +461,12 @@ except Exception as e:
           // Procesar el archivo con SAGE
           const processingResult = await processFile(filePath, yamlString, parseInt(id as string));
           
-          // Actualizar el estado de ejecución
+          // Extraer el UUID directamente de la ruta del directorio
+          // El UUID es la última parte de la ruta (el nombre del directorio de ejecución)
+          const dirPathParts = path.join('executions', processingResult.execution_uuid).split(path.sep);
+          const directoryUuid = dirPathParts[dirPathParts.length - 1];
+          
+          // Actualizar el estado de ejecución asegurando que el UUID en BD sea el mismo que el del directorio
           await pool.query(
             `UPDATE ejecuciones_yaml SET 
               estado = $1, 
@@ -474,8 +479,8 @@ except Exception as e:
               processingResult.errors > 0 ? 'Fallido' : 'Éxito',
               processingResult.errors,
               processingResult.warnings,
-              processingResult.execution_uuid,
-              path.join('executions', processingResult.execution_uuid), // Ruta del directorio usando el UUID de main.py
+              directoryUuid, // Usar el UUID extraído del nombre del directorio
+              path.join('executions', directoryUuid), // Ruta del directorio usando el mismo UUID
               ejecucionId
             ]
           );
@@ -484,13 +489,13 @@ except Exception as e:
           return res.status(200).json({
             success: true,
             message: 'Datos procesados correctamente',
-            execution_uuid: processingResult.execution_uuid,
+            execution_uuid: directoryUuid, // Usar el UUID correcto del directorio
             errors: processingResult.errors,
             warnings: processingResult.warnings,
             ejecucion_id: ejecucionId,
             fecha: now.toISOString(),
             archivo: archivoName + fileExt,
-            log_url: `/api/executions/${processingResult.execution_uuid}/log`
+            log_url: `/api/executions/${directoryUuid}/log` // Usar el UUID correcto en la URL del log
           });
         } catch (execError) {
           console.error('Error al ejecutar el procesamiento:', execError);
