@@ -81,8 +81,27 @@ async function crearArchivoDesdeData(
   try {
     if (yamlContent.catalogs && yamlContent.catalogs[catalogName]) {
       const yamlCatalog = yamlContent.catalogs[catalogName];
-      const columnDefs = yamlCatalog.columns || yamlCatalog.fields || {};
-      yamlColumnNames = Object.keys(columnDefs);
+      
+      // Verificar si fields es un array (formato común en SAGE YAML)
+      if (Array.isArray(yamlCatalog.fields)) {
+        // Si es un array de objetos con propiedad name
+        yamlColumnNames = yamlCatalog.fields.map((field: any) => field.name);
+        console.log(`Columnas extraídas del array fields: ${yamlColumnNames.join(', ')}`);
+      } 
+      // Verificar si columns es un array (formato alternativo)
+      else if (Array.isArray(yamlCatalog.columns)) {
+        // Si es un array de objetos con propiedad name
+        yamlColumnNames = yamlCatalog.columns.map((column: any) => column.name);
+        console.log(`Columnas extraídas del array columns: ${yamlColumnNames.join(', ')}`);
+      }
+      // Verificar si hay un objeto columns o fields con claves como nombres de columna
+      else {
+        const columnDefs = yamlCatalog.columns || yamlCatalog.fields || {};
+        if (typeof columnDefs === 'object' && !Array.isArray(columnDefs)) {
+          yamlColumnNames = Object.keys(columnDefs);
+          console.log(`Columnas extraídas del objeto: ${yamlColumnNames.join(', ')}`);
+        }
+      }
     }
   } catch (error) {
     console.warn(`Error al obtener columnas del YAML: ${error.message}`);
