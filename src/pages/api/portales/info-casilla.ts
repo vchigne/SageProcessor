@@ -27,11 +27,10 @@ export default async function handler(
       SELECT 
         cr.nombre_yaml AS casilla_nombre,
         e.nombre AS emisor_nombre,
-        y.nombre AS yaml_nombre,
-        y.descripcion AS yaml_descripcion
+        cr.nombre_yaml AS yaml_nombre,
+        cr.descripcion_yaml AS yaml_descripcion
       FROM casillas cr
       LEFT JOIN emisores e ON e.id = $2
-      LEFT JOIN yamls y ON y.id = cr.yaml_id
       WHERE cr.id = $1
     `;
 

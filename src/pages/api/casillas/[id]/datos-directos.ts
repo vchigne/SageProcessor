@@ -7,6 +7,7 @@ import path from 'path';
 import { exec, spawn } from 'child_process';
 import xlsx from 'xlsx';
 import { promisify } from 'util';
+import { v4 as uuidv4 } from 'uuid';
 
 // Promisify exec para usar con async/await
 const execAsync = promisify(exec);
