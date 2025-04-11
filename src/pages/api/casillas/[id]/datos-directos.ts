@@ -172,34 +172,49 @@ async function crearArchivoDesdeData(
 function crearArchivoExcel(rows: any[], columnNames: string[], filePath: string): Promise<void> {
   return new Promise((resolve, reject) => {
     try {
+      console.log(`Creando Excel con ${columnNames.length} columnas: ${columnNames.join(', ')}`);
+      
       // Crear un libro de trabajo Excel
       const workbook = xlsx.utils.book_new();
       
-      // Preparar los datos para el formato de worksheet de xlsx
-      // Primero agregamos la fila de encabezados
-      const excelData = [columnNames];
+      // Enfoque más robusto: crear primero un objeto para cada fila
+      const jsonData: any[] = [];
       
-      // Luego agregamos cada fila de datos
+      // Agregar cada fila como un objeto con propiedades correspondientes a las columnas
       rows.forEach(row => {
-        const rowValues = columnNames.map(col => {
-          // Manejar valores nulos
-          let cellValue = row[col] === undefined || row[col] === null ? '' : row[col];
-          
-          // Convertir valores booleanos (xlsx puede manejar tipos nativos)
-          return cellValue;
+        const rowObj: any = {};
+        // Para cada columna, asignar el valor correspondiente o valor vacío
+        columnNames.forEach(colName => {
+          rowObj[colName] = row[colName] === undefined || row[colName] === null ? '' : row[colName];
         });
-        
-        excelData.push(rowValues);
+        jsonData.push(rowObj);
       });
       
-      // Crear una hoja de trabajo con los datos
-      const worksheet = xlsx.utils.aoa_to_sheet(excelData);
+      // Crear una hoja de trabajo a partir de los objetos JSON
+      // Esto garantiza que los nombres de las columnas se utilicen correctamente como encabezados
+      const worksheet = xlsx.utils.json_to_sheet(jsonData, {
+        header: columnNames,  // Asegura el orden de las columnas
+      });
       
       // Agregar la hoja de trabajo al libro
       xlsx.utils.book_append_sheet(workbook, worksheet, 'Datos');
       
+      // Asegurarse de que el directorio exista
+      const dir = path.dirname(filePath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      
       // Escribir el archivo
       xlsx.writeFile(workbook, filePath);
+      
+      // Verificar que el archivo se haya creado correctamente
+      if (fs.existsSync(filePath)) {
+        const stats = fs.statSync(filePath);
+        console.log(`Archivo Excel creado exitosamente: ${filePath} (tamaño: ${stats.size} bytes)`);
+      } else {
+        console.error(`¡Error! El archivo Excel no existe después de intentar crearlo: ${filePath}`);
+      }
       
       resolve();
     } catch (error) {
@@ -219,6 +234,8 @@ function crearArchivoExcel(rows: any[], columnNames: string[], filePath: string)
 function crearArchivoCSV(rows: any[], columnNames: string[], filePath: string, delimiter: string = ','): Promise<void> {
   return new Promise((resolve, reject) => {
     try {
+      console.log(`Creando CSV con ${columnNames.length} columnas: ${columnNames.join(', ')}`);
+      
       // Crear el encabezado con el delimitador específico
       let csvContent = columnNames.join(delimiter) + '\n';
       
@@ -251,8 +268,23 @@ function crearArchivoCSV(rows: any[], columnNames: string[], filePath: string, d
         csvContent += rowValues.join(delimiter) + '\n';
       });
       
+      // Asegurarse de que el directorio exista
+      const dir = path.dirname(filePath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      
       // Escribir en el archivo
       fs.writeFileSync(filePath, csvContent, 'utf8');
+      
+      // Verificar que el archivo se haya creado correctamente
+      if (fs.existsSync(filePath)) {
+        const stats = fs.statSync(filePath);
+        console.log(`Archivo CSV creado exitosamente: ${filePath} (tamaño: ${stats.size} bytes)`);
+      } else {
+        console.error(`¡Error! El archivo CSV no existe después de intentar crearlo: ${filePath}`);
+      }
+      
       resolve();
     } catch (error) {
       console.error('Error al crear archivo CSV:', error);
