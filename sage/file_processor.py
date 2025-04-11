@@ -778,12 +778,17 @@ Warnings: {self.warning_count}
         
         # Verificar si es un paquete o un catálogo en la configuración
         package = self.config.packages.get(package_name)
+        catalog = self.config.catalogs.get(package_name)
         
-        # Si es un paquete en la configuración
+        # Log para depuración
+        self.logger.message(f"Procesando archivo: {os.path.basename(file_path)} (tipo: {file_type or 'desconocido'})")
+        self.logger.message(f"Usando configuración: '{package_name}' (tipo: {'paquete' if package else 'catálogo'})")
+        
+        # CASO 1: Es un paquete en la configuración
         if package:
             self.logger.message(f"Configuración encontrada como paquete: '{package_name}' (tipo: {package.file_format.type})")
             
-            # CASO 1: Paquete tipo ZIP
+            # CASO 1.1: Paquete tipo ZIP
             if package.file_format.type == "ZIP":
                 # Verificar que el archivo sea realmente un ZIP
                 if not is_zip_file:
@@ -793,9 +798,10 @@ Warnings: {self.warning_count}
                         f"pero se recibió un archivo de tipo {file_type or 'desconocido'}."
                     )
                 # Procesar como paquete ZIP (múltiples catálogos)
+                self.logger.message(f"Procesando como paquete ZIP con múltiples catálogos")
                 return self.process_zip_file(file_path, package_name)
             
-            # CASO 2: Paquete tipo CSV o EXCEL (un solo catálogo)
+            # CASO 1.2: Paquete tipo CSV o EXCEL (un solo catálogo)
             elif package.file_format.type in ["CSV", "EXCEL"]:
                 # Verificar que tenga exactamente un catálogo
                 if len(package.catalogs) != 1:
@@ -819,10 +825,10 @@ Warnings: {self.warning_count}
                 if not catalog:
                     raise FileProcessingError(f"El catálogo '{catalog_name}' no se encuentra en la configuración")
                 
-                self.logger.message(f"Procesando archivo {file_path} con catálogo '{catalog_name}'")
+                self.logger.message(f"Procesando archivo {os.path.basename(file_path)} con catálogo '{catalog_name}'")
                 return self._process_single_file(file_path, catalog)
             
-            # CASO 3: Tipo de paquete no válido
+            # CASO 1.3: Tipo de paquete no válido
             else:
                 raise FileProcessingError(
                     f"Tipo de formato no válido para el paquete '{package_name}': {package.file_format.type}. "
