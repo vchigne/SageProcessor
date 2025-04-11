@@ -418,8 +418,18 @@ except Exception as e:
                   // Procesamos la respuesta en formato JSON
                   if (code === 0) {
                     try {
-                      // Parsear la salida como JSON
-                      const result = JSON.parse(output.trim());
+                      // Extraer el último objeto JSON de la salida
+                      const jsonString = output.split('\n').filter(line => {
+                        return line.trim().startsWith('{') && line.trim().endsWith('}') && line.includes('execution_uuid');
+                      }).pop();
+                      
+                      if (!jsonString) {
+                        console.error('No se encontró un objeto JSON válido. Salida completa:', output);
+                        throw new Error('No se encontró un objeto JSON válido en la salida');
+                      }
+                      
+                      // Parsear la salida JSON encontrada
+                      const result = JSON.parse(jsonString);
                       
                       resolve({
                         execution_uuid: result.execution_uuid, // Usamos el UUID generado por main.py
