@@ -483,16 +483,64 @@ export default async function handler(
 import os
 import json
 import sys
+import importlib.util
+
+# Importar directamente sage.main y los módulos necesarios
 from sage.main import process_files
 
 try:
-    # Llamar a process_files con los parámetros adecuados
-    execution_uuid, error_count, warning_count = process_files(
-        yaml_path="${yamlPath}", 
-        data_path="${filePath}",
-        casilla_id=${casilla_id},
-        metodo_envio="portal_upload"
-    )
+    # Llamar a process_files con los parámetros adecuados y aplicar el manejador de nulos
+    try:
+        # Crear una función de eval mejorada que maneje NaN correctamente
+        def evaluate_rule_improved(self, rule_str, row_data, row_index):
+            try:
+                import pandas as pd
+                # Crear un DataFrame de una sola fila con los datos
+                df = pd.DataFrame([row_data])
+                
+                # Reemplazar valores NaN y 'nan' con valores adecuados
+                for col in df.columns:
+                    # Tratar 'nan' como texto o como valor nulo
+                    if pd.isna(df.loc[0, col]) or df.loc[0, col] == 'nan':
+                        if col in ['CodigoProducto', 'CodigoCategoria', 'CodigoFamilia', 
+                                  'CodigoMarca', 'UnidadesPorCaja', 'CODDUENOMARCA']:
+                            # Para campos numéricos, usar None o 0
+                            df.loc[0, col] = None
+                        else:
+                            # Para otros campos, usar cadena vacía
+                            df.loc[0, col] = ''
+                
+                # Evaluar la regla
+                result = eval(rule_str)
+                return bool(result)
+            except Exception as e:
+                print(f"Error al evaluar regla {rule_str}: {str(e)}")
+                return False
+                
+        # Sobrescribir el método de evaluación en el procesador
+        from sage.file_processor import FileProcessor
+        original_method = FileProcessor._evaluate_rule
+        FileProcessor._evaluate_rule = evaluate_rule_improved
+        
+        # Ejecutar el procesamiento
+        execution_uuid, error_count, warning_count = process_files(
+            yaml_path="${yamlPath}", 
+            data_path="${filePath}",
+            casilla_id=${casilla_id},
+            metodo_envio="portal_upload"
+        )
+        
+        # Restaurar el método original
+        FileProcessor._evaluate_rule = original_method
+    except Exception as e:
+        print(f"Error al aplicar parche: {str(e)}")
+        # Si falla el parche, usar el método original
+        execution_uuid, error_count, warning_count = main_module.process_files(
+            yaml_path="${yamlPath}", 
+            data_path="${filePath}",
+            casilla_id=${casilla_id},
+            metodo_envio="portal_upload"
+        )
     
     # Imprimir el resultado como JSON para procesarlo en JavaScript
     print(json.dumps({
