@@ -331,6 +331,16 @@ export default function PortalExternoPage() {
     setSelectedCasilla(casilla);
     setIsUploadModalOpen(true);
   };
+  
+  // Función para manejar el clic en "Introducir datos directamente"
+  const handleIntroducirDatosClick = (casilla: DataBox) => {
+    // Por ahora, mostrar un mensaje de que la funcionalidad está en desarrollo
+    toast.info('Funcionalidad de entrada directa de datos en desarrollo');
+    console.log('Casilla seleccionada para entrada directa:', casilla.id, casilla.nombre || casilla.nombreCompleto);
+    
+    // Aquí irá la lógica para abrir el modal de introducción de datos
+    // basado en la estructura YAML de la casilla
+  };
 
   const toggleExpandCasilla = (casillaNombre: string) => {
     setExpandedCasillas({
@@ -410,7 +420,7 @@ export default function PortalExternoPage() {
   };
   
   // Determinar si una casilla permite ingreso directo de datos (CSV o Excel, pero no ZIP)
-  const permitirIngresoDireto = (casilla: any): boolean => {
+  const permitirIngresoDirecto = (casilla: any): boolean => {
     // Si no hay contenido YAML, no podemos determinar el formato
     if (!casilla.yaml_contenido) {
       return false;
@@ -990,6 +1000,16 @@ export default function PortalExternoPage() {
                               <DocumentIcon className="h-4 w-4 mr-1" />
                               Descargar Plantilla
                             </button>
+                            {/* Botón para introducir datos directamente (solo visible si el formato lo permite) */}
+                            {permitirIngresoDirecto(casilla) && (
+                              <button
+                                className="inline-flex items-center px-3 py-1.5 border border-green-600 text-xs font-medium rounded text-white bg-green-600 hover:bg-green-700"
+                                onClick={() => handleIntroducirDatosClick(casilla)}
+                              >
+                                <PencilSquareIcon className="h-4 w-4 mr-1" />
+                                Introducir datos directamente
+                              </button>
+                            )}
                           </div>
                         </div>
                       </td>
