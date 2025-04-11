@@ -361,6 +361,9 @@ export default async function handler(
                 // Agregar parámetros
                 args.push('--casilla-id', casilla_id.toString());
                 
+                // Usar el UUID que ya generamos para asegurar que SAGE use el mismo
+                args.push('--uuid', executionUuid);
+                
                 // Indicar que el método de envío es portal_upload (un valor válido)
                 args.push('--metodo-envio', 'portal_upload');
                 
@@ -398,13 +401,13 @@ export default async function handler(
                   
                   // SAGE puede retornar código 1 cuando encuentra errores de validación
                   if (code === 0 || code === 1) {
-                    const uuidMatch = output.match(/Execution UUID: ([a-f0-9-]+)/);
+                    // Ya no buscamos el UUID en la salida, usamos el que generamos anteriormente
                     const errorsMatch = output.match(/Total errors: (\d+)/);
                     const warningsMatch = output.match(/Total warnings: (\d+)/);
                     
-                    if (uuidMatch && errorsMatch && warningsMatch) {
+                    if (errorsMatch && warningsMatch) {
                       resolve({
-                        execution_uuid: uuidMatch[1],
+                        execution_uuid: executionUuid, // Usamos el UUID que generamos al inicio
                         errors: parseInt(errorsMatch[1]),
                         warnings: parseInt(warningsMatch[1])
                       });
