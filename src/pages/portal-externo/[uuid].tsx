@@ -46,6 +46,7 @@ import * as yaml from 'yaml';
 import PortalLayout from '@/components/Portal/PortalLayout';
 import { FileUploadModal } from '@/components/FileUpload/FileUploadModal';
 import SuscripcionesButton from '../../components/Suscripciones/SuscripcionesButton';
+import DataEntryModal from '../../components/DataEntry/DataEntryModal';
 
 interface Responsable {
   id: number;
@@ -170,6 +171,7 @@ export default function PortalExternoPage() {
   const [casillas, setCasillas] = useState<DataBox[]>([]);
   const [selectedCasilla, setSelectedCasilla] = useState<DataBox | null>(null);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [isDataEntryModalOpen, setIsDataEntryModalOpen] = useState(false);
   const [titulo, setTitulo] = useState('');
   const [viewType, setViewType] = useState<'card' | 'list'>('card');
   const [activeSection, setActiveSection] = useState('dashboard');
@@ -341,11 +343,11 @@ export default function PortalExternoPage() {
     if (formatoInfo.tieneFormatoValido) {
       // No es necesario verificar si es multi-catálogo porque ya hemos ocultado el botón para ZIP
       // El formato permite ingreso directo, proceder con la funcionalidad
-      toast.info('Funcionalidad de entrada directa de datos en desarrollo');
       console.log('Casilla seleccionada para entrada directa:', casilla.id, casilla.nombre || casilla.nombreCompleto);
       
-      // Aquí irá la lógica para abrir el modal de introducción de datos
-      // basado en la estructura YAML de la casilla
+      // Abrir el modal de introducción de datos
+      setSelectedCasilla(casilla);
+      setIsDataEntryModalOpen(true);
     } else {
       // Formato no compatible, mostrar mensaje informativo
       toast.warning('El formato de esta casilla no permite el ingreso directo de datos. Se admiten únicamente formatos CSV y Excel.');
@@ -1452,6 +1454,17 @@ export default function PortalExternoPage() {
             <FileUploadModal
               isOpen={isUploadModalOpen}
               onClose={() => setIsUploadModalOpen(false)}
+              casilla={selectedCasilla}
+              uuid={uuid as string}
+              instalacionId={instalacionId}
+              instalacionInfo={instalacionInfo}
+            />
+          )}
+          
+          {isDataEntryModalOpen && selectedCasilla && (
+            <DataEntryModal
+              isOpen={isDataEntryModalOpen}
+              onClose={() => setIsDataEntryModalOpen(false)}
               casilla={selectedCasilla}
               uuid={uuid as string}
               instalacionId={instalacionId}
