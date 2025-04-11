@@ -22,29 +22,11 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "SAGE Daemon"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
 args = "SAGE Daemon 2"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
 args = "Next.js Development Server with Turbopack"
-
-[[workflows.workflow]]
-name = "SAGE Daemon"
-author = "agent"
-
-[workflows.workflow.metadata]
-agentRequireRestartOnSave = false
-
-[[workflows.workflow.tasks]]
-task = "packager.installForAll"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "python run_sage_daemon.py"
 
 [[workflows.workflow]]
 name = "SAGE Daemon 2"

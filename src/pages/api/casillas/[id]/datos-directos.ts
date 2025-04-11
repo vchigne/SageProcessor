@@ -56,8 +56,15 @@ function obtenerFormatoArchivo(yamlContent: any, catalogName: string): {type: st
  * @param catalogName Nombre del catálogo
  * @param filePath Ruta donde guardar el archivo
  * @param formato Objeto con información del formato {type: 'CSV'|'EXCEL', delimiter: string}
+ * @param yamlContent Contenido YAML completo para obtener todas las columnas definidas
  */
-async function crearArchivoDesdeData(data: any, catalogName: string, filePath: string, formato: {type: string; delimiter: string}): Promise<void> {
+async function crearArchivoDesdeData(
+  data: any, 
+  catalogName: string, 
+  filePath: string, 
+  formato: {type: string; delimiter: string}, 
+  yamlContent: any
+): Promise<void> {
   // Solo procesar filas con datos
   const rows = data[catalogName].filter((row: any) => 
     Object.values(row).some(val => val !== undefined && val !== '')
@@ -67,15 +74,44 @@ async function crearArchivoDesdeData(data: any, catalogName: string, filePath: s
     throw new Error('No hay datos para guardar');
   }
   
-  // Obtener nombres de columnas del primer registro
-  const columnNames = Object.keys(rows[0]);
+  // Obtener TODAS las columnas definidas en el YAML para este catálogo
+  // Esto asegura que se incluyan todas las columnas esperadas, incluso vacías
+  let columnNames: string[] = [];
+  
+  try {
+    // Intentar obtener las definiciones de columnas del YAML
+    const yamlCatalog = yamlContent.catalogs[catalogName];
+    const columnDefs = yamlCatalog.columns || yamlCatalog.fields || {};
+    
+    // Extraer los nombres de columna de las definiciones
+    columnNames = Object.keys(columnDefs);
+    
+    // Si no hay columnas definidas en el YAML, usar las de los datos como fallback
+    if (columnNames.length === 0) {
+      console.warn(`No se encontraron definiciones de columnas en YAML para ${catalogName}, usando las de los datos.`);
+      columnNames = Object.keys(rows[0]);
+    }
+  } catch (error) {
+    console.warn(`Error obteniendo columnas del YAML: ${error.message}. Usando las de los datos.`);
+    columnNames = Object.keys(rows[0]);
+  }
+  
+  // Asegurarse de que todas las filas tengan todas las columnas (incluso vacías)
+  const completeRows = rows.map(row => {
+    const completeRow: any = {};
+    // Inicializar todas las columnas definidas en el YAML con valores vacíos
+    columnNames.forEach(col => {
+      completeRow[col] = row[col] !== undefined ? row[col] : '';
+    });
+    return completeRow;
+  });
   
   if (formato.type.toLowerCase() === 'excel') {
-    // Crear un archivo Excel usando la biblioteca xlsx
-    return crearArchivoExcel(rows, columnNames, filePath);
+    // Crear un archivo Excel usando la biblioteca xlsx con todas las columnas
+    return crearArchivoExcel(completeRows, columnNames, filePath);
   } else {
-    // Crear archivo CSV con el delimitador especificado en la configuración YAML
-    return crearArchivoCSV(rows, columnNames, filePath, formato.delimiter);
+    // Crear archivo CSV con todas las columnas y el delimitador especificado
+    return crearArchivoCSV(completeRows, columnNames, filePath, formato.delimiter);
   }
 }
 
@@ -296,7 +332,8 @@ export default async function handler(
         const filePath = path.join(tmpDir, archivoName + fileExt);
         
         // Convertir los datos a CSV o crear Excel basado en el formato
-        await crearArchivoDesdeData(data, catalogs[0], filePath, formatoArchivo);
+        // Pasamos el yamlContent para obtener todas las columnas definidas en el YAML
+        await crearArchivoDesdeData(data, catalogs[0], filePath, formatoArchivo, yamlContent);
         
         console.log('Archivo creado:', filePath);
         
