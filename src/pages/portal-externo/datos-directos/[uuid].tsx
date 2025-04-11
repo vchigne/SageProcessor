@@ -48,6 +48,11 @@ export default function EntradaDatosDirectosPage() {
   // Estado para el ID de la instalación
   const [instalacionId, setInstalacionId] = useState<number>(0);
   
+  // Estado para mostrar el log de procesamiento
+  const [showLog, setShowLog] = useState<boolean>(false);
+  const [logUrl, setLogUrl] = useState<string>('');
+  const [executionUuid, setExecutionUuid] = useState<string>('');
+  
   // Cargar datos de la casilla al montar el componente
   useEffect(() => {
     if (uuid && casillaId) {
@@ -280,6 +285,7 @@ export default function EntradaDatosDirectosPage() {
     };
     
     setLoading(true);
+    setShowLog(false); // Ocultar log antes de procesar
     
     try {
       // Llamar a la API para procesar los datos
@@ -302,9 +308,18 @@ export default function EntradaDatosDirectosPage() {
       
       const result = await response.json();
       
-      // Mostrar mensaje de éxito y redirigir al portal
-      toast.success('Datos enviados correctamente');
-      router.push(`/portal-externo/${uuid}`);
+      // Mostrar mensaje de éxito
+      toast.success('Datos procesados correctamente');
+      
+      // Si hay UUID de ejecución y URL de log, mostrarlos
+      if (result.execution_uuid && result.log_url) {
+        setExecutionUuid(result.execution_uuid);
+        setLogUrl(result.log_url);
+        setShowLog(true);
+      } else {
+        // Si no hay log para mostrar, redirigir al portal
+        router.push(`/portal-externo/${uuid}`);
+      }
       
     } catch (error) {
       console.error('Error al enviar datos:', error);
@@ -388,6 +403,35 @@ export default function EntradaDatosDirectosPage() {
         {loading ? (
           <div className="flex justify-center items-center h-64">
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+          </div>
+        ) : showLog ? (
+          // Mostrar el log después del procesamiento
+          <div className="mt-4">
+            <div className="bg-white rounded-lg shadow p-6">
+              <h2 className="text-xl font-bold mb-4">Resultados del procesamiento</h2>
+              <p className="mb-4">
+                El archivo ha sido procesado. A continuación se muestra el log de validación:
+              </p>
+              
+              {/* iframe para mostrar el log */}
+              <div className="border rounded-md overflow-hidden">
+                <iframe 
+                  src={logUrl} 
+                  className="w-full h-96 border-0" 
+                  title="Log de procesamiento"
+                ></iframe>
+              </div>
+              
+              <div className="mt-6 flex justify-end space-x-3">
+                <button
+                  type="button"
+                  onClick={handleBack}
+                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                >
+                  Volver al portal
+                </button>
+              </div>
+            </div>
           </div>
         ) : (
           <>

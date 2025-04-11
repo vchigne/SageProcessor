@@ -377,7 +377,7 @@ export default async function handler(
             ]
           );
           
-          // 8. Responder con éxito
+          // 8. Responder con éxito, incluyendo UUID para poder mostrar el log
           return res.status(200).json({
             success: true,
             message: 'Datos procesados correctamente',
@@ -386,7 +386,8 @@ export default async function handler(
             warnings: processingResult.warnings,
             ejecucion_id: ejecucionId,
             fecha: now.toISOString(),
-            archivo: archivoName + fileExt
+            archivo: archivoName + fileExt,
+            log_url: `/api/executions/${processingResult.execution_uuid}/log`
           });
         } catch (execError) {
           console.error('Error al ejecutar el procesamiento:', execError);
