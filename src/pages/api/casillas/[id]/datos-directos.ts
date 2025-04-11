@@ -1,11 +1,121 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { Pool } from 'pg';
 import yaml from 'yaml';
+import fs from 'fs';
+import path from 'path';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+// Promisify exec para usar con async/await
+const execAsync = promisify(exec);
 
 // Configurar conexión a la base de datos
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
+
+/**
+ * Obtiene el formato de archivo (CSV o Excel) basado en la configuración YAML
+ * @param yamlContent Contenido YAML analizado
+ * @param catalogName Nombre del catálogo
+ * @returns Formato del archivo ('CSV' o 'EXCEL')
+ */
+function obtenerFormatoArchivo(yamlContent: any, catalogName: string): string {
+  try {
+    if (yamlContent.catalogs && yamlContent.catalogs[catalogName]) {
+      const catalog = yamlContent.catalogs[catalogName];
+      
+      if (catalog.file_format && catalog.file_format.type) {
+        const formato = catalog.file_format.type.toLowerCase();
+        return formato === 'excel' ? 'EXCEL' : 'CSV';
+      }
+    }
+    
+    // Por defecto, usar CSV
+    return 'CSV';
+  } catch (error) {
+    console.error('Error al obtener formato de archivo:', error);
+    return 'CSV';
+  }
+}
+
+/**
+ * Crea un archivo CSV o Excel a partir de los datos en memoria
+ * @param data Datos del formulario
+ * @param catalogName Nombre del catálogo
+ * @param filePath Ruta donde guardar el archivo
+ * @param formato Formato del archivo ('CSV' o 'EXCEL')
+ */
+async function crearArchivoDesdeData(data: any, catalogName: string, filePath: string, formato: string): Promise<void> {
+  // Solo procesar filas con datos
+  const rows = data[catalogName].filter((row: any) => 
+    Object.values(row).some(val => val !== undefined && val !== '')
+  );
+  
+  if (rows.length === 0) {
+    throw new Error('No hay datos para guardar');
+  }
+  
+  // Obtener nombres de columnas del primer registro
+  const columnNames = Object.keys(rows[0]);
+  
+  if (formato.toLowerCase() === 'excel') {
+    // En el caso de Excel, usaríamos una librería como xlsx
+    // Como no tenemos xlsx instalada, por ahora creamos un CSV
+    return crearArchivoCSV(rows, columnNames, filePath);
+  } else {
+    // Crear archivo CSV
+    return crearArchivoCSV(rows, columnNames, filePath);
+  }
+}
+
+/**
+ * Crea un archivo CSV a partir de los datos
+ * @param rows Filas de datos
+ * @param columnNames Nombres de las columnas
+ * @param filePath Ruta del archivo
+ */
+function crearArchivoCSV(rows: any[], columnNames: string[], filePath: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    try {
+      // Crear el encabezado
+      let csvContent = columnNames.join(',') + '\n';
+      
+      // Agregar las filas
+      rows.forEach(row => {
+        const rowValues = columnNames.map(col => {
+          // Manejar casos especiales (comas, comillas, valores nulos)
+          let cellValue = row[col] === undefined || row[col] === null ? '' : row[col];
+          
+          // Convertir valores booleanos
+          if (typeof cellValue === 'boolean') {
+            cellValue = cellValue ? 'true' : 'false';
+          }
+          
+          // Convertir a string y escapar comillas, agregar comillas si hay comas
+          cellValue = String(cellValue);
+          if (cellValue.includes('"')) {
+            cellValue = cellValue.replace(/"/g, '""');
+          }
+          
+          if (cellValue.includes(',') || cellValue.includes('"') || cellValue.includes('\n')) {
+            cellValue = `"${cellValue}"`;
+          }
+          
+          return cellValue;
+        });
+        
+        csvContent += rowValues.join(',') + '\n';
+      });
+      
+      // Escribir en el archivo
+      fs.writeFileSync(filePath, csvContent, 'utf8');
+      resolve();
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
 
 export default async function handler(
   req: NextApiRequest,
@@ -108,44 +218,100 @@ export default async function handler(
         }
       }
       
-      // 5. Registrar la ejecución en la base de datos
+      // 5. Crear directorio de datos para los archivos
       const now = new Date();
-      const archivoName = 'datos_directos_' + now.toISOString().replace(/[:.]/g, '_');
-      let ejecucionId;
+      const timestamp = now.toISOString().replace(/[:.]/g, '_');
+      const archivoName = `datos_directos_${timestamp}`;
+      
+      // Determinar el formato del archivo (CSV o Excel) basado en el YAML
+      const formatoArchivo = obtenerFormatoArchivo(yamlContent, catalogs[0]);
+      
+      // Crear el directorio data/casilla_id si no existe
+      const dataDirBase = path.join(process.cwd(), 'data');
+      const dataDirCasilla = path.join(dataDirBase, id.toString());
       
       try {
+        if (!fs.existsSync(dataDirBase)) {
+          fs.mkdirSync(dataDirBase);
+        }
+        
+        if (!fs.existsSync(dataDirCasilla)) {
+          fs.mkdirSync(dataDirCasilla);
+        }
+        
+        // Nombre y ruta del archivo a crear
+        const fileExt = formatoArchivo.toLowerCase() === 'excel' ? '.xlsx' : '.csv';
+        const filePath = path.join(dataDirCasilla, archivoName + fileExt);
+        
+        // Convertir los datos a CSV o crear Excel basado en el formato
+        await crearArchivoDesdeData(data, catalogs[0], filePath, formatoArchivo);
+        
+        console.log('Archivo creado:', filePath);
+        
+        // 6. Registrar la ejecución en la base de datos
         const ejecutionResult = await pool.query(
           `INSERT INTO ejecuciones_yaml 
            (casilla_id, fecha_ejecucion, estado, metodo_envio, 
-            archivo_datos, errores_detectados, warnings_detectados)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
+            archivo_datos, errores_detectados, warnings_detectados,
+            nombre_yaml, ruta_directorio)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
            RETURNING id`,
           [
             id,
             now,
-            'Éxito', 
+            'Pendiente', // Comienza como pendiente
             'ENTRADA_DIRECTA',
-            archivoName,
+            archivoName + fileExt,
             0, // Sin errores
-            0  // Sin advertencias
+            0,  // Sin advertencias
+            casilla.nombre_yaml,
+            dataDirCasilla
           ]
         );
         
-        ejecucionId = ejecutionResult.rows[0].id;
-        console.log('Ejecución registrada correctamente:', ejecucionId);
-      } catch (error) {
-        console.error('Error al registrar ejecución en la base de datos:', error);
-        // No lanzamos error, solo lo registramos y continuamos
-        ejecucionId = 0; // Valor por defecto si no se puede registrar
+        const ejecucionId = ejecutionResult.rows[0].id;
+        console.log('Ejecución registrada con ID:', ejecucionId);
+        
+        // 7. Ejecutar main.py para procesar el archivo
+        try {
+          // Ejecutar el procesador principal como proceso separado
+          const commandResult = await execAsync(`python main.py --casilla=${id} --file=${filePath} --source=portal_web`);
+          console.log('Resultado del procesamiento:', commandResult.stdout);
+          
+          // 8. Responder con éxito
+          return res.status(200).json({
+            success: true,
+            message: 'Datos procesados correctamente',
+            ejecucion_id: ejecucionId,
+            fecha: now.toISOString(),
+            archivo: archivoName + fileExt
+          });
+        } catch (execError) {
+          console.error('Error al ejecutar el procesamiento:', execError);
+          
+          // Actualizar estado a fallido
+          await pool.query(
+            `UPDATE ejecuciones_yaml SET estado = 'Fallido', errores_detectados = 1 
+             WHERE id = $1`,
+            [ejecucionId]
+          );
+          
+          return res.status(200).json({
+            success: true,
+            message: 'Datos guardados, pero hubo un error en el procesamiento',
+            ejecucion_id: ejecucionId,
+            fecha: now.toISOString(),
+            warning: 'El archivo fue creado pero el procesamiento falló'
+          });
+        }
+      } catch (fsError) {
+        console.error('Error al crear archivo o directorio:', fsError);
+        return res.status(500).json({
+          success: false,
+          error: 'Error al crear archivo para procesamiento',
+          details: fsError.message
+        });
       }
-      
-      // 6. Responder con éxito
-      return res.status(200).json({
-        success: true,
-        message: 'Datos procesados correctamente',
-        ejecucion_id: ejecucionId,
-        fecha: now.toISOString()
-      });
       
     } catch (yamlError) {
       console.error('Error al analizar estructura YAML:', yamlError);
