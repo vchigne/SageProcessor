@@ -39,8 +39,10 @@ import {
   ClockIcon,
   UsersIcon,
   BellAlertIcon,
-  DocumentIcon
+  DocumentIcon,
+  PencilSquareIcon
 } from '@heroicons/react/24/outline';
+import * as yaml from 'yaml';
 import PortalLayout from '@/components/Portal/PortalLayout';
 import { FileUploadModal } from '@/components/FileUpload/FileUploadModal';
 import SuscripcionesButton from '../../components/Suscripciones/SuscripcionesButton';
@@ -405,6 +407,45 @@ export default function PortalExternoPage() {
     
     // Caso 3: Tiene múltiples emisores
     return 'multiples_emisores';
+  };
+  
+  // Determinar si una casilla permite ingreso directo de datos (CSV o Excel, pero no ZIP)
+  const permitirIngresoDireto = (casilla: any): boolean => {
+    // Si no hay contenido YAML, no podemos determinar el formato
+    if (!casilla.yaml_contenido) {
+      return false;
+    }
+    
+    try {
+      // Analizar el contenido YAML
+      const yamlContent = yaml.parse(casilla.yaml_contenido);
+      
+      // Verificar si es un paquete multi-catálogo (ZIP)
+      const esMultiCatalogo = !!(yamlContent.packages && Object.keys(yamlContent.packages).length > 0);
+      if (esMultiCatalogo) {
+        return false; // No permitir ingreso directo para paquetes ZIP
+      }
+      
+      // Verificar formato de catálogos individuales
+      if (yamlContent.catalogs && Object.keys(yamlContent.catalogs).length > 0) {
+        // Verificar el formato de cada catálogo
+        for (const catalogName of Object.keys(yamlContent.catalogs)) {
+          const catalog = yamlContent.catalogs[catalogName];
+          if (catalog.file_format && catalog.file_format.type) {
+            const formatoArchivo = catalog.file_format.type.toLowerCase();
+            // Permitir ingreso directo solo para formatos CSV y Excel
+            if (formatoArchivo === 'csv' || formatoArchivo === 'excel') {
+              return true;
+            }
+          }
+        }
+      }
+      
+      return false;
+    } catch (error) {
+      console.error('Error al analizar el contenido YAML:', error);
+      return false;
+    }
   };
 
   // Obtener información de estado para una casilla completa
