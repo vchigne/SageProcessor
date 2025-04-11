@@ -334,9 +334,75 @@ export default function PortalExternoPage() {
   
   // Función para manejar el clic en "Introducir datos directamente"
   const handleIntroducirDatosClick = (casilla: DataBox) => {
+    // Verificación inicial de datos de casilla
+    console.log('DEBUG - Casilla seleccionada:', {
+      id: casilla.id,
+      nombre: casilla.nombre || casilla.nombreCompleto,
+      campos: Object.keys(casilla),
+      tieneYaml: !!casilla.yaml_contenido,
+      tieneArchivoYaml: !!casilla.archivo_yaml_contenido
+    });
+    
+    // Vamos a imprimir el YAML completo para depuración de la casilla 63
+    if (casilla.id === 63) {
+      console.log('DEBUG CASILLA 63 - CAMPOS DISPONIBLES:', Object.keys(casilla));
+      
+      // Verificar de dónde obtener el contenido YAML (puede estar en diferentes propiedades)
+      const yamlContent63 = casilla.yaml_contenido || casilla.archivo_yaml_contenido;
+      console.log('DEBUG CASILLA 63 - YAML CONTENT DISPONIBLE:', !!yamlContent63);
+      
+      if (yamlContent63) {
+        console.log('DEBUG CASILLA 63 - YAML CONTENT (primeros 500 caracteres):', 
+          yamlContent63.substring(0, 500) + (yamlContent63.length > 500 ? '...' : ''));
+        
+        try {
+          const parsedYaml = yaml.parse(yamlContent63);
+          console.log('DEBUG CASILLA 63 - PARSED YAML ESTRUCTURA:', Object.keys(parsedYaml));
+          
+          // Inspeccionar el formato del paquete
+          if (parsedYaml.packages) {
+            console.log('DEBUG CASILLA 63 - PACKAGES KEYS:', Object.keys(parsedYaml.packages));
+            for (const pkgName in parsedYaml.packages) {
+              const pkg = parsedYaml.packages[pkgName];
+              console.log(`DEBUG CASILLA 63 - PACKAGE ${pkgName} KEYS:`, Object.keys(pkg));
+              if (pkg.file_format) {
+                console.log(`DEBUG CASILLA 63 - PACKAGE ${pkgName} FORMAT:`, pkg.file_format);
+              }
+            }
+          }
+          
+          // Inspeccionar catálogos
+          if (parsedYaml.catalogs) {
+            console.log('DEBUG CASILLA 63 - CATALOGS KEYS:', Object.keys(parsedYaml.catalogs));
+            for (const catName in parsedYaml.catalogs) {
+              const cat = parsedYaml.catalogs[catName];
+              console.log(`DEBUG CASILLA 63 - CATALOG ${catName} KEYS:`, Object.keys(cat));
+              if (cat.file_format) {
+                console.log(`DEBUG CASILLA 63 - CATALOG ${catName} FORMAT:`, cat.file_format);
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Error al analizar YAML para debug:', error);
+        }
+      } else {
+        console.error('DEBUG CASILLA 63 - NO HAY CONTENIDO YAML DISPONIBLE');
+      }
+    }
+    
     // Analizar el formato de la casilla
     const formatoInfo = analizarFormatoCasilla(casilla);
     
+    // Mostrar información de debug para cualquier casilla
+    console.log(`DEBUG - Casilla ${casilla.id} - Resultado análisis formato:`, formatoInfo);
+    
+    // Siempre mostrar un mensaje de que la funcionalidad está en desarrollo
+    // mientras solucionamos el problema de detección de formato
+    toast.info('Funcionalidad de entrada directa de datos en desarrollo');
+    console.log('Casilla seleccionada para entrada directa:', casilla.id, casilla.nombre || casilla.nombreCompleto);
+    
+    // Comentando temporalmente la lógica de validación mientras resolvemos el problema
+    /* 
     // Verificar si el formato permite ingreso directo
     if (formatoInfo.tieneFormatoValido) {
       if (formatoInfo.esMultiCatalogo) {
@@ -354,6 +420,7 @@ export default function PortalExternoPage() {
       // Formato no compatible, mostrar mensaje informativo
       toast.warning('El formato de esta casilla no permite el ingreso directo de datos. Se admiten únicamente formatos CSV y Excel.');
     }
+    */
   };
 
   const toggleExpandCasilla = (casillaNombre: string) => {
@@ -448,14 +515,18 @@ export default function PortalExternoPage() {
       mensaje: 'No se puede determinar el formato del archivo'
     };
     
+    // Intentar obtener el contenido YAML de varias propiedades posibles
+    const yamlString = casilla.yaml_contenido || casilla.archivo_yaml_contenido;
+    
     // Si no hay contenido YAML, no podemos determinar el formato
-    if (!casilla.yaml_contenido) {
+    if (!yamlString) {
+      console.log(`DEBUG - No se encontró contenido YAML para casilla ${casilla.id}`);
       return resultado;
     }
     
     try {
       // Analizar el contenido YAML
-      const yamlContent = yaml.parse(casilla.yaml_contenido);
+      const yamlContent = yaml.parse(yamlString);
       
       // Verificar si es un paquete multi-catálogo, pero solo nos interesa si tiene tipo ZIP
       let formatoPackage = '';
@@ -715,7 +786,9 @@ export default function PortalExternoPage() {
           nombreCompleto: casilla.nombreCompleto || casilla.nombre_yaml,
           emisores: casilla.emisores || [],
           // ASEGURARNOS que el historial de la casilla se preserve correctamente 
-          historial_envios: casilla.historial_envios || []
+          historial_envios: casilla.historial_envios || [],
+          // Preservar el contenido YAML para analizarlo después
+          yaml_contenido: casilla.yaml_contenido || casilla.archivo_yaml_contenido
         };
         
         console.log(`DEBUG - Creada casilla procesada "${nombreBase}" con ${casillaFormateada.emisores.length} emisores`);
@@ -1069,7 +1142,7 @@ export default function PortalExternoPage() {
                               onClick={() => handleIntroducirDatosClick(casilla)}
                             >
                               <PencilSquareIcon className="h-4 w-4 mr-1" />
-                              Introducir datos directamente
+                              Introducir datos {analizarFormatoCasilla(casilla).permitirIngreso ? '✓' : 'X'}
                             </button>
                           </div>
                         </div>
