@@ -851,7 +851,14 @@ class SageLogger:
         
         # Escribimos el informe en formato JSON
         with open(self.report_json, "w", encoding="utf-8") as f:
-            json.dump(report, f, ensure_ascii=False, indent=2)
+            try:
+                json.dump(report, f, ensure_ascii=False, indent=2)
+            except TypeError as e:
+                # Si hay error de serialización, manejamos objetos personalizados
+                self.error(f"Error al serializar el reporte JSON: {str(e)}")
+                # Intentar una serialización más robusta con manejo de excepciones personalizadas
+                serializable_report = self._prepare_json_serializable(report)
+                json.dump(serializable_report, f, ensure_ascii=False, indent=2)
     
     def generate_results_txt(self, total_records: int, errors: int, warnings: int):
         """Genera un archivo results.txt con un resumen estructurado de la ejecución"""
