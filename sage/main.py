@@ -152,9 +152,14 @@ def process_files(yaml_path: str, data_path: str, casilla_id: Optional[int] = No
         if is_zip:
             # Obtener el conteo de registros del procesador o usar 0 si no está disponible
             total_records = getattr(processor, 'total_records', 0) or 0
+        # Para archivos Excel, tampoco podemos contar líneas directamente
+        elif file_type in ["EXCEL"]:
+            # Obtener el conteo de registros del procesador o usar 0 si no está disponible
+            total_records = getattr(processor, 'total_records', 0) or 0
+            logger.message(f"Archivo Excel procesado con {total_records} registros")
         else:
             try:
-                # Para archivos regulares, contar líneas ignorando la cabecera
+                # Para archivos CSV y otros de texto, contar líneas ignorando la cabecera
                 with open(data_dest, 'r', encoding='utf-8', errors='replace') as f:
                     total_records = sum(1 for _ in f) - 1  # -1 para la cabecera
             except Exception as e:

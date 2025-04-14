@@ -960,3 +960,43 @@ class SageLogger:
                 f.write("Para ver todos los errores, ejecute la validación con archivos más pequeños.\n\n")
             
             f.write("======================================================================\n")
+    
+    def _prepare_json_serializable(self, obj):
+        """
+        Recursivamente prepara un objeto para serialización JSON, manejando tipos de excepción personalizados.
+        
+        Args:
+            obj: El objeto a hacer serializable para JSON
+            
+        Returns:
+            Una versión JSON serializable del objeto
+        """
+        # Si es None, retornamos None
+        if obj is None:
+            return None
+            
+        # Si es un tipo básico (str, int, float, bool), retornamos directamente
+        if isinstance(obj, (str, int, float, bool)):
+            return obj
+            
+        # Si es una lista o tupla, aplicamos recursividad a cada elemento
+        if isinstance(obj, (list, tuple)):
+            return [self._prepare_json_serializable(item) for item in obj]
+            
+        # Si es un diccionario, aplicamos recursividad a cada valor
+        if isinstance(obj, dict):
+            return {k: self._prepare_json_serializable(v) for k, v in obj.items()}
+            
+        # Si es una excepción personalizada que tiene método to_dict, usamos ese
+        if hasattr(obj, 'to_dict') and callable(obj.to_dict):
+            return obj.to_dict()
+            
+        # Si es un objeto de fecha/hora, lo convertimos a string ISO
+        if hasattr(obj, 'isoformat') and callable(obj.isoformat):
+            return obj.isoformat()
+            
+        # Para cualquier otro objeto, lo convertimos a string
+        try:
+            return str(obj)
+        except:
+            return f"<Objeto no serializable: {type(obj).__name__}>"
