@@ -968,6 +968,7 @@ Warnings: {self.warning_count}
         """Procesa un archivo individual usando un catálogo específico"""
         try:
             df = self._read_file(file_path, catalog)
+            self.last_processed_df = df
             cols_count = len(df.columns)
             column_names = ", ".join(df.columns.tolist())
 
