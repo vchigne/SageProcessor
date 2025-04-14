@@ -104,6 +104,14 @@ class FileProcessor:
                         mask = df[field.name].notna() & df[field.name].apply(lambda x: float(x).is_integer() if pd.notnull(x) and not isinstance(x, bool) else False)
                         if mask.any():
                             df.loc[mask, field.name] = df.loc[mask, field.name].astype('Int64')
+                elif field.type == 'entero':
+                    # Si es campo entero, convertir a entero los números sin decimales
+                    mask = df[field.name].notna()
+                    if mask.any():
+                        # Convertir solo valores numéricos que son enteros
+                        numeric_mask = mask & df[field.name].apply(lambda x: isinstance(x, (int, float)) and float(x).is_integer())
+                        if numeric_mask.any():
+                            df.loc[numeric_mask, field.name] = df.loc[numeric_mask, field.name].astype('Int64')
                 else:
                     df[field.name] = df[field.name].astype(target_type)
 
