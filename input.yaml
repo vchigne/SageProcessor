@@ -1,0 +1,4 @@
+- name: validar_fecha
+        rule: pd.to_datetime(df['Fecha'], errors='coerce').notna().all()
+        description: El campo Fecha debe ser una fecha válida
+        severity: ERROR
