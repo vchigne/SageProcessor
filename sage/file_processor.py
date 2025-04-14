@@ -299,8 +299,9 @@ class FileProcessor:
             for field in catalog.fields:
                 if field.type == 'entero':
                     # Detectar y convertir números que son efectivamente enteros
-                    mask = df[field.name].notna() & df[field.name].apply(lambda x: float(x).is_integer() if pd.notnull(x) and not isinstance(x, bool) else False)
-                    df.loc[mask, field.name] = df.loc[mask, field.name].astype('Int64')
+                    mask = df[field.name].notna()
+                    if mask.any():
+                        df.loc[mask, field.name] = pd.to_numeric(df.loc[mask, field.name], downcast='integer')
 
             # Nuevo código: Adaptar dataframe al esquema del catálogo
             # Obtener los nombres de campos definidos en el YAML
