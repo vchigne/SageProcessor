@@ -287,6 +287,13 @@ class FileProcessor:
                     column_names = create_column_names(n_columns)
                     df.columns = column_names
 
+            # Preprocesar campos numéricos antes de validación
+            for field in catalog.fields:
+                if field.type == 'entero':
+                    # Detectar y convertir números que son efectivamente enteros
+                    mask = df[field.name].notna() & df[field.name].apply(lambda x: float(x).is_integer() if pd.notnull(x) and not isinstance(x, bool) else False)
+                    df.loc[mask, field.name] = df.loc[mask, field.name].astype('Int64')
+
             # Nuevo código: Adaptar dataframe al esquema del catálogo
             # Obtener los nombres de campos definidos en el YAML
             yaml_field_names = [field.name for field in catalog.fields]
