@@ -111,7 +111,7 @@ class FileProcessor:
                         # Convertir solo valores numéricos que son enteros
                         numeric_mask = mask & df[field.name].apply(lambda x: isinstance(x, (int, float)) and float(x).is_integer())
                         if numeric_mask.any():
-                            df.loc[numeric_mask, field.name] = df.loc[numeric_mask, field.name].astype('Int64')
+                            df.loc[numeric_mask, field.name] = df.loc[numeric_mask, field.name].astype('int64')
                 else:
                     df[field.name] = df[field.name].astype(target_type)
 
