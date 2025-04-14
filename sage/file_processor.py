@@ -369,11 +369,19 @@ class FileProcessor:
                 # Contador de errores para esta regla específica
                 rule_error_count = 0
                 
+                # Filtrar el DataFrame para excluir filas con valores NaN en este campo
+                # Esto evita que se apliquen reglas de validación a campos opcionales vacíos
+                df_filtered = df.dropna(subset=[field_name])
+                
+                # Si todas las filas tienen NaN en este campo, no hay nada que validar
+                if len(df_filtered) == 0:
+                    continue
+                
                 # Usamos eval() regular en lugar de pd.eval() para permitir acceso a métodos completos de pandas
                 try:
                     # Crear un entorno de ejecución con acceso a pandas, numpy y str
                     eval_globals = {
-                        'df': df,
+                        'df': df_filtered,  # Usar el DataFrame filtrado sin NaNs
                         'np': np,
                         'pd': pd,
                         'str': str  # Añadir str explícitamente para que esté disponible
@@ -386,7 +394,7 @@ class FileProcessor:
                     # Otras excepciones durante la evaluación
                     raise Exception(f"Error evaluando regla {rule.name}: {str(e)}")
                     
-                invalid_rows = df[~result]
+                invalid_rows = df_filtered[~result]
 
                 if len(invalid_rows) > 0:
                     for idx, row in invalid_rows.iterrows():
@@ -629,8 +637,22 @@ class FileProcessor:
         """Apply package-level validations"""
         for rule in package.package_validation:
             try:
-                # Las reglas devuelven Series de pandas con los valores que cumplen la condición
-                result = pd.eval(rule.rule, local_dict={'df': self.dataframes})
+                # Usamos eval() regular en lugar de pd.eval() para permitir acceso a métodos completos de pandas
+                try:
+                    # Crear un entorno de ejecución con acceso a pandas, numpy y str
+                    eval_globals = {
+                        'df': self.dataframes,
+                        'np': np,
+                        'pd': pd,
+                        'str': str  # Añadir str explícitamente para que esté disponible
+                    }
+                    result = eval(rule.rule, eval_globals, {})
+                except NameError as e:
+                    # Capturar errores específicos de nombres no definidos para dar mejor feedback
+                    raise NameError(f"Error evaluando regla {rule.name}: {str(e)}")
+                except Exception as e:
+                    # Otras excepciones durante la evaluación
+                    raise Exception(f"Error evaluando regla {rule.name}: {str(e)}")
 
                 # Para Series, procesamos cada valor que no cumple
                 if isinstance(result, pd.Series):
