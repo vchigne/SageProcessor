@@ -369,8 +369,23 @@ class FileProcessor:
                 # Contador de errores para esta regla específica
                 rule_error_count = 0
                 
-                # Las reglas devuelven Series de pandas con los valores que cumplen la condición
-                result = pd.eval(rule.rule, target=df)
+                # Usamos eval() regular en lugar de pd.eval() para permitir acceso a métodos completos de pandas
+                try:
+                    # Crear un entorno de ejecución con acceso a pandas, numpy y str
+                    eval_globals = {
+                        'df': df,
+                        'np': np,
+                        'pd': pd,
+                        'str': str  # Añadir str explícitamente para que esté disponible
+                    }
+                    result = eval(rule.rule, eval_globals, {})
+                except NameError as e:
+                    # Capturar errores específicos de nombres no definidos para dar mejor feedback
+                    raise NameError(f"Error evaluando regla {rule.name}: {str(e)}")
+                except Exception as e:
+                    # Otras excepciones durante la evaluación
+                    raise Exception(f"Error evaluando regla {rule.name}: {str(e)}")
+                    
                 invalid_rows = df[~result]
 
                 if len(invalid_rows) > 0:
@@ -494,8 +509,23 @@ class FileProcessor:
                 # Contador de errores para esta regla específica
                 rule_error_count = 0
                 
-                # Las reglas devuelven Series de pandas con los valores que cumplen la condición
-                result = pd.eval(rule.rule, target=df)
+                # Usamos eval() regular en lugar de pd.eval() para permitir acceso a métodos completos de pandas
+                try:
+                    # Crear un entorno de ejecución con acceso a pandas, numpy y str
+                    eval_globals = {
+                        'df': df,
+                        'np': np,
+                        'pd': pd,
+                        'str': str  # Añadir str explícitamente para que esté disponible
+                    }
+                    result = eval(rule.rule, eval_globals, {})
+                except NameError as e:
+                    # Capturar errores específicos de nombres no definidos para dar mejor feedback
+                    raise NameError(f"Error evaluando regla {rule.name}: {str(e)}")
+                except Exception as e:
+                    # Otras excepciones durante la evaluación
+                    raise Exception(f"Error evaluando regla {rule.name}: {str(e)}")
+                
                 invalid_rows = df[~result]
 
                 for idx, row in invalid_rows.iterrows():
@@ -547,8 +577,23 @@ class FileProcessor:
                 # Contador de errores para esta regla específica
                 rule_error_count = 0
                 
-                # Las reglas devuelven Series de pandas con los valores que cumplen la condición
-                result = pd.eval(rule.rule, target=df)
+                # Usamos eval() regular en lugar de pd.eval() para permitir acceso a métodos completos de pandas
+                try:
+                    # Crear un entorno de ejecución con acceso a pandas, numpy y str
+                    eval_globals = {
+                        'df': df,
+                        'np': np,
+                        'pd': pd,
+                        'str': str  # Añadir str explícitamente para que esté disponible
+                    }
+                    result = eval(rule.rule, eval_globals, {})
+                except NameError as e:
+                    # Capturar errores específicos de nombres no definidos para dar mejor feedback
+                    raise NameError(f"Error evaluando regla {rule.name}: {str(e)}")
+                except Exception as e:
+                    # Otras excepciones durante la evaluación
+                    raise Exception(f"Error evaluando regla {rule.name}: {str(e)}")
+                
                 invalid_rows = df[~result]
 
                 if len(invalid_rows) > 0:
