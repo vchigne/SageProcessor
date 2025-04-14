@@ -101,8 +101,9 @@ class FileProcessor:
                     # Si es campo entero, convertir a entero los números sin decimales
                     if field.type == 'entero':
                         # Verificar si cada valor es efectivamente un entero
-                        mask = df[field.name].notna() & df[field.name].apply(lambda x: float(x).is_integer())
-                        df.loc[mask, field.name] = df.loc[mask, field.name].astype(int)
+                        mask = df[field.name].notna() & df[field.name].apply(lambda x: float(x).is_integer() if pd.notnull(x) and not isinstance(x, bool) else False)
+                        if mask.any():
+                            df.loc[mask, field.name] = df.loc[mask, field.name].astype('Int64')
                 else:
                     df[field.name] = df[field.name].astype(target_type)
 
@@ -463,7 +464,7 @@ class FileProcessor:
             # Pre-procesar campos numéricos antes de la validación
             if field.type == 'entero':
                 # Detectar y convertir números que son efectivamente enteros
-                mask = df[field.name].notna() & df[field.name].apply(lambda x: float(x).is_integer() if pd.notnull(x) else True)
+                mask = df[field.name].notna() & df[field.name].apply(lambda x: float(x).is_integer() if pd.notnull(x) and not isinstance(x, bool) else True)
                 df.loc[mask, field.name] = df.loc[mask, field.name].astype('Int64')  # Usar Int64 para permitir NaN
 
             if field.required:
