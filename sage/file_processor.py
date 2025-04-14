@@ -397,20 +397,16 @@ class FileProcessor:
                 try:
                     # Crear un entorno de ejecución con acceso a pandas, numpy y str
                     eval_globals = {
-                        'df': df_filtered,  # Usar el DataFrame filtrado sin NaNs
+                        'df': df_filtered,
                         'np': np,
                         'pd': pd,
-                        'str': str  # Añadir str explícitamente para que esté disponible
+                        'str': str
                     }
                     result = eval(rule.rule, eval_globals, {})
-                except NameError as e:
-                    # Capturar errores específicos de nombres no definidos para dar mejor feedback
-                    raise NameError(f"Error evaluando regla {rule.name}: {str(e)}")
                 except Exception as e:
-                    # Otras excepciones durante la evaluación
-                    raise Exception(f"Error evaluando regla {rule.name}: {str(e)}")
+                    raise FileProcessingError(f"Error evaluating rule {rule.name}: {str(e)}")
 
-                invalid_rows = self._handle_series_result(result, df_filtered)
+                invalid_rows = df_filtered[~result] if isinstance(result, pd.Series) else df_filtered if not result else pd.DataFrame()
 
                 if len(invalid_rows) > 0:
                     for idx, row in invalid_rows.iterrows():
