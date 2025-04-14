@@ -46,11 +46,11 @@ class SageLogger:
         self.field_rules_skipped = {}  # {field_name: {rule_name: error_count}}
         self.row_rules_skipped = {}  # {catalog_name: {rule_name: error_count}}
         self.catalog_rules_skipped = {}  # {catalog_name: {rule_name: error_count}}
-        
+
         # Estructuras de datos para el reporte JSON
         self.events = []  # Lista de todos los eventos (errores, advertencias, mensajes)
         self.validation_failures = []  # Lista detallada de fallos en validaciones
-        
+
         # Inicializar el log de sistema (texto plano)
         with open(self.output_log, "w", encoding="utf-8") as f:
             f.write(f"=== SAGE Log Inicio: {self.start_time.strftime('%Y-%m-%d %H:%M:%S')} ===\n")
@@ -218,7 +218,7 @@ class SageLogger:
                 f.write("\n</div>\n</body>\n</html>")
         except:
             pass  # Ignore errors when closing file during cleanup
-            
+
         # También cerrar el log de texto
         try:
             elapsed_time = datetime.now() - self.start_time
@@ -312,7 +312,7 @@ class SageLogger:
         with open(self.report_html, "a", encoding="utf-8") as f:
             message_block = self._format_message_block(formatted_message, severity, timestamp, **kwargs)
             f.write(message_block)
-            
+
         # También escribir al log de texto plano
         with open(self.output_log, "a", encoding="utf-8") as f:
             f.write(f"{timestamp} [{severity.upper()}] {message}\n")
@@ -331,7 +331,7 @@ class SageLogger:
             for key, value in kwargs.items():
                 if value is not None:
                     self.console.print(f"  {key}: {value}")
-        
+
         # Capturar el evento para el reporte JSON
         event_data = {
             "timestamp": timestamp_iso,
@@ -340,7 +340,7 @@ class SageLogger:
             "details": {k: v for k, v in kwargs.items() if v is not None}
         }
         self.events.append(event_data)
-        
+
         # Si es un error de validación o formato, capturarlo específicamente
         if severity in ["error", "warning"] and any(k in kwargs for k in ["rule", "field", "row", "column"]):
             validation_data = {
@@ -363,18 +363,18 @@ class SageLogger:
 
                 # Get database URL from environment
                 database_url = os.environ['DATABASE_URL']
-                
+
                 # Create connection pool
                 connection_pool = pool.SimpleConnectionPool(1, 3, database_url)
-                
+
                 # Inicializar variables
                 conn = None
                 cur = None
-                
+
                 try:
                     conn = connection_pool.getconn()
                     cur = conn.cursor()
-                    
+
                     # Determine estado
                     if errors > 0:
                         estado = 'Fallido'
@@ -388,7 +388,7 @@ class SageLogger:
                     validated_casilla_id = None
                     validated_emisor_id = None
                     id_warnings = 0  # Contador de advertencias para IDs inválidos
-                    
+
                     # Validar casilla_id si fue proporcionado
                     if self.casilla_id is not None:
                         cur.execute("SELECT id FROM casillas WHERE id = %s", (self.casilla_id,))
@@ -398,7 +398,7 @@ class SageLogger:
                             # Registrar advertencia si el ID no existe
                             self.warning(f"Casilla con ID {self.casilla_id} no encontrada en la base de datos")
                             id_warnings += 1
-                    
+
                     # Validar emisor_id si fue proporcionado
                     if self.emisor_id is not None:
                         cur.execute("SELECT id FROM emisores WHERE id = %s", (self.emisor_id,))
@@ -408,11 +408,11 @@ class SageLogger:
                             # Registrar advertencia si el ID no existe
                             self.warning(f"Emisor con ID {self.emisor_id} no encontrado en la base de datos")
                             id_warnings += 1
-                            
+
                     # Actualizar estado si hay advertencias de IDs
                     if id_warnings > 0 and estado == 'Éxito':
                         estado = 'Parcial'  # Cambiar a "Parcial" si hay problemas con los IDs
-                    
+
                     # Insert execution record con IDs (validados o no, según el estado)
                     cur.execute("""
                         INSERT INTO ejecuciones_yaml 
@@ -433,9 +433,9 @@ class SageLogger:
                             validated_emisor_id,
                             self.metodo_envio
                         ))
-                    
+
                     conn.commit()
-                    
+
                 finally:
                     # Cerrar cursor y devolver conexión solo si fueron creados
                     if cur is not None:
@@ -443,13 +443,13 @@ class SageLogger:
                             cur.close()
                         except Exception:
                             pass
-                            
+
                     if conn is not None:
                         try:
                             connection_pool.putconn(conn)
                         except Exception:
                             pass
-                            
+
                     if connection_pool is not None:
                         try:
                             connection_pool.closeall()
@@ -465,8 +465,13 @@ class SageLogger:
         self.total_records = total_records
         self.total_errors = errors
         self.total_warnings = warnings
-        
-        success_rate = ((total_records - errors) / total_records * 100) if total_records > 0 else 0
+
+        # Calcular registros con error (no puede ser mayor que total_records)
+        records_with_errors = min(errors, total_records)
+        # La tasa de éxito es el porcentaje de registros sin errores
+        success_rate = ((total_records - records_with_errors) / total_records * 100) if total_records > 0 else 0
+        # Asegurar que la tasa esté entre 0% y 100%
+        success_rate = max(0, min(100, success_rate))
 
         # Color based on success rate
         if success_rate < 60:
@@ -510,7 +515,7 @@ class SageLogger:
 
         with open(self.report_html, "a", encoding="utf-8") as f:
             f.write(summary_html)
-            
+
         # También escribir la información del resumen al log de texto
         with open(self.output_log, "a", encoding="utf-8") as f:
             f.write(f"\n=== RESUMEN FINAL ===\n")
@@ -525,7 +530,7 @@ class SageLogger:
 
         # Generar el archivo HTML para email que será adjuntado a los correos
         self.generate_email_html()
-        
+
         self._close_log_file()  # Close HTML structure after summary
 
         # Also print to console
@@ -535,7 +540,7 @@ class SageLogger:
         self.console.print(f"  ⚠️ Advertencias: {warnings}")
         if total_records > 0:
             self.console.print(f"  ✨ Tasa de Éxito: {success_rate:.1f}%")
-            
+
         # Generar el archivo results.txt y report.json
         self.generate_results_txt(total_records, errors, warnings)
         self.generate_report_json(total_records, errors, warnings)
@@ -652,9 +657,9 @@ class SageLogger:
         for i, word in enumerate(words):
             if os.path.exists(word):
                 words[i] = self._format_file_path(word)
-                
+
         return " ".join(words)
-        
+
     def register_file_stats(self, filename: str, records: int, errors: int, warnings: int):
         """Registra estadísticas de un archivo procesado"""
         self.file_stats[filename] = {
@@ -662,7 +667,7 @@ class SageLogger:
             'errors': errors,
             'warnings': warnings
         }
-        
+
     def register_format_error(self, message: str, file: str = None, expected: str = None, found: str = None):
         """Registra un error de formato específico (como discrepancia de columnas)"""
         error_info = {
@@ -673,29 +678,29 @@ class SageLogger:
             error_info['expected'] = expected
         if found is not None:
             error_info['found'] = found
-            
+
         self.format_errors.append(error_info)
-        
+
     def register_missing_file(self, filename: str, package: str = None):
         """Registra un archivo faltante en el paquete ZIP"""
         self.missing_files.append({
             'filename': filename,
             'package': package
         })
-        
+
     def generate_email_html(self):
         """
         Genera un HTML simplificado y compatible con lectores de correo electrónico.
-        
+
         Este método crea un archivo HTML especialmente diseñado para ser incluido 
         en correos electrónicos, utilizando estilos en línea y una estructura 
         simplificada para máxima compatibilidad con clientes de correo.
-        
+
         Returns:
             str: Ruta al archivo HTML generado
         """
         email_html_path = os.path.join(self.log_dir, "email_report.html")
-        
+
         # Iniciar con estilos simples en línea que sean compatibles con la mayoría de clientes de correo
         html = """
         <!DOCTYPE html>
@@ -709,7 +714,7 @@ class SageLogger:
                 <h2 style="color: #0066cc; margin-bottom: 5px;">Resultados de Procesamiento SAGE</h2>
             </div>
         """
-        
+
         # Añadir un resumen con los totales
         success_rate = ((self.total_records - self.total_errors) / self.total_records * 100) if hasattr(self, 'total_records') and self.total_records > 0 else 0
         html += f"""
@@ -735,7 +740,7 @@ class SageLogger:
                 </table>
             </div>
         """
-        
+
         # Añadir errores detectados (limitados a 20 para no sobrecargar el correo)
         errors_list = [e for e in self.events if e.get('severity') == 'error'][:20]
         if errors_list:
@@ -749,7 +754,7 @@ class SageLogger:
                             <th style="padding: 8px; text-align: left; border-bottom: 1px solid #ddd;">Descripción</th>
                         </tr>
             """
-            
+
             for idx, error in enumerate(errors_list):
                 bg_color = "#ffffff" if idx % 2 == 0 else "#f8f8f8"
                 file_name = error.get('details', {}).get('file', 'N/A')
@@ -771,7 +776,7 @@ class SageLogger:
                     <p style="margin: 0; color: #009900;"><b>✓ No se detectaron errores en el procesamiento.</b></p>
                 </div>
             """
-        
+
         # Agregar nota final y cierre de HTML
         html += """
             <div style="margin-top: 30px; padding-top: 15px; border-top: 1px solid #ddd; color: #666; font-size: 12px;">
@@ -780,17 +785,17 @@ class SageLogger:
         </body>
         </html>
         """
-        
+
         # Escribir el HTML al archivo
         with open(email_html_path, 'w', encoding='utf-8') as f:
             f.write(html)
-        
+
         return email_html_path
 
     def generate_report_json(self, total_records: int, errors: int, warnings: int):
         """
         Genera un archivo report.json con información detallada de la ejecución
-        
+
         Este archivo contiene una versión estructurada y detallada de todos los eventos,
         errores y advertencias capturados durante la ejecución del procesamiento.
         Incluye información adicional sobre validaciones, errores de formato y archivos
@@ -798,15 +803,15 @@ class SageLogger:
         """
         end_time = datetime.now()
         duration = end_time - self.start_time
-        
+
         # Formatear la duración como HH:MM:SS
         hours, remainder = divmod(duration.seconds, 3600)
         minutes, seconds = divmod(remainder, 60)
         duration_str = f"{hours:02}:{minutes:02}:{seconds:02}"
-        
+
         # Calculamos la tasa de éxito
         success_rate = ((total_records - errors) / total_records * 100) if total_records > 0 else 0
-        
+
         # Determinamos el estado global
         if errors > 0:
             status = 'Fallido'
@@ -814,7 +819,7 @@ class SageLogger:
             status = 'Parcial'
         else:
             status = 'Éxito'
-        
+
         # Creamos la estructura principal del informe
         report = {
             "execution_info": {
@@ -848,7 +853,7 @@ class SageLogger:
             },
             "events": self.events
         }
-        
+
         # Procesamos eventos para garantizar serialización
         processed_events = []
         for event in self.events:
@@ -865,10 +870,10 @@ class SageLogger:
                     # Cualquier otro objeto, convertir a string
                     processed_event[key] = str(value)
             processed_events.append(processed_event)
-        
+
         # Reemplazar eventos originales con versión procesada
         report["events"] = processed_events
-        
+
         # Escribimos el informe en formato JSON
         try:
             with open(self.report_json, "w", encoding="utf-8") as f:
@@ -876,34 +881,34 @@ class SageLogger:
         except TypeError as e:
             # Si hay error de serialización, crear un informe mínimo
             self.error(f"Error al serializar el reporte JSON: {str(e)}")
-            
+
             # Versión simplificada que seguro funciona
             simplified_report = {
                 "execution_uuid": self.execution_uuid,
                 "errors": errors,
                 "warnings": warnings
             }
-            
+
             with open(self.report_json, "w", encoding="utf-8") as f:
                 json.dump(simplified_report, f, ensure_ascii=False, indent=2)
-    
+
     def generate_results_txt(self, total_records: int, errors: int, warnings: int):
         """Genera un archivo results.txt con un resumen estructurado de la ejecución"""
         end_time = datetime.now()
         duration = end_time - self.start_time
-        
+
         # Formatear la duración como HH:MM:SS
         hours, remainder = divmod(duration.seconds, 3600)
         minutes, seconds = divmod(remainder, 60)
         duration_str = f"{hours:02}:{minutes:02}:{seconds:02}"
-        
+
         success_rate = ((total_records - errors) / total_records * 100) if total_records > 0 else 0
-        
+
         with open(self.results_file, "w", encoding="utf-8") as f:
             f.write("======================================================================\n")
             f.write("                        RESUMEN DE EJECUCIÓN SAGE                     \n")
             f.write("======================================================================\n\n")
-            
+
             # Información general
             f.write("INFORMACIÓN GENERAL\n")
             f.write("------------------\n")
@@ -911,7 +916,7 @@ class SageLogger:
             f.write(f"Fecha y hora de fin: {end_time.strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write(f"Duración: {duration_str}\n")
             f.write(f"Directorio de logs: {self.log_dir}\n\n")
-            
+
             # Resumen global
             f.write("RESUMEN GLOBAL\n")
             f.write("-------------\n")
@@ -919,7 +924,7 @@ class SageLogger:
             f.write(f"Total de errores: {errors}\n")
             f.write(f"Total de advertencias: {warnings}\n")
             f.write(f"Tasa de éxito: {success_rate:.1f}%\n\n")
-            
+
             # Estadísticas por archivo
             if self.file_stats:
                 f.write("ESTADÍSTICAS POR ARCHIVO\n")
@@ -931,7 +936,7 @@ class SageLogger:
                     f.write(f"  Errores: {stats['errors']}\n")
                     f.write(f"  Advertencias: {stats['warnings']}\n")
                     f.write(f"  Tasa de éxito: {file_success_rate:.1f}%\n\n")
-            
+
             # Errores de formato
             if self.format_errors:
                 f.write("ERRORES DE FORMATO\n")
@@ -945,7 +950,7 @@ class SageLogger:
                     if 'found' in error:
                         f.write(f"   Encontrado: {error['found']}\n")
                     f.write("\n")
-            
+
             # Archivos faltantes
             if self.missing_files:
                 f.write("ARCHIVOS FALTANTES\n")
@@ -955,73 +960,73 @@ class SageLogger:
                     if 'package' in missing and missing['package']:
                         f.write(f"   Paquete: {missing['package']}\n")
                     f.write("\n")
-            
+
             # Optimización de rendimiento
             if hasattr(self, 'field_rules_skipped') or hasattr(self, 'row_rules_skipped') or hasattr(self, 'catalog_rules_skipped'):
                 f.write("OPTIMIZACIÓN DE RENDIMIENTO\n")
                 f.write("-------------------------\n")
                 f.write("Algunas reglas fueron omitidas parcialmente para archivos grandes para mejorar el rendimiento.\n\n")
-                
+
                 if hasattr(self, 'field_rules_skipped') and self.field_rules_skipped:
                     f.write("Reglas de campo omitidas parcialmente:\n")
                     for field_name, rules in self.field_rules_skipped.items():
                         for rule_name, count in rules.items():
                             f.write(f"  - Campo: {field_name}, Regla: {rule_name}, Errores: {count}\n")
                     f.write("\n")
-                
+
                 if hasattr(self, 'row_rules_skipped') and self.row_rules_skipped:
                     f.write("Reglas de fila omitidas parcialmente:\n")
                     for catalog_name, rules in self.row_rules_skipped.items():
                         for rule_name, count in rules.items():
                             f.write(f"  - Catálogo: {catalog_name}, Regla: {rule_name}, Errores: {count}\n")
                     f.write("\n")
-                
+
                 if hasattr(self, 'catalog_rules_skipped') and self.catalog_rules_skipped:
                     f.write("Reglas de catálogo omitidas parcialmente:\n")
                     for catalog_name, rules in self.catalog_rules_skipped.items():
                         for rule_name, count in rules.items():
                             f.write(f"  - Catálogo: {catalog_name}, Regla: {rule_name}, Errores: {count}\n")
                     f.write("\n")
-                
+
                 f.write("NOTA: El conteo total de errores es preciso, pero no todos fueron detallados en el log.\n")
                 f.write("Para ver todos los errores, ejecute la validación con archivos más pequeños.\n\n")
-            
+
             f.write("======================================================================\n")
-    
+
     def _prepare_json_serializable(self, obj):
         """
         Recursivamente prepara un objeto para serialización JSON, manejando tipos de excepción personalizados.
-        
+
         Args:
             obj: El objeto a hacer serializable para JSON
-            
+
         Returns:
             Una versión JSON serializable del objeto
         """
         # Si es None, retornamos None
         if obj is None:
             return None
-            
+
         # Si es un tipo básico (str, int, float, bool), retornamos directamente
         if isinstance(obj, (str, int, float, bool)):
             return obj
-            
+
         # Si es una lista o tupla, aplicamos recursividad a cada elemento
         if isinstance(obj, (list, tuple)):
             return [self._prepare_json_serializable(item) for item in obj]
-            
+
         # Si es un diccionario, aplicamos recursividad a cada valor
         if isinstance(obj, dict):
             return {k: self._prepare_json_serializable(v) for k, v in obj.items()}
-            
+
         # Si es una excepción personalizada que tiene método to_dict, usamos ese
         if hasattr(obj, 'to_dict') and callable(obj.to_dict):
             return obj.to_dict()
-            
+
         # Si es un objeto de fecha/hora, lo convertimos a string ISO
         if hasattr(obj, 'isoformat') and callable(obj.isoformat):
             return obj.isoformat()
-            
+
         # Para cualquier otro objeto, lo convertimos a string
         try:
             return str(obj)
