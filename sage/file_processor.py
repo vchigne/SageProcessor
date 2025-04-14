@@ -460,6 +460,12 @@ class FileProcessor:
         is_large_file = len(df) > self.SMALL_FILE_THRESHOLD
 
         for field in catalog.fields:
+            # Pre-procesar campos numéricos antes de la validación
+            if field.type == 'entero':
+                # Detectar y convertir números que son efectivamente enteros
+                mask = df[field.name].notna() & df[field.name].apply(lambda x: float(x).is_integer() if pd.notnull(x) else True)
+                df.loc[mask, field.name] = df.loc[mask, field.name].astype('Int64')  # Usar Int64 para permitir NaN
+
             if field.required:
                 mask = df[field.name].isnull()
                 missing = df[mask]
