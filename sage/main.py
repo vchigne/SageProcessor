@@ -154,8 +154,8 @@ def process_files(yaml_path: str, data_path: str, casilla_id: Optional[int] = No
             total_records = getattr(processor, 'total_records', 0) or 0
         # Para archivos Excel, tampoco podemos contar líneas directamente
         elif file_type in ["EXCEL"]:
-            # Obtener el conteo de registros del procesador o usar 0 si no está disponible
-            total_records = getattr(processor, 'total_records', 0) or 0
+            # Para archivos Excel, obtener el conteo directamente del DataFrame procesado
+            total_records = len(processor.dataframes.get(list(processor.dataframes.keys())[0], pd.DataFrame())) if processor.dataframes else 0
             logger.message(f"Archivo Excel procesado con {total_records} registros")
         else:
             try:
