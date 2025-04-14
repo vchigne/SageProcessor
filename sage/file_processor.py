@@ -351,6 +351,17 @@ class FileProcessor:
                 "Asegúrate de que el archivo tenga el formato correcto y no esté dañado."
             )
 
+    def _handle_series_result(self, result: Union[pd.Series, bool], df: pd.DataFrame) -> pd.DataFrame:
+        """Maneja resultados que pueden ser Series o booleanos"""
+        if isinstance(result, pd.Series):
+            # Si es una Serie, usarla como máscara
+            return df[~result]  # Invertir porque queremos las filas inválidas
+        elif isinstance(result, bool):
+            # Si es booleano, aplicar a todo el DataFrame
+            return df if not result else pd.DataFrame()
+        else:
+            raise ValueError(f"Resultado de validación no soportado: {type(result)}")
+
     def validate_field(self, df: pd.DataFrame, field_name: str, rules: List[ValidationRule],
                        catalog_name: str) -> None:
         """Validate a single field according to its rules"""
@@ -394,7 +405,7 @@ class FileProcessor:
                     # Otras excepciones durante la evaluación
                     raise Exception(f"Error evaluando regla {rule.name}: {str(e)}")
 
-                invalid_rows = df_filtered[not result]
+                invalid_rows = self._handle_series_result(result, df_filtered)
 
                 if len(invalid_rows) > 0:
                     for idx, row in invalid_rows.iterrows():
