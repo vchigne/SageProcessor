@@ -286,8 +286,7 @@ class FileProcessor:
                 df = pd.read_excel(
                     file_path,
                     header=0 if catalog.file_format.header else None,
-                    engine='openpyxl',  # Especificar el engine explícitamente
-                    dtype={'CodigoCategoria': 'int64'}  # Forzar lectura como entero
+                    engine='openpyxl'  # Especificar el engine explícitamente
                 )
 
                 # Si no tiene encabezado, crear nombres de columnas personalizados
