@@ -435,29 +435,9 @@ export default async function handler(
         
         console.log('Archivo creado:', filePath);
         
-        // 6. Registrar la ejecución en la base de datos
-        const ejecutionResult = await pool.query(
-          `INSERT INTO ejecuciones_yaml 
-           (casilla_id, fecha_ejecucion, estado, metodo_envio, 
-            archivo_datos, errores_detectados, warnings_detectados,
-            nombre_yaml, ruta_directorio)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-           RETURNING id`,
-          [
-            id,
-            now,
-            'Parcial', // Comenzamos con Parcial ya que la restricción no permite 'Pendiente'
-            'portal_upload', // Usando un valor permitido por la restricción
-            archivoName + fileExt,
-            0, // Sin errores
-            0,  // Sin advertencias
-            casilla.nombre_yaml,
-            'pendiente' // Valor temporal que será actualizado por main.py con la ruta UUID real
-          ]
-        );
-        
-        const ejecucionId = ejecutionResult.rows[0].id;
-        console.log('Ejecución registrada con ID:', ejecucionId);
+        // Ya no creamos la ejecución aquí para evitar duplicados
+        // SAGE creará automáticamente un registro en ejecuciones_yaml
+        // a través de SageLogger._log_execution_to_db()
         
         // 7. Ejecutar el procesador SAGE para procesar el archivo
         try {
@@ -604,24 +584,19 @@ except Exception as e:
           const dirPathParts = path.join('executions', processingResult.execution_uuid).split(path.sep);
           const directoryUuid = dirPathParts[dirPathParts.length - 1];
           
-          // Actualizar el estado de ejecución asegurando que el UUID en BD sea el mismo que el del directorio
-          await pool.query(
-            `UPDATE ejecuciones_yaml SET 
-              estado = $1, 
-              errores_detectados = $2, 
-              warnings_detectados = $3,
-              uuid = $4,
-              ruta_directorio = $5
-             WHERE id = $6`,
-            [
-              processingResult.errors > 0 ? 'Fallido' : 'Éxito',
-              processingResult.errors,
-              processingResult.warnings,
-              directoryUuid, // Usar el UUID extraído del nombre del directorio
-              path.join('executions', directoryUuid), // Ruta del directorio usando el mismo UUID
-              ejecucionId
-            ]
+          // Buscar la ejecución creada por SAGE utilizando el UUID del directorio
+          const ejecucionQuery = await pool.query(
+            `SELECT id FROM ejecuciones_yaml WHERE ruta_directorio = $1`,
+            [path.join('executions', directoryUuid)]
           );
+          
+          // Verificar si se encontró la ejecución
+          if (ejecucionQuery.rowCount === 0) {
+            console.warn(`⚠️ No se encontró un registro de ejecución para el directorio ${directoryUuid}`);
+          }
+          
+          // Obtener el ID de la ejecución si está disponible
+          const ejecucionId = ejecucionQuery.rowCount > 0 ? ejecucionQuery.rows[0].id : null;
           
           // 8. Responder con éxito, incluyendo UUID para poder mostrar el log
           return res.status(200).json({
@@ -630,7 +605,7 @@ except Exception as e:
             execution_uuid: directoryUuid, // Usar el UUID correcto del directorio
             errors: processingResult.errors,
             warnings: processingResult.warnings,
-            ejecucion_id: ejecucionId,
+            ejecucion_id: ejecucionId, // Podría ser null si no se encontró el registro
             fecha: now.toISOString(),
             archivo: archivoName + fileExt,
             log_url: `/api/executions/${directoryUuid}/log` // Usar el UUID correcto en la URL del log
@@ -638,18 +613,13 @@ except Exception as e:
         } catch (execError) {
           console.error('Error al ejecutar el procesamiento:', execError);
           
-          // Actualizar estado a fallido
-          await pool.query(
-            `UPDATE ejecuciones_yaml SET estado = 'Fallido', errores_detectados = 1 
-             WHERE id = $1`,
-            [ejecucionId]
-          );
+          // No es necesario actualizar el estado, ya que no tenemos un registro previo
+          // SAGE no habrá creado una entrada en la base de datos si falló
           
           return res.status(200).json({
             success: false,
-            message: 'Datos guardados, pero hubo un error en el procesamiento',
+            message: 'Hubo un error en el procesamiento de los datos',
             error: execError.message,
-            ejecucion_id: ejecucionId,
             fecha: now.toISOString(),
             warning: 'El archivo fue creado pero el procesamiento falló'
           });
