@@ -44,13 +44,13 @@ packages:         # Definición de paquetes (requerido)
 
 SAGE soporta los siguientes tipos de datos:
 
-| Tipo     | Descripción                  | Validación           | Ejemplo           |
-|----------|------------------------------|---------------------|-------------------|
-| texto    | Cadenas de texto            | `str.match()`      | "ABC123"          |
-| decimal  | Números con decimales       | `astype(float)`    | 123.45           |
-| entero   | Números enteros             | `astype(int)`      | 42               |
-| fecha    | Fechas en formato ISO       | `pd.to_datetime()` | "2025-03-10"     |
-| booleano | Valores verdadero/falso     | `astype(bool)`     | true/false       |
+| Tipo     | Descripción                  | Ejemplo           |
+|----------|------------------------------|-------------------|
+| texto    | Cadenas de texto             | "ABC123"          |
+| decimal  | Números con decimales        | 123.45            |
+| entero   | Números enteros              | 42                |
+| fecha    | Fechas en formato ISO        | "2025-03-10"      |
+| booleano | Valores verdadero/falso      | true/false       |
 
 ## 📑 Secciones del YAML
 
@@ -59,14 +59,14 @@ SAGE soporta los siguientes tipos de datos:
 Contiene la información general del archivo de configuración. Todos los campos son obligatorios.
 
 
-```yaml
+yaml
 sage_yaml:
   name: "Nombre del YAML"           # Nombre descriptivo (requerido)
   description: "Descripción"        # Explicación del propósito (requerido)
   version: "1.0.0"                 # Versión del archivo (requerido)
   author: "Nombre del Autor"       # Autor del YAML (requerido)
   comments: "Comentarios"          # Notas adicionales (opcional)
-```
+
 
 ### Catálogos (catalogs)
 
@@ -80,18 +80,10 @@ catalogs:
     filename: "archivo.csv"        # Nombre del archivo sin ruta (requerido)
     file_format:                  # Configuración del formato (requerido)
       type: "CSV"                 # Tipo: CSV o EXCEL solamente
-      delimiter: ","              # Requerido para CSV
+      delimiter: ","              # Requerido para CSV, pero no se usa para excel o zip 
       header: true                # Opcional, indica si el archivo tiene encabezados (true) o no (false). IMPORTANTE: Esta propiedad DEBE estar dentro de file_format
       
-  nombre_catalogo_excel:              # Identificador único del catálogo
-    name: "Nombre del Catálogo Excel" # Nombre descriptivo (requerido)
-    description: "Descripción"     # Explicación del catálogo (requerido)
-    filename: "archivo.xlsx"       # Nombre del archivo sin ruta (requerido)
-    file_format:                  # Configuración del formato (requerido)
-      type: "EXCEL"               # Tipo: CSV o EXCEL solamente
-      header: true                # Opcional, indica si el archivo tiene encabezados (true) o no (false). IMPORTANTE: Esta propiedad SIEMPRE debe estar dentro de file_format
-
-    fields:                       # Lista de campos (requerido)
+     fields:                       # Lista de campos (requerido)
       - name: "codigo"            # Nombre del campo (requerido)
         type: "texto"             # Tipo de dato (requerido)
         required: true            # Campo obligatorio (opcional)
@@ -137,6 +129,14 @@ packages:
         severity: "error"
 
 ## 🎯 Reglas de Validación
+
+SAGE valida automaticamente los siguientes casos:
+- Que el archivo exista.
+- Que tenga la extension y tipo de archivo correcto tal como esta definido en el YAML.
+- Que los datos definidos como required estén presentes.
+- Que los datos definidos como unique sean unicos.
+- Que los datos definidos con un tipo de dato especifico (texto, decimal,entero, fecha, booleano) tengan el tipo de dato requerido.
+Por tanto, en el yaml no hay que escribir validaciones especificas para esas condiciones, basta con especificar Not Null, Requiered, Unique, el tipo de datos para que se apliquen las validaciones. No escribir en el yaml validacion especifica para estas condiciones. 
 
 Las reglas de validación utilizan expresiones pandas y deben seguir estas convenciones específicas:
 
@@ -227,40 +227,27 @@ description: "🚫❌💢 ERROR EN TOTAL"
    - Sigue una estructura lógica en el orden de los campos
    - Documenta las relaciones entre catálogos
 
-4. **Mantenimiento**
-   - Documenta los cambios en la versión del YAML
-   - Mantén los comentarios actualizados
-   - Revisa periódicamente las reglas de validación
-   - Implementa un sistema de versionado semántico
-   - Haz copias de seguridad antes de cambios mayores
-
-5. **Optimización**
+4. **Optimización**
    - Minimiza el uso de expresiones regulares complejas
    - Evita validaciones redundantes
    - Usa índices para campos frequently buscados
    - Mantén las validaciones de catálogo simples
    - Prioriza la claridad sobre la complejidad
 
-6. **Gestión de Errores**
+5. **Gestión de Errores**
    - Usa mensajes amigables y constructivos
    - Incluye sugerencias de corrección
    - Mantén un balance entre errores y advertencias
    - Agrupa errores relacionados
    - Proporciona contexto en los mensajes
 
-7. **Paquetes ZIP**
+6. **Paquetes ZIP**
    - Solo usa ZIP para múltiples catálogos
-   - Mantén una estructura de directorios clara
+   - Mantén una estructura de relaciones entre catalogos clara
    - Nombra los archivos consistentemente
-   - Verifica relaciones entre catálogos
+   - Verifica relaciones entre catálogos, de preferencia catalogo por catalogo en lugar de escribir una sola expresion para todas las relaciones.
    - Documenta la estructura del ZIP
 
-8. **Pruebas**
-   - Valida con datos de prueba representativos
-   - Prueba casos límite y valores extremos
-   - Verifica todas las reglas de validación
-   - Documenta casos de prueba importantes
-   - Mantén un conjunto de datos de prueba actualizado
 
 ## 📝 Ejemplos Prácticos
 
