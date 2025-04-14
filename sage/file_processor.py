@@ -94,9 +94,14 @@ class FileProcessor:
                     # Para fechas, usar pd.to_datetime en lugar de astype
                     df[field.name] = pd.to_datetime(df[field.name], errors='coerce')
                 elif field.type in ['entero', 'decimal'] and not field.required:
-                    # Para campos numéricos opcionales, usar pd.to_numeric con coerce
-                    # para convertir a numéricos pero preservar NaN donde corresponda
+                    # Convertir a numérico preservando NaN
                     df[field.name] = pd.to_numeric(df[field.name], errors='coerce')
+                    
+                    # Si es campo entero, verificar si tiene decimales
+                    if field.type == 'entero':
+                        # Convertir a entero los números sin decimales
+                        no_decimals = df[field.name].apply(lambda x: float(x).is_integer() if pd.notnull(x) else True)
+                        df.loc[no_decimals, field.name] = df.loc[no_decimals, field.name].astype(int)
                 else:
                     df[field.name] = df[field.name].astype(target_type)
 
