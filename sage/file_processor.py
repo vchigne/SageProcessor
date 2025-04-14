@@ -96,6 +96,11 @@ class FileProcessor:
                 elif field.type in ['entero', 'decimal'] and not field.required:
                     # Para campos numéricos opcionales, usar pd.to_numeric con coerce
                     # para convertir a numéricos pero preservar NaN donde corresponda
+                    df[f"_original_{field.name}"] = df[field.name].astype(str)
+                    df[field.name] = pd.to_numeric(df[field.name], errors='coerce')
+                elif field.type in ['entero', 'decimal']:
+                    # Para campos numéricos, preservar el valor original para validación
+                    df[f"_original_{field.name}"] = df[field.name].astype(str)
                     df[field.name] = pd.to_numeric(df[field.name], errors='coerce')
                 else:
                     df[field.name] = df[field.name].astype(target_type)
@@ -744,7 +749,7 @@ class FileProcessor:
                     self.logger.error(
                         f"Required file '{catalog.filename}' not found in ZIP package",
                         file=catalog.filename,
-                        package=package_name
+                        package=packagename
                     )
                     continue
 
