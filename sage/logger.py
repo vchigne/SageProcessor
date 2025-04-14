@@ -849,16 +849,43 @@ class SageLogger:
             "events": self.events
         }
         
+        # Procesamos eventos para garantizar serialización
+        processed_events = []
+        for event in self.events:
+            # Crear una copia del evento para no modificar el original
+            processed_event = {}
+            for key, value in event.items():
+                if key == 'exception' and hasattr(value, 'to_dict'):
+                    # Si es una excepción con método to_dict, usarlo
+                    processed_event[key] = value.to_dict()
+                elif isinstance(value, (str, int, float, bool)) or value is None:
+                    # Tipos básicos van directamente
+                    processed_event[key] = value
+                else:
+                    # Cualquier otro objeto, convertir a string
+                    processed_event[key] = str(value)
+            processed_events.append(processed_event)
+        
+        # Reemplazar eventos originales con versión procesada
+        report["events"] = processed_events
+        
         # Escribimos el informe en formato JSON
-        with open(self.report_json, "w", encoding="utf-8") as f:
-            try:
+        try:
+            with open(self.report_json, "w", encoding="utf-8") as f:
                 json.dump(report, f, ensure_ascii=False, indent=2)
-            except TypeError as e:
-                # Si hay error de serialización, manejamos objetos personalizados
-                self.error(f"Error al serializar el reporte JSON: {str(e)}")
-                # Intentar una serialización más robusta con manejo de excepciones personalizadas
-                serializable_report = self._prepare_json_serializable(report)
-                json.dump(serializable_report, f, ensure_ascii=False, indent=2)
+        except TypeError as e:
+            # Si hay error de serialización, crear un informe mínimo
+            self.error(f"Error al serializar el reporte JSON: {str(e)}")
+            
+            # Versión simplificada que seguro funciona
+            simplified_report = {
+                "execution_uuid": self.execution_uuid,
+                "errors": errors,
+                "warnings": warnings
+            }
+            
+            with open(self.report_json, "w", encoding="utf-8") as f:
+                json.dump(simplified_report, f, ensure_ascii=False, indent=2)
     
     def generate_results_txt(self, total_records: int, errors: int, warnings: int):
         """Genera un archivo results.txt con un resumen estructurado de la ejecución"""
