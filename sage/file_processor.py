@@ -631,7 +631,13 @@ class FileProcessor:
                             rule=rule.rule
                         )
             except Exception as e:
-                raise FileProcessingError(f"Error evaluating catalog rule {rule.name}: {str(e)}")
+                # Añadir más detalles sobre el error
+                rule_name = getattr(rule, 'name', 'unknown')
+                rule_rule = getattr(rule, 'rule', 'unknown')
+                if hasattr(df, 'columns'):
+                    cols_count = len(df.columns)
+                    self.logger.error(f"DEBUG - Evaluando regla '{rule_name}' con {cols_count} columnas. Regla: '{rule_rule}'")
+                raise FileProcessingError(f"Error evaluating catalog rule {rule_name}: {str(e)}")
 
     def validate_package(self, package: Package) -> None:
         """Apply package-level validations"""
