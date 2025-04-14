@@ -12,10 +12,10 @@ from .exceptions import FileProcessingError
 def detect_bom(file_path):
     """
     Detecta si un archivo tiene BOM (Byte Order Mark)
-    
+
     Args:
         file_path: Ruta al archivo a comprobar
-        
+
     Returns:
         bool: True si el archivo tiene BOM, False en caso contrario
     """
@@ -25,14 +25,14 @@ def detect_bom(file_path):
             return f.read(3) == b'\xef\xbb\xbf'
     except Exception:
         return False
-        
+
 def create_column_names(n_columns):
     """
     Crear nombres de columnas en formato COLUMNA_N
-    
+
     Args:
         n_columns: Número de columnas para las que crear nombres
-        
+
     Returns:
         list: Lista de nombres de columnas en formato COLUMNA_1, COLUMNA_2, etc.
     """
@@ -66,7 +66,7 @@ class FileProcessor:
         self.error_count = 0
         self.warning_count = 0
         self.dataframes = {}  # Store DataFrames for cross-catalog validation
-        
+
         # Diccionarios para rastrear reglas que han excedido el límite de errores
         self.field_rules_skipped = {}   # {field_name: {rule_name: error_count}}
         self.row_rules_skipped = {}     # {catalog_name: {rule_name: error_count}}
@@ -117,7 +117,7 @@ class FileProcessor:
                     else:
                         # Si el campo es requerido, cualquier NaN o valor no numérico es inválido
                         invalid_mask = pd.to_numeric(df[field.name], errors='coerce').isna()
-                    
+
                     invalid_rows = df[invalid_mask]
                 elif field.type == 'fecha':
                     # Para fechas, usar pd.to_datetime con coerce para detectar valores inválidos
@@ -152,11 +152,11 @@ class FileProcessor:
                 # Para archivos grandes, limitar el número de errores de tipo a reportar
                 is_large_file = len(df) > self.SMALL_FILE_THRESHOLD
                 error_count = 0
-                
+
                 for idx, row in invalid_rows.iterrows():
                     self.error_count += 1
                     error_count += 1
-                    
+
                     # Solo registrar los primeros MAX_ERRORS_PER_RULE errores para archivos grandes
                     if not is_large_file or error_count <= self.MAX_ERRORS_PER_RULE:
                         self.logger.error(
@@ -166,7 +166,7 @@ class FileProcessor:
                             field=field.name,
                             value=row[field.name]
                         )
-                
+
                 # Si hay más errores de los que mostramos, indicarlo
                 if is_large_file and error_count > self.MAX_ERRORS_PER_RULE:
                     self.logger.warning(
@@ -205,7 +205,7 @@ class FileProcessor:
                 # Detectar BOM en el archivo CSV
                 has_bom = detect_bom(file_path)
                 encoding = 'utf-8-sig' if has_bom else 'utf-8'
-                
+
                 # Para archivos sin encabezado, necesitamos crear nombres de columnas personalizados
                 if not catalog.file_format.header:
                     # Primero determinar el número de columnas
@@ -227,11 +227,11 @@ class FileProcessor:
                             nrows=1
                         )
                         encoding = 'latin1'
-                    
+
                     # Obtener el número de columnas y crear los nombres
                     n_columns = len(df_temp.columns)
                     column_names = create_column_names(n_columns)
-                    
+
                     # Cargar el CSV completo con los nombres de columnas personalizados
                     try:
                         df = pd.read_csv(
@@ -273,7 +273,7 @@ class FileProcessor:
                     header=0 if catalog.file_format.header else None,
                     engine='openpyxl'  # Especificar el engine explícitamente
                 )
-                
+
                 # Si no tiene encabezado, crear nombres de columnas personalizados
                 if not catalog.file_format.header:
                     n_columns = len(df.columns)
@@ -283,7 +283,7 @@ class FileProcessor:
             # Nuevo código: Adaptar dataframe al esquema del catálogo
             # Obtener los nombres de campos definidos en el YAML
             yaml_field_names = [field.name for field in catalog.fields]
-            
+
             # Verificar si hay más columnas en el CSV que en el YAML
             if len(df.columns) > len(yaml_field_names):
                 # Comportamiento por defecto: reportar error pero continuar
@@ -292,7 +292,7 @@ class FileProcessor:
                             f"El número de columnas debe coincidir exactamente con la definición.")
                 self.logger.error(error_msg, file=catalog.filename)
                 self.error_count += 1
-                
+
                 # Registrar el error de formato para el reporte
                 self.logger.register_format_error(
                     message="Error de columnas: demasiadas columnas en el archivo", 
@@ -300,7 +300,7 @@ class FileProcessor:
                     expected=f"{len(yaml_field_names)} columnas",
                     found=f"{len(df.columns)} columnas"
                 )
-                
+
                 # Continuar con el proceso seleccionando solo las columnas que necesitamos
                 if not catalog.file_format.header:
                     # Para archivos sin encabezado, seleccionar las primeras N columnas
@@ -312,7 +312,7 @@ class FileProcessor:
                     # y descartar las demás
                     existing_fields = [field for field in yaml_field_names if field in df.columns]
                     df = df[existing_fields]
-            
+
             # Si hay menos columnas en el CSV que en el YAML
             if len(df.columns) < len(yaml_field_names):
                 # Comportamiento por defecto: reportar error pero continuar
@@ -321,7 +321,7 @@ class FileProcessor:
                             f"El número de columnas debe coincidir exactamente con la definición.")
                 self.logger.error(error_msg, file=catalog.filename)
                 self.error_count += 1
-                
+
                 # Registrar el error de formato para el reporte
                 self.logger.register_format_error(
                     message="Error de columnas: faltan columnas en el archivo", 
@@ -329,7 +329,7 @@ class FileProcessor:
                     expected=f"{len(yaml_field_names)} columnas",
                     found=f"{len(df.columns)} columnas"
                 )
-                
+
                 # Continuar con el proceso añadiendo columnas faltantes con valores null
                 for field_name in yaml_field_names:
                     if field_name not in df.columns:
@@ -355,28 +355,28 @@ class FileProcessor:
                        catalog_name: str) -> None:
         """Validate a single field according to its rules"""
         is_large_file = len(df) > self.SMALL_FILE_THRESHOLD
-        
+
         # Inicializar el diccionario para este campo si aún no existe
         if is_large_file and field_name not in self.field_rules_skipped:
             self.field_rules_skipped[field_name] = {}
-        
+
         for rule in rules:
             # Verificar si la regla ya ha sido descartada por exceso de errores
             if is_large_file and rule.name in self.field_rules_skipped.get(field_name, {}):
                 continue
-                
+
             try:
                 # Contador de errores para esta regla específica
                 rule_error_count = 0
-                
+
                 # Filtrar el DataFrame para excluir filas con valores NaN en este campo
                 # Esto evita que se apliquen reglas de validación a campos opcionales vacíos
                 df_filtered = df.dropna(subset=[field_name])
-                
+
                 # Si todas las filas tienen NaN en este campo, no hay nada que validar
                 if len(df_filtered) == 0:
                     continue
-                
+
                 # Usamos eval() regular en lugar de pd.eval() para permitir acceso a métodos completos de pandas
                 try:
                     # Crear un entorno de ejecución con acceso a pandas, numpy y str
@@ -393,13 +393,13 @@ class FileProcessor:
                 except Exception as e:
                     # Otras excepciones durante la evaluación
                     raise Exception(f"Error evaluando regla {rule.name}: {str(e)}")
-                    
-                invalid_rows = df_filtered[~result]
+
+                invalid_rows = df_filtered[not result]
 
                 if len(invalid_rows) > 0:
                     for idx, row in invalid_rows.iterrows():
                         value = row[field_name]
-                        
+
                         if rule.severity == Severity.ERROR:
                             self.error_count += 1
                             rule_error_count += 1
@@ -419,12 +419,12 @@ class FileProcessor:
                                 value=value,
                                 rule=rule.rule
                             )
-                            
+
                         # Para archivos grandes, limitar el número de errores por regla
                         if is_large_file and rule.severity == Severity.ERROR and rule_error_count >= self.MAX_ERRORS_PER_RULE:
                             # Registrar esta regla como descartada
                             self.field_rules_skipped[field_name][rule.name] = rule_error_count
-                            
+
                             # Registrar un aviso de que se omitieron errores adicionales
                             self.logger.warning(
                                 f"Se encontraron al menos {rule_error_count} errores para la regla '{rule.name}' en '{field_name}'. "
@@ -441,18 +441,18 @@ class FileProcessor:
         """Validate an entire catalog"""
         # Validate required fields
         is_large_file = len(df) > self.SMALL_FILE_THRESHOLD
-        
+
         for field in catalog.fields:
             if field.required:
                 mask = df[field.name].isnull()
                 missing = df[mask]
                 if not missing.empty:
                     error_count = 0
-                    
+
                     for idx, row in missing.iterrows():
                         self.error_count += 1
                         error_count += 1
-                        
+
                         # Solo registrar los primeros MAX_ERRORS_PER_RULE errores para archivos grandes
                         if not is_large_file or error_count <= self.MAX_ERRORS_PER_RULE:
                             self.logger.error(
@@ -460,7 +460,7 @@ class FileProcessor:
                                 file=catalog.filename,
                                 line=idx + 2
                             )
-                            
+
                     # Si hay más errores de los que mostramos, indicarlo
                     if is_large_file and error_count > self.MAX_ERRORS_PER_RULE:
                         self.logger.warning(
@@ -475,11 +475,11 @@ class FileProcessor:
                 duplicates = df[df[field.name].duplicated()]
                 if not duplicates.empty:
                     error_count = 0
-                    
+
                     for idx, row in duplicates.iterrows():
                         self.error_count += 1
                         error_count += 1
-                        
+
                         # Solo registrar los primeros MAX_ERRORS_PER_RULE errores para archivos grandes
                         if not is_large_file or error_count <= self.MAX_ERRORS_PER_RULE:
                             self.logger.error(
@@ -488,7 +488,7 @@ class FileProcessor:
                                 line=idx + 2,
                                 value=row[field.name]
                             )
-                            
+
                     # Si hay más errores de los que mostramos, indicarlo
                     if is_large_file and error_count > self.MAX_ERRORS_PER_RULE:
                         self.logger.warning(
@@ -503,20 +503,20 @@ class FileProcessor:
 
         # Apply row validations
         is_large_file = len(df) > self.SMALL_FILE_THRESHOLD
-        
+
         # Inicializar el diccionario para este catálogo si aún no existe
         if is_large_file and catalog.filename not in self.row_rules_skipped:
             self.row_rules_skipped[catalog.filename] = {}
-            
+
         for rule in catalog.row_validation:
             # Verificar si la regla ya ha sido descartada por exceso de errores
             if is_large_file and rule.name in self.row_rules_skipped.get(catalog.filename, {}):
                 continue
-                
+
             try:
                 # Contador de errores para esta regla específica
                 rule_error_count = 0
-                
+
                 # Usamos eval() regular en lugar de pd.eval() para permitir acceso a métodos completos de pandas
                 try:
                     # Crear un entorno de ejecución con acceso a pandas, numpy y str
@@ -533,8 +533,8 @@ class FileProcessor:
                 except Exception as e:
                     # Otras excepciones durante la evaluación
                     raise Exception(f"Error evaluando regla {rule.name}: {str(e)}")
-                
-                invalid_rows = df[~result]
+
+                invalid_rows = df[not result]
 
                 for idx, row in invalid_rows.iterrows():
                     if rule.severity == Severity.ERROR:
@@ -554,12 +554,12 @@ class FileProcessor:
                             line=idx + 2,
                             rule=rule.rule
                         )
-                        
+
                     # Para archivos grandes, limitar el número de errores por regla
                     if is_large_file and rule.severity == Severity.ERROR and rule_error_count >= self.MAX_ERRORS_PER_RULE:
                         # Registrar esta regla como descartada
                         self.row_rules_skipped[catalog.filename][rule.name] = rule_error_count
-                        
+
                         # Registrar un aviso de que se omitieron errores adicionales
                         self.logger.warning(
                             f"Se encontraron al menos {rule_error_count} errores para la regla de fila '{rule.name}'. "
@@ -575,16 +575,16 @@ class FileProcessor:
         # Inicializar el diccionario para este catálogo si aún no existe
         if is_large_file and catalog.filename not in self.catalog_rules_skipped:
             self.catalog_rules_skipped[catalog.filename] = {}
-            
+
         for rule in catalog.catalog_validation:
             # Verificar si la regla ya ha sido descartada por exceso de errores
             if is_large_file and rule.name in self.catalog_rules_skipped.get(catalog.filename, {}):
                 continue
-                
+
             try:
                 # Contador de errores para esta regla específica
                 rule_error_count = 0
-                
+
                 # Usamos eval() regular en lugar de pd.eval() para permitir acceso a métodos completos de pandas
                 try:
                     # Crear un entorno de ejecución con acceso a pandas, numpy y str
@@ -601,8 +601,8 @@ class FileProcessor:
                 except Exception as e:
                     # Otras excepciones durante la evaluación
                     raise Exception(f"Error evaluando regla {rule.name}: {str(e)}")
-                
-                invalid_rows = df[~result]
+
+                invalid_rows = df[not result]
 
                 if len(invalid_rows) > 0:
                     if rule.severity == Severity.ERROR:
@@ -613,7 +613,7 @@ class FileProcessor:
                             file=catalog.filename,
                             rule=rule.rule
                         )
-                        
+
                         # Para archivos grandes, limitar el número de errores para reglas de catálogo
                         # Nota: Esto aplica principalmente cuando hay múltiples reglas de catálogo
                         if is_large_file and rule_error_count >= self.MAX_ERRORS_PER_RULE:
@@ -662,7 +662,7 @@ class FileProcessor:
 
                 # Para Series, procesamos cada valor que no cumple
                 if isinstance(result, pd.Series):
-                    failed_mask = ~result
+                    failed_mask = not result
                     if failed_mask.any():
                         if rule.severity == Severity.ERROR:
                             self.error_count += 1
@@ -762,8 +762,8 @@ Success rate: {success_rate:.2f}%
 
 """
                     self.logger.message(summary)
-                    
-                    # Registrar estadísticas de este archivo para el reporte
+
+                    # Registrar estadísticas de este archivopara el reporte
                     self.logger.register_file_stats(
                         catalog.filename, 
                         file_records, 
@@ -781,7 +781,7 @@ Success rate: {success_rate:.2f}%
                     self.error_count += 1
                     error_msg = f"Error processing catalog '{catalog_name}': {str(e)}"
                     self.logger.error(error_msg, file=catalog.filename, exception=e)
-                    
+
                     # Registrar estadísticas con 0 registros procesados correctamente
                     self.logger.register_file_stats(
                         catalog.filename, 
@@ -802,7 +802,7 @@ Warnings: {self.warning_count}
 
 """
             self.logger.message(global_summary)
-            
+
             # Mostrar resumen de reglas omitidas para archivos grandes
             self._log_skipped_rules_summary()
 
@@ -815,15 +815,15 @@ Warnings: {self.warning_count}
             bool(self.row_rules_skipped) or 
             bool(self.catalog_rules_skipped)
         )
-        
+
         if not any_rules_skipped:
             return
-            
+
         self.logger.message("=" * 80)
         self.logger.message("RESUMEN DE OPTIMIZACIÓN DE RENDIMIENTO")
         self.logger.message("Algunas reglas fueron omitidas parcialmente para archivos grandes para mejorar el rendimiento.")
         self.logger.message("=" * 80)
-        
+
         # Reportar reglas de campo omitidas
         if self.field_rules_skipped:
             self.logger.message("\nReglas de campo omitidas parcialmente:")
@@ -834,7 +834,7 @@ Warnings: {self.warning_count}
                         field=field_name,
                         rule=rule_name
                     )
-        
+
         # Reportar reglas de fila omitidas
         if self.row_rules_skipped:
             self.logger.message("\nReglas de fila omitidas parcialmente:")
@@ -845,7 +845,7 @@ Warnings: {self.warning_count}
                         file=catalog_name,
                         rule=rule_name
                     )
-        
+
         # Reportar reglas de catálogo omitidas
         if self.catalog_rules_skipped:
             self.logger.message("\nReglas de catálogo omitidas parcialmente:")
@@ -856,18 +856,18 @@ Warnings: {self.warning_count}
                         file=catalog_name,
                         rule=rule_name
                     )
-                    
+
         self.logger.message("\nNOTA: El conteo total de errores es preciso, pero no todos fueron detallados en el log.")
         self.logger.message("Para ver todos los errores, ejecute la validación con archivos más pequeños.")
         self.logger.message("=" * 80)
-            
+
     def process_file(self, file_path: str, package_name: str) -> Tuple[int, int]:
         """Process either a single file or a ZIP package"""
         # Obtener información básica del archivo
         file_extension = os.path.splitext(file_path.lower())[1]
         is_zip_file = file_extension == '.zip'
         file_type = self._get_file_type(file_path)  # Mapea extensión a tipo SAGE (CSV, EXCEL, etc.)
-        
+
         # Diagnóstico inicial
         self.logger.message("=" * 80)
         self.logger.message(f"DIAGNÓSTICO DE PROCESAMIENTO DE ARCHIVO")
@@ -875,46 +875,46 @@ Warnings: {self.warning_count}
         self.logger.message(f"Extensión: {file_extension}")
         self.logger.message(f"Tipo detectado: {file_type or 'DESCONOCIDO'}")
         self.logger.message(f"Configuración a usar: '{package_name}'")
-        
+
         # Verificar si la configuración existe como paquete o catálogo
         package = self.config.packages.get(package_name) if hasattr(self.config, 'packages') else None
         catalog = self.config.catalogs.get(package_name) if hasattr(self.config, 'catalogs') else None
-        
+
         self.logger.message(f"¿Existe como paquete? {'Sí' if package else 'No'}")
         self.logger.message(f"¿Existe como catálogo? {'Sí' if catalog else 'No'}")
-        
+
         # CASO 1: Es un archivo ZIP
         if is_zip_file:
             self.logger.message(f"El archivo es de tipo ZIP")
-            
+
             # CASO 1.1: Si se especificó un paquete compatible con ZIP
             if package and package.file_format.type == "ZIP":
                 self.logger.message(f"Usando paquete '{package_name}' configurado como ZIP")
                 return self.process_zip_file(file_path, package_name)
-                
+
             # CASO 1.2: Si se especificó un paquete, pero NO es compatible con ZIP
             elif package:
                 raise FileProcessingError(
                     f"Error al procesar {os.path.basename(file_path)}: "
                     f"El archivo es ZIP pero el paquete '{package_name}' está configurado como {package.file_format.type}"
                 )
-                
+
             # CASO 1.3: Si se especificó un catálogo directamente (no debería ocurrir con ZIPs)
             else:
                 raise FileProcessingError(
                     f"Error al procesar {os.path.basename(file_path)}: "
                     f"Los archivos ZIP requieren un paquete configurado como ZIP, pero se proporcionó '{package_name}'"
                 )
-        
+
         # CASO 2: No es un archivo ZIP (es un EXCEL, CSV, etc.)
         else:
             self.logger.message(f"El archivo NO es ZIP, es de tipo {file_type}")
-            
+
             # CASO 2.1: Es un catálogo directo
             if catalog:
                 self.logger.message(f"Procesando archivo mediante el catálogo '{package_name}'")
                 return self._process_single_file(file_path, catalog)
-                
+
             # CASO 2.2: Es un paquete
             elif package:
                 # Verificar compatibilidad de tipo
@@ -924,7 +924,7 @@ Warnings: {self.warning_count}
                         f"El paquete '{package_name}' está configurado para {package.file_format.type}, "
                         f"pero el archivo es {file_type}"
                     )
-                
+
                 # Asegurarse de que el paquete tenga exactamente un catálogo para archivos no-ZIP
                 if len(package.catalogs) != 1:
                     raise FileProcessingError(
@@ -932,50 +932,50 @@ Warnings: {self.warning_count}
                         f"El paquete '{package_name}' tiene {len(package.catalogs)} catálogos, "
                         f"pero los paquetes no-ZIP deben tener exactamente 1 catálogo"
                     )
-                
+
                 # Obtener y usar el catálogo único
                 catalog_name = package.catalogs[0]
                 catalog = self.config.catalogs.get(catalog_name)
-                
+
                 if not catalog:
                     raise FileProcessingError(
                         f"Error al procesar {os.path.basename(file_path)}: "
                         f"El catálogo '{catalog_name}' referenciado por el paquete '{package_name}' no existe"
                     )
-                
+
                 self.logger.message(f"Procesando archivo mediante el catálogo '{catalog_name}' del paquete '{package_name}'")
                 return self._process_single_file(file_path, catalog)
-                
+
             # CASO 2.3: No se encontró configuración
             else:
                 raise FileProcessingError(
                     f"Error al procesar {os.path.basename(file_path)}: "
                     f"No se encontró '{package_name}' como catálogo ni como paquete en la configuración"
                 )
-            
+
     def _process_single_file(self, file_path: str, catalog) -> Tuple[int, int]:
         """Procesa un archivo individual usando un catálogo específico"""
         try:
             df = self._read_file(file_path, catalog)
             cols_count = len(df.columns)
             column_names = ", ".join(df.columns.tolist())
-            
+
             # Información detallada sobre el archivo y su estructura
             self.logger.message(f"Processing file: {file_path}")
             self.logger.message(f"DataFrame columns count: {cols_count}")
             self.logger.message(f"DataFrame columns: {column_names}")
-            
+
             # Store initial error and warning counts
             initial_errors = self.error_count
             initial_warnings = self.warning_count
-            
+
             self.validate_catalog(df, catalog)
-            
+
             # Calculate records and errors/warnings for this file
             file_records = len(df)
             file_errors = self.error_count - initial_errors
             file_warnings = self.warning_count - initial_warnings
-            
+
             # Log summary for this file
             success_rate = ((file_records - file_errors) / file_records * 100) if file_records > 0 else 0
             summary = f"""Summary for {os.path.basename(file_path)}:
@@ -986,7 +986,7 @@ Success rate: {success_rate:.2f}%
 
 """
             self.logger.message(summary)
-            
+
             # Registrar estadísticas de este archivo para el reporte
             self.logger.register_file_stats(
                 os.path.basename(file_path), 
@@ -994,7 +994,7 @@ Success rate: {success_rate:.2f}%
                 file_errors, 
                 file_warnings
             )
-            
+
             # También mostrar resumen para archivos individuales
             self._log_skipped_rules_summary()
 
@@ -1005,7 +1005,7 @@ Success rate: {success_rate:.2f}%
             self.error_count += 1
             error_msg = f"Error processing file {file_path}: {str(e)}"
             self.logger.error(error_msg, file=os.path.basename(file_path), exception=e)
-            
+
             # Registrar estadísticas con 0 registros procesados correctamente
             self.logger.register_file_stats(
                 os.path.basename(file_path), 
@@ -1013,5 +1013,5 @@ Success rate: {success_rate:.2f}%
                 1,  # un error crítico
                 0   # sin advertencias
             )
-            
+
             return self.error_count, self.warning_count
