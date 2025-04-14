@@ -91,7 +91,7 @@ catalogs:
         validation_rules:         # Reglas de validación (opcional)
           - name: "Regla 1"       # Nombre descriptivo
             description: "¡Ops! El código no es válido 😅"  # Mensaje amigable
-            rule: "df['codigo'].notnull()"  # Expresión pandas
+            rule: "df['codigo'].notnull()"  # Expresión dataframe pandas
             severity: "error"     # error/warning
 
     row_validation:              # Validaciones a nivel de fila (opcional)
@@ -136,7 +136,10 @@ SAGE valida automaticamente los siguientes casos:
 - Que los datos definidos como required estén presentes.
 - Que los datos definidos como unique sean unicos.
 - Que los datos definidos con un tipo de dato especifico (texto, decimal,entero, fecha, booleano) tengan el tipo de dato requerido.
-Por tanto, en el yaml no hay que escribir validaciones especificas para esas condiciones, basta con especificar Not Null, Requiered, Unique, el tipo de datos para que se apliquen las validaciones. No escribir en el yaml validacion especifica para estas condiciones. 
+- Que la cantidad de columnas en el archivo sea la misma que esta definida en el YAML.
+Por tanto, en el yaml no hay que escribir validaciones especificas para esas condiciones, basta con especificar Required, Unique, el tipo de datos para que se apliquen las validaciones. No escribir en el yaml validacion especifica para estas condiciones, ni para validar cantidad de columnas.
+Si en la seccion de campos del catalogo existen campos que no rquieran validacion, la seccion  validation_rules:  no debe ser venerada, no es necesario, ya que es opcional. Se incluye solo cuando hay reglas para ese campo. Lo mismo con  row_validation:, catalog_validation: y package_validation: . Si no existe validacion, no es necesario incluirlas.
+
 
 Las reglas de validación utilizan expresiones pandas y deben seguir estas convenciones específicas:
 
@@ -211,9 +214,10 @@ description: "🚫❌💢 ERROR EN TOTAL"
    - Mantén la misma convención en todo el YAML
    - Usa nombres que reflejen el contenido (ej: fecha_creacion vs fecha1)
    - Limita la longitud a 30 caracteres para mejor legibilidad
+   - Recuerda que esos nombres de campo pueden ser utilizados como nombres de columna en una tabla, por lo que debes de hacer que sea un nombre de columna valido. Si por algun motivo esta repertido, utiliza un postfijo para los nombres de campo repetidos (ejemplo Cantidad, Cantidad_1, Cantidad_2)
 
 2. **Reglas de Validación**
-   - Comienza con reglas simples y añade complejidad gradualmente
+   - Comienza con reglas simples. Si el usuario quiere reglas complejas las va a solicitar explicitamente.
    - Usa mensajes de error claros y descriptivos
    - Considera el impacto en el rendimiento con reglas complejas
    - Siempre convierte tipos numéricos usando .astype()
@@ -221,8 +225,7 @@ description: "🚫❌💢 ERROR EN TOTAL"
    - Agrupa validaciones relacionadas
 
 3. **Organización**
-   - Agrupa campos relacionados en el mismo catálogo
-   - Usa paquetes para validaciones que involucren múltiples catálogos
+      - Usa paquetes para validaciones que involucren múltiples catálogos
    - Mantén las validaciones de catálogo separadas de las validaciones de paquete
    - Sigue una estructura lógica en el orden de los campos
    - Documenta las relaciones entre catálogos
