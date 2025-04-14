@@ -2,7 +2,3 @@
         rule: pd.to_datetime(df['Fecha'], errors='coerce').notna().all()
         description: El campo Fecha debe ser una fecha válida
         severity: ERROR
-      - name: validar_entero
-        rule: df['CodigoCategoria'].round().astype(str).str.match(r'^-?\d+$')
-        description: El campo CodigoCategoria debe ser un número entero
-        severity: ERROR

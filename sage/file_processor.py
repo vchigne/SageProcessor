@@ -96,11 +96,6 @@ class FileProcessor:
                 elif field.type in ['entero', 'decimal'] and not field.required:
                     # Para campos numéricos opcionales, usar pd.to_numeric con coerce
                     # para convertir a numéricos pero preservar NaN donde corresponda
-                    df[f"_original_{field.name}"] = df[field.name].astype(str)
-                    df[field.name] = pd.to_numeric(df[field.name], errors='coerce')
-                elif field.type in ['entero', 'decimal']:
-                    # Para campos numéricos, preservar el valor original para validación
-                    df[f"_original_{field.name}"] = df[field.name].astype(str)
                     df[field.name] = pd.to_numeric(df[field.name], errors='coerce')
                 else:
                     df[field.name] = df[field.name].astype(target_type)
@@ -397,16 +392,20 @@ class FileProcessor:
                 try:
                     # Crear un entorno de ejecución con acceso a pandas, numpy y str
                     eval_globals = {
-                        'df': df_filtered,
+                        'df': df_filtered,  # Usar el DataFrame filtrado sin NaNs
                         'np': np,
                         'pd': pd,
-                        'str': str
+                        'str': str  # Añadir str explícitamente para que esté disponible
                     }
                     result = eval(rule.rule, eval_globals, {})
+                except NameError as e:
+                    # Capturar errores específicos de nombres no definidos para dar mejor feedback
+                    raise NameError(f"Error evaluando regla {rule.name}: {str(e)}")
                 except Exception as e:
-                    raise FileProcessingError(f"Error evaluating rule {rule.name}: {str(e)}")
+                    # Otras excepciones durante la evaluación
+                    raise Exception(f"Error evaluando regla {rule.name}: {str(e)}")
 
-                invalid_rows = df_filtered[~result] if isinstance(result, pd.Series) else df_filtered if not result else pd.DataFrame()
+                invalid_rows = self._handle_series_result(result, df_filtered)
 
                 if len(invalid_rows) > 0:
                     for idx, row in invalid_rows.iterrows():
@@ -745,7 +744,7 @@ class FileProcessor:
                     self.logger.error(
                         f"Required file '{catalog.filename}' not found in ZIP package",
                         file=catalog.filename,
-                        package=packagename
+                        package=package_name
                     )
                     continue
 
