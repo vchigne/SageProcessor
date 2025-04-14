@@ -957,7 +957,13 @@ Warnings: {self.warning_count}
         """Procesa un archivo individual usando un catálogo específico"""
         try:
             df = self._read_file(file_path, catalog)
+            cols_count = len(df.columns)
+            column_names = ", ".join(df.columns.tolist())
+            
+            # Información detallada sobre el archivo y su estructura
             self.logger.message(f"Processing file: {file_path}")
+            self.logger.message(f"DataFrame columns count: {cols_count}")
+            self.logger.message(f"DataFrame columns: {column_names}")
             
             # Store initial error and warning counts
             initial_errors = self.error_count
