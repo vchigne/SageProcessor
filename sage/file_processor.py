@@ -4,7 +4,7 @@ import zipfile
 import tempfile
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Tuple, Optional, Set
+from typing import Dict, List, Tuple, Optional, Set, Union
 from .models import SageConfig, Catalog, Package, ValidationRule, Severity
 from .logger import SageLogger
 from .exceptions import FileProcessingError
@@ -545,7 +545,7 @@ class FileProcessor:
                     # Otras excepciones durante la evaluación
                     raise Exception(f"Error evaluando regla {rule.name}: {str(e)}")
 
-                invalid_rows = df[not result]
+                invalid_rows = self._handle_series_result(result, df)
 
                 for idx, row in invalid_rows.iterrows():
                     if rule.severity == Severity.ERROR:
@@ -613,7 +613,7 @@ class FileProcessor:
                     # Otras excepciones durante la evaluación
                     raise Exception(f"Error evaluando regla {rule.name}: {str(e)}")
 
-                invalid_rows = df[not result]
+                invalid_rows = self._handle_series_result(result, df)
 
                 if len(invalid_rows) > 0:
                     if rule.severity == Severity.ERROR:
