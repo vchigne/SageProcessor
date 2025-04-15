@@ -21,9 +21,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // Consultar la ruta correcta desde la base de datos
+    // Ahora buscamos tanto por UUID exacto como por UUID en la ruta_directorio
     const dbResult = await pool.query(
-      'SELECT ruta_directorio FROM ejecuciones_yaml WHERE uuid = $1',
-      [uuid]
+      `
+      SELECT ruta_directorio FROM ejecuciones_yaml 
+      WHERE uuid = $1 
+      OR ruta_directorio LIKE $2 
+      ORDER BY fecha_ejecucion DESC 
+      LIMIT 1
+      `,
+      [uuid, `%${uuid}%`]
     );
 
     if (dbResult.rows.length === 0) {
@@ -34,9 +41,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Obtener la ruta desde la base de datos
     const { ruta_directorio } = dbResult.rows[0];
     
+    // Preparamos la ruta dependiendo de cómo está almacenada
+    let execPath;
+    if (ruta_directorio.startsWith('/home/runner/workspace/')) {
+      // Si ya es una ruta absoluta completa, la usamos directamente
+      execPath = ruta_directorio;
+    } else {
+      // Si es una ruta relativa, la convertimos a absoluta
+      execPath = path.join('/home/runner/workspace', ruta_directorio);
+    }
+    
     // Construir la ruta completa al archivo de log
-    const execPath = path.join('/home/runner/workspace', ruta_directorio);
     const logPath = path.join(execPath, 'output.log');
+    console.log(`Ruta original en BD: ${ruta_directorio}`);
     
     console.log(`Buscando log en: ${logPath}`);
 
