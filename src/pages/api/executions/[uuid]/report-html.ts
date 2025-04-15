@@ -21,6 +21,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // Consultar la ruta correcta desde la base de datos
+    // Buscamos tanto por UUID exacto como por UUID en la ruta_directorio
     const dbResult = await pool.query(
       `
       SELECT ruta_directorio FROM ejecuciones_yaml 
@@ -50,28 +51,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       execPath = path.join('/home/runner/workspace', ruta_directorio);
     }
     
-    // Construir la ruta al archivo report.html
+    // Construir la ruta completa al archivo de reporte HTML
     const reportPath = path.join(execPath, 'report.html');
     console.log(`Ruta original en BD: ${ruta_directorio}`);
-    console.log(`Buscando report.html en: ${reportPath}`);
+    console.log(`Buscando reporte HTML en: ${reportPath}`);
 
     // Verificar que el archivo existe
     try {
       await fs.access(reportPath);
     } catch (accessError) {
-      console.error(`Error al acceder al report.html: ${accessError}. Ruta: ${reportPath}`);
+      console.error(`Error al acceder al reporte HTML: ${accessError}. Ruta: ${reportPath}`);
       return res.status(404).json({ error: 'Reporte HTML no encontrado' });
     }
 
-    // Leer el contenido del reporte
+    // Leer el contenido del reporte HTML
     const reportContent = await fs.readFile(reportPath, 'utf-8');
 
-    // Enviar una página HTML con el contenido
+    // Enviar el contenido HTML directamente
     res.setHeader('Content-Type', 'text/html');
-    res.setHeader('Content-Disposition', `inline; filename="report_${uuid}.html"`);
     res.send(reportContent);
   } catch (error: any) {
-    console.error('Error al leer report.html:', error);
+    console.error('Error reading HTML report:', error);
     res.status(500).json({ error: 'Error al leer el reporte HTML: ' + error.message });
   }
 }
