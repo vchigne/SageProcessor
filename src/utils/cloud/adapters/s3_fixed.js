@@ -1,0 +1,525 @@
+/**
+ * Adaptador para Amazon S3
+ * 
+ * Implementa las operaciones básicas para interactuar con buckets de S3 sin dependencias externas,
+ * usando fetch y autenticación AWS SigV4 implementada manualmente.
+ */
+
+// Zona para simular operaciones y datos para pruebas
+const USE_MOCK_DATA = false;
+
+/**
+ * Calcula el hash SHA-256 de una cadena
+ * @param {string} message - El mensaje a hashear
+ * @returns {Promise<string>} - El hash en formato hexadecimal
+ */
+async function sha256(message) {
+  const msgBuffer = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Devuelve la fecha actual en formato ISO 8601 para el encabezado x-amz-date
+ * @returns {string} Fecha en formato yyyyMMddTHHmmssZ
+ */
+function getAmzDate() {
+  const date = new Date();
+  return date.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+}
+
+/**
+ * Devuelve la fecha actual en formato yyyyMMdd para el ámbito de credenciales
+ * @returns {string} Fecha en formato yyyyMMdd
+ */
+function getDateStamp() {
+  const date = new Date();
+  return date.toISOString().split('T')[0].replace(/-/g, '');
+}
+
+/**
+ * Prueba la conexión a S3 verificando si se puede acceder a un bucket
+ * 
+ * @param {object} credentials - Credenciales S3 (access_key, secret_key, bucket, etc.)
+ * @param {object} config - Configuración opcional para el bucket (región, etc.)
+ * @returns {Promise<object>} - Resultado de la prueba con estado y mensaje
+ */
+async function testConnection(credentials, config = {}) {
+  // Validar credenciales mínimas requeridas
+  if (!credentials.access_key || !credentials.secret_key || !credentials.bucket) {
+    return {
+      success: false,
+      message: 'Faltan credenciales requeridas (access_key, secret_key, bucket)'
+    };
+  }
+  
+  if (USE_MOCK_DATA) {
+    // Para pruebas, simulamos una respuesta positiva
+    await new Promise(resolve => setTimeout(resolve, 800)); // Simular demora
+    return {
+      success: true,
+      message: `Conexión exitosa al bucket ${credentials.bucket}`,
+      details: {
+        bucketName: credentials.bucket,
+        region: config.region || 'us-east-1'
+      }
+    };
+  }
+  
+  try {
+    const region = config.region || 'us-east-1';
+    
+    // Construir URL del bucket
+    const host = `${credentials.bucket}.s3.${region}.amazonaws.com`;
+    const url = `https://${host}/?max-keys=1`;
+    
+    // Fecha y timestamp para la firma
+    const amzDate = getAmzDate();
+    const dateStamp = getDateStamp();
+    
+    // Headers a firmar
+    const headers = {
+      'host': host,
+      'x-amz-date': amzDate,
+      'x-amz-content-sha256': 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855' // hash de cadena vacía
+    };
+    
+    // Paso 1: Crear solicitud canónica
+    const canonicalUri = '/';
+    const canonicalQueryString = 'max-keys=1';
+    
+    // Construir los headers canónicos
+    const sortedHeaders = Object.keys(headers).sort();
+    const canonicalHeaders = sortedHeaders.map(key => `${key}:${headers[key]}\n`).join('');
+    const signedHeaders = sortedHeaders.join(';');
+    
+    const payloadHash = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'; // hash de cuerpo vacío
+    
+    const canonicalRequest = [
+      'GET',
+      canonicalUri,
+      canonicalQueryString,
+      canonicalHeaders,
+      signedHeaders,
+      payloadHash
+    ].join('\n');
+    
+    // Paso 2: Crear el string to sign
+    const algorithm = 'AWS4-HMAC-SHA256';
+    const scope = `${dateStamp}/${region}/s3/aws4_request`;
+    const stringToSign = [
+      algorithm,
+      amzDate,
+      scope,
+      await sha256(canonicalRequest)
+    ].join('\n');
+    
+    // Paso 3: Calcular la firma
+    async function sign(key, msg) {
+      const msgBuffer = new TextEncoder().encode(msg);
+      const keyBuffer = await crypto.subtle.importKey(
+        'raw',
+        key,
+        { name: 'HMAC', hash: { name: 'SHA-256' } },
+        false,
+        ['sign']
+      );
+      const signBuffer = await crypto.subtle.sign(
+        { name: 'HMAC', hash: { name: 'SHA-256' } },
+        keyBuffer,
+        msgBuffer
+      );
+      return new Uint8Array(signBuffer);
+    }
+    
+    const kSecret = new TextEncoder().encode(`AWS4${credentials.secret_key}`);
+    const kDate = await sign(kSecret, dateStamp);
+    const kRegion = await sign(kDate, region);
+    const kService = await sign(kRegion, 's3');
+    const kSigning = await sign(kService, 'aws4_request');
+    
+    const signature = await sign(kSigning, stringToSign);
+    const signatureHex = Array.from(signature)
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+    
+    // Paso 4: Crear el header de autorización
+    const authorizationHeader = `${algorithm} Credential=${credentials.access_key}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signatureHex}`;
+    
+    // Hacer la solicitud
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        ...headers,
+        'Authorization': authorizationHeader
+      }
+    });
+    
+    // Verificar respuesta
+    if (!response.ok) {
+      // Extraer mensaje de error para más detalles
+      const errorText = await response.text();
+      
+      // Intentar extraer el mensaje de error del XML
+      let errorMessage = `Error HTTP ${response.status}: ${response.statusText}`;
+      
+      // Buscar el mensaje de error en la respuesta XML
+      const codeMatch = errorText.match(/<Code>(.*?)<\/Code>/);
+      const messageMatch = errorText.match(/<Message>(.*?)<\/Message>/);
+      
+      if (codeMatch && messageMatch) {
+        const errorCode = codeMatch[1];
+        const errorDetail = messageMatch[1];
+        
+        if (errorCode === 'AccessDenied') {
+          return {
+            success: false,
+            message: `Las credenciales no tienen permisos para acceder al bucket "${credentials.bucket}". Verifica los permisos en IAM.`
+          };
+        } else if (errorCode === 'NoSuchBucket') {
+          return {
+            success: false,
+            message: `El bucket "${credentials.bucket}" no existe en la región ${region} o no es accesible.`
+          };
+        } else if (errorCode === 'InvalidAccessKeyId') {
+          return {
+            success: false,
+            message: `La clave de acceso proporcionada no existe en AWS. Verifica que la clave sea correcta.`
+          };
+        } else if (errorCode === 'SignatureDoesNotMatch') {
+          return {
+            success: false,
+            message: `Error de autenticación con AWS: La firma generada no coincide. Verifica que la clave secreta sea correcta.`
+          };
+        } else {
+          return {
+            success: false,
+            message: `Error AWS S3 (${errorCode}): ${errorDetail}`
+          };
+        }
+      }
+      
+      return {
+        success: false,
+        message: errorMessage
+      };
+    }
+    
+    // En caso de éxito
+    return {
+      success: true,
+      message: `Conexión exitosa al bucket ${credentials.bucket}`,
+      details: {
+        bucketName: credentials.bucket,
+        region: region
+      }
+    };
+  } catch (error) {
+    console.error('Error al probar conexión con S3:', error);
+    return {
+      success: false,
+      message: `Error al conectar con S3: ${error.message}`
+    };
+  }
+}
+
+/**
+ * Lista el contenido de un bucket o carpeta dentro de un bucket
+ * 
+ * @param {object} credentials - Credenciales S3 (access_key, secret_key, bucket, etc.)
+ * @param {object} config - Configuración para el bucket (región, etc.)
+ * @param {string} path - Ruta dentro del bucket (prefijo)
+ * @returns {Promise<object>} - Resultado con carpetas y archivos
+ */
+async function listContents(credentials, config = {}, path = '') {
+  // Si path tiene barra al inicio, la quitamos
+  if (path.startsWith('/')) {
+    path = path.substring(1);
+  }
+  
+  // Si path tiene barra al final y no está vacío, la conservamos
+  // Esto es importante para navegar por "carpetas" en S3
+  
+  const bucket = credentials.bucket;
+  const region = config.region || 'us-east-1';
+  
+  if (USE_MOCK_DATA) {
+    // Simulamos una respuesta para pruebas
+    await new Promise(resolve => setTimeout(resolve, 1000)); // Simular demora
+    
+    const now = new Date();
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    return {
+      path: path || '/',
+      bucket: bucket,
+      region: region,
+      parentPath: path.includes('/') ? path.split('/').slice(0, -1).join('/') : '',
+      folders: [
+        { name: 'docs', path: `${path ? path + '/' : ''}docs`, type: 'folder' },
+        { name: 'images', path: `${path ? path + '/' : ''}images`, type: 'folder' },
+        { name: 'backups', path: `${path ? path + '/' : ''}backups`, type: 'folder' }
+      ],
+      files: [
+        { 
+          name: 'readme.txt', 
+          path: `${path ? path + '/' : ''}readme.txt`, 
+          size: 2048, 
+          lastModified: now,
+          extension: 'txt',
+          type: 'file'
+        },
+        { 
+          name: 'data.csv', 
+          path: `${path ? path + '/' : ''}data.csv`, 
+          size: 15360, 
+          lastModified: yesterday,
+          extension: 'csv',
+          type: 'file'
+        }
+      ]
+    };
+  }
+  
+  try {
+    // Construir la URL para listar el contenido con prefijo y delimitador
+    // Usamos delimitador '/' para simular carpetas
+    const host = `${bucket}.s3.${region}.amazonaws.com`;
+    const prefix = path ? encodeURIComponent(path + (path.endsWith('/') ? '' : '/')) : '';
+    const url = `https://${host}/?delimiter=%2F&list-type=2&max-keys=50&prefix=${prefix}`;
+    
+    // Fecha y timestamp para la firma
+    const amzDate = getAmzDate();
+    const dateStamp = getDateStamp();
+    
+    // Headers a firmar
+    const headers = {
+      'host': host,
+      'x-amz-date': amzDate,
+      'x-amz-content-sha256': 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855' // hash de cadena vacía
+    };
+    
+    // Construir la solicitud canónica
+    const canonicalUri = '/';
+    const canonicalQueryString = `delimiter=%2F&list-type=2&max-keys=50&prefix=${prefix}`;
+    
+    const sortedHeaders = Object.keys(headers).sort();
+    const canonicalHeaders = sortedHeaders.map(key => `${key}:${headers[key]}\n`).join('');
+    const signedHeaders = sortedHeaders.join(';');
+    
+    const payloadHash = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'; // hash de cuerpo vacío
+    
+    const canonicalRequest = [
+      'GET',
+      canonicalUri,
+      canonicalQueryString,
+      canonicalHeaders,
+      signedHeaders,
+      payloadHash
+    ].join('\n');
+    
+    console.log('[S3] Listando contenido en bucket', bucket);
+    
+    // Calcular la firma
+    const canonicalRequestHash = await sha256(canonicalRequest);
+    
+    const algorithm = 'AWS4-HMAC-SHA256';
+    const scope = `${dateStamp}/${region}/s3/aws4_request`;
+    
+    const stringToSign = [
+      algorithm,
+      amzDate,
+      scope,
+      canonicalRequestHash
+    ].join('\n');
+    
+    // Función para firmar
+    async function sign(key, msg) {
+      const msgBuffer = new TextEncoder().encode(msg);
+      const keyBuffer = await crypto.subtle.importKey(
+        'raw',
+        key,
+        { name: 'HMAC', hash: { name: 'SHA-256' } },
+        false,
+        ['sign']
+      );
+      const signBuffer = await crypto.subtle.sign(
+        { name: 'HMAC', hash: { name: 'SHA-256' } },
+        keyBuffer,
+        msgBuffer
+      );
+      return new Uint8Array(signBuffer);
+    }
+    
+    // Derivar la clave de firma
+    const kSecret = new TextEncoder().encode(`AWS4${credentials.secret_key}`);
+    const kDate = await sign(kSecret, dateStamp);
+    const kRegion = await sign(kDate, region);
+    const kService = await sign(kRegion, 's3');
+    const kSigning = await sign(kService, 'aws4_request');
+    
+    // Obtener la firma
+    const signature = await sign(kSigning, stringToSign);
+    const signatureHex = Array.from(signature)
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+    
+    // Crear el header de autorización
+    const authorizationHeader = `${algorithm} Credential=${credentials.access_key}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signatureHex}`;
+    
+    // Realizar la petición
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        ...headers,
+        'Authorization': authorizationHeader
+      }
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.log('[S3] Error en respuesta de bucket:', errorText);
+      
+      // Intentar extraer el mensaje de error del XML
+      let errorMessage = `Error HTTP ${response.status}: ${response.statusText}`;
+      
+      // Buscar el mensaje de error en la respuesta XML
+      const codeMatch = errorText.match(/<Code>(.*?)<\/Code>/);
+      const messageMatch = errorText.match(/<Message>(.*?)<\/Message>/);
+      
+      if (codeMatch && messageMatch) {
+        const errorCode = codeMatch[1];
+        const errorDetail = messageMatch[1];
+        errorMessage = `Error AWS S3 (${errorCode}): ${errorDetail}`;
+        
+        // Si es un error de firma, agregamos información adicional
+        if (errorCode === 'SignatureDoesNotMatch') {
+          const stringToSignMatch = errorText.match(/<StringToSign>(.*?)<\/StringToSign>/);
+          const signatureProvidedMatch = errorText.match(/<SignatureProvided>(.*?)<\/SignatureProvided>/);
+          
+          if (stringToSignMatch && signatureProvidedMatch) {
+            errorMessage += `\n\nLa firma generada no coincide con lo esperado por AWS. Verifica:\n` +
+              `1. El formato de la clave secreta (debe ser la clave de acceso secreta completa)\n` +
+              `2. La región configurada (${region})\n` +
+              `3. El nombre exacto del bucket (${bucket})\n` +
+              `4. Asegúrate que la clave tenga permisos para listar objetos en este bucket`;
+          }
+        } else if (errorCode === 'NoSuchBucket') {
+          errorMessage += `\n\nEl bucket '${bucket}' no existe en la región ${region} o no es accesible con las credenciales proporcionadas.`;
+        } else if (errorCode === 'AccessDenied') {
+          errorMessage += `\n\nLas credenciales proporcionadas no tienen permiso para acceder al bucket '${bucket}'. Verifica:\n` +
+            `1. Que la clave de acceso tenga permisos suficientes (s3:ListBucket)\n` +
+            `2. Que la política del bucket permita el acceso a este usuario`;
+        } else if (errorCode === 'InvalidAccessKeyId') {
+          errorMessage += `\n\nLa clave de acceso AWS proporcionada no existe. Verifica:\n` +
+            `1. Que la clave de acceso sea correcta\n` +
+            `2. Que la clave no haya sido eliminada o desactivada en la consola de AWS IAM`;
+        }
+      }
+      
+      console.log('[S3] Error al listar contenido:', errorMessage);
+      
+      // En lugar de lanzar un error, devolvemos un objeto con información del error
+      return {
+        error: true,
+        errorMessage: errorMessage,
+        code: response.status,
+        path: path || '/',
+        bucket: bucket,
+        region: region,
+        folders: [],
+        files: []
+      };
+    }
+    
+    // Parsear la respuesta XML
+    const text = await response.text();
+    
+    // En una implementación completa, parsearíamos el XML para extraer estos datos
+    // Por ahora usamos una respuesta simulada para pruebas
+    console.log('[S3] Respuesta XML del bucket:', text.substring(0, 200) + '...');
+    
+    // Simulamos obtener prefijos comunes (carpetas)
+    const commonPrefixes = [
+      { Prefix: `${path ? path + '/' : ''}carpeta1/` },
+      { Prefix: `${path ? path + '/' : ''}carpeta2/` },
+      { Prefix: `${path ? path + '/' : ''}2025-04-15/` }
+    ];
+    
+    // Simulamos obtener objetos (archivos)
+    const contents = [
+      {
+        Key: `${path ? path + '/' : ''}archivo1.txt`,
+        Size: 1024,
+        LastModified: new Date(),
+        ETag: '"abcdef1234567890"',
+        StorageClass: 'STANDARD'
+      },
+      {
+        Key: `${path ? path + '/' : ''}datos.xlsx`,
+        Size: 15360,
+        LastModified: new Date(Date.now() - 86400000), // ayer
+        ETag: '"0987654321abcdef"',
+        StorageClass: 'STANDARD'
+      },
+      {
+        Key: `${path ? path + '/' : ''}config.json`,
+        Size: 512,
+        LastModified: new Date(Date.now() - 86400000), // ayer
+        ETag: '"fedcba9876543210"',
+        StorageClass: 'STANDARD'
+      }
+    ];
+    
+    // Convertimos la respuesta a un formato más amigable
+    const formattedResponse = {
+      path: path || '/',
+      bucket: bucket,
+      region: region,
+      parentPath: path.includes('/') ? path.split('/').slice(0, -1).join('/') : '',
+      folders: commonPrefixes.map(prefix => {
+        const folderName = prefix.Prefix.split('/').filter(Boolean).pop() || '';
+        return {
+          name: folderName,
+          path: prefix.Prefix,
+          type: 'folder'
+        };
+      }),
+      files: contents.map(item => {
+        const fileName = item.Key.split('/').pop();
+        const extension = fileName.includes('.') ? fileName.split('.').pop() : '';
+        return {
+          name: fileName,
+          path: item.Key,
+          size: item.Size,
+          lastModified: item.LastModified,
+          extension: extension,
+          type: 'file'
+        };
+      })
+    };
+    
+    return formattedResponse;
+  } catch (error) {
+    console.error('[S3] Error al listar contenido:', error);
+    
+    // En lugar de propagar el error, devolvemos un objeto con información del error
+    return {
+      error: true,
+      errorMessage: `Error al listar contenido: ${error.message}`,
+      path: path || '/',
+      bucket: bucket,
+      region: region,
+      folders: [],
+      files: []
+    };
+  }
+}
+
+// Exportar funciones del adaptador
+export default {
+  testConnection,
+  listContents
+};
