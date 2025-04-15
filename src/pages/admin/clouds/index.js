@@ -5,8 +5,9 @@ import {
   Text,
   Card,
   Grid,
+  Button,
 } from "@tremor/react"
-import { CloudIcon } from '@heroicons/react/24/outline'
+import { CloudIcon, PlusIcon } from '@heroicons/react/24/outline'
 
 const CloudProviders = () => {
   const [clouds, setClouds] = useState([])
@@ -32,9 +33,18 @@ const CloudProviders = () => {
 
   return (
     <div className="p-6">
-      <div className="mb-8">
-        <Title>Proveedores Cloud</Title>
-        <Text>Gestión de conexiones cloud</Text>
+      <div className="mb-8 flex justify-between items-center">
+        <div>
+          <Title>Proveedores Cloud</Title>
+          <Text>Gestión de conexiones cloud</Text>
+        </div>
+        <Button 
+          variant="primary"
+          icon={PlusIcon}
+          onClick={() => console.log('Nuevo proveedor')}
+        >
+          Nuevo Proveedor
+        </Button>
       </div>
 
       {loading ? (
@@ -46,6 +56,15 @@ const CloudProviders = () => {
           <p className="mt-1 text-sm text-gray-500">
             Comienza agregando un nuevo proveedor de almacenamiento en la nube.
           </p>
+          <div className="mt-6">
+            <Button
+              variant="secondary"
+              icon={PlusIcon}
+              onClick={() => console.log('Nuevo proveedor')}
+            >
+              Agregar Proveedor
+            </Button>
+          </div>
         </div>
       ) : (
         <Grid numItems={1} numItemsSm={2} numItemsLg={3} className="gap-6">
