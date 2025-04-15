@@ -446,11 +446,15 @@ export default async function handler(
             filePath: string,
             yamlContent: string,
             casilla_id: number
-          ): Promise<{ execution_uuid: string; errors: number; warnings: number }> => {
+          ): Promise<{ execution_uuid: string; errors: number; warnings: number; tmpFiles: string[] }> => {
             return new Promise(async (resolve, reject) => {
               try {
+                // Lista de archivos temporales para limpiar al finalizar
+                const tmpFiles: string[] = [filePath]; // Agregamos el archivo de datos original
+                
                 // Crear un archivo YAML temporal
                 const yamlPath = path.join(process.cwd(), 'tmp', `${Date.now()}.yaml`);
+                tmpFiles.push(yamlPath); // Agregamos el archivo YAML a la lista de temporales
                 
                 // Asegurar que exista el directorio tmp
                 await fsPromises.mkdir(path.join(process.cwd(), 'tmp'), { recursive: true });
@@ -519,16 +523,21 @@ except Exception as e:
                 });
                 
                 pythonProcess.on('close', async (code) => {
-                  // Limpiar archivo temporal
+                  // Agregamos el pythonScriptPath a la lista de archivos temporales
+                  tmpFiles.push(pythonScriptPath);
+                  
+                  // Limpiar archivo YAML temporal
                   try {
                     await fsPromises.unlink(yamlPath);
+                    console.log('Archivo YAML temporal eliminado:', yamlPath);
                   } catch (err) {
                     console.error('Error al eliminar archivo YAML temporal:', err);
                   }
                   
-                  // Limpiar el script temporal también
+                  // Limpiar el script temporal
                   try {
                     await fsPromises.unlink(pythonScriptPath);
+                    console.log('Script Python temporal eliminado:', pythonScriptPath);
                   } catch (err) {
                     console.error('Error al eliminar script Python temporal:', err);
                   }
@@ -552,7 +561,8 @@ except Exception as e:
                       resolve({
                         execution_uuid: result.execution_uuid, // Usamos el UUID generado por main.py
                         errors: result.errors,
-                        warnings: result.warnings
+                        warnings: result.warnings,
+                        tmpFiles  // Pasamos la lista de archivos temporales
                       });
                     } catch (err) {
                       console.error('Error al parsear la salida JSON:', err, output);
@@ -583,6 +593,19 @@ except Exception as e:
           // El UUID es la última parte de la ruta (el nombre del directorio de ejecución)
           const dirPathParts = path.join('executions', processingResult.execution_uuid).split(path.sep);
           const directoryUuid = dirPathParts[dirPathParts.length - 1];
+          
+          // Limpiar el archivo de datos original que creamos
+          if (processingResult.tmpFiles && processingResult.tmpFiles.length > 0) {
+            console.log(`Limpiando ${processingResult.tmpFiles.length} archivos temporales...`);
+            for (const tmpFile of processingResult.tmpFiles) {
+              try {
+                await fsPromises.unlink(tmpFile);
+                console.log(`Archivo temporal eliminado: ${tmpFile}`);
+              } catch (err) {
+                console.warn(`No se pudo eliminar el archivo temporal ${tmpFile}: ${err.message}`);
+              }
+            }
+          }
           
           // Buscar la ejecución creada por SAGE utilizando el UUID del directorio
           const ejecucionQuery = await pool.query(
