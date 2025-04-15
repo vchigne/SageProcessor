@@ -100,7 +100,6 @@ function CloudProviders() {
   const router = useRouter();
   const [providers, setProviders] = useState([]);
   const [loading, setLoading] = useState(true);
-  document.title = "SAGE Clouds | SAGE Admin";
   const [showForm, setShowForm] = useState(false);
   const [currentProvider, setCurrentProvider] = useState(initialProviderState);
   const [isEditing, setIsEditing] = useState(false);
@@ -321,7 +320,7 @@ function CloudProviders() {
   return (
     <AdminLayout>
       <Head>
-        <title>SAGE Cloud - Gestión de Proveedores</title>
+        <title>SAGE Clouds | SAGE Admin</title>
       </Head>
       
       <div className="p-6">
