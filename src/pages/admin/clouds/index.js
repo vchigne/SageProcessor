@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react'
 import {
   Title,
@@ -32,7 +33,7 @@ const CloudProviders = () => {
 
   return (
     <Layout>
-      <div className="p-6"> {/* Added p-6 for consistent spacing */}
+      <div className="p-6">
         <div className="mb-8">
           <Title>Proveedores Cloud</Title>
           <Text>Gestión de conexiones cloud</Text>
