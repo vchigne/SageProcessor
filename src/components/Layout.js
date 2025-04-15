@@ -35,7 +35,6 @@ const navigation = [
   { name: 'Casillas de Datos', href: '/admin/data-boxes', icon: InboxStackIcon },
   { name: 'Portales', href: '/admin/portales', icon: WindowIcon },
   { name: 'Control de Acceso', href: '/access', icon: ShieldCheckIcon },
-  { name: 'SAGE Clouds', href: '/admin/clouds', icon: CloudIcon }, // Added SAGE Clouds
   { 
     name: 'Maestros', 
     href: '#',
