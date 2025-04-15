@@ -10,7 +10,12 @@ import {
   PencilIcon, 
   CheckCircleIcon, 
   XCircleIcon,
-  ArrowPathIcon
+  ArrowPathIcon,
+  FolderIcon,
+  DocumentTextIcon,
+  FolderArrowDownIcon,
+  ArrowUturnLeftIcon,
+  MagnifyingGlassIcon
 } from '@heroicons/react/24/outline';
 import { Metric, Text, Title, Subtitle, Badge, Button, Card, Table } from '@tremor/react';
 
@@ -104,6 +109,13 @@ function CloudProviders() {
   const [currentProvider, setCurrentProvider] = useState(initialProviderState);
   const [isEditing, setIsEditing] = useState(false);
   const [testingId, setTestingId] = useState(null);
+  
+  // Estados para el explorador de archivos
+  const [showExplorer, setShowExplorer] = useState(false);
+  const [explorerLoading, setExplorerLoading] = useState(false);
+  const [explorerData, setExplorerData] = useState(null);
+  const [explorerProvider, setExplorerProvider] = useState(null);
+  const [currentPath, setCurrentPath] = useState('');
 
   // Cargar proveedores
   useEffect(() => {
@@ -205,6 +217,36 @@ function CloudProviders() {
     } catch (error) {
       console.error('Error:', error);
       toast.error(error.message);
+    }
+  };
+  
+  // Inspeccionar contenido del proveedor
+  const inspectProvider = async (provider, path = '') => {
+    setExplorerProvider(provider);
+    setExplorerLoading(true);
+    setShowExplorer(true);
+    setCurrentPath(path);
+    
+    try {
+      const response = await fetch(`/api/clouds/${provider.id}/inspect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path })
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || `Error al inspeccionar el proveedor: ${error.message}`);
+      }
+      
+      const data = await response.json();
+      setExplorerData(data);
+    } catch (error) {
+      console.error('Error al inspeccionar proveedor:', error);
+      toast.error(`Error al inspeccionar proveedor: ${error.message}`);
+      setShowExplorer(false);
+    } finally {
+      setExplorerLoading(false);
     }
   };
 

@@ -192,11 +192,117 @@ export async function testConnection(credentials, config = {}) {
   }
 }
 
+/**
+ * Lista contenido de un directorio de Amazon S3 con más detalles y organización
+ * @param {Object} credentials Credenciales
+ * @param {Object} config Configuración
+ * @param {string} path Prefijo para listar
+ * @param {number} limit Límite de objetos a devolver
+ * @returns {Promise<Object>} Estructura organizada del contenido
+ */
+export async function listContents(credentials, config = {}, path = '', limit = 50) {
+  try {
+    console.log(`[S3] Listando contenido en bucket ${credentials.bucket}${path ? '/' + path : ''}`);
+    
+    // En implementación real:
+    // const client = new S3Client({
+    //   region: config.region || 'us-east-1',
+    //   credentials: {
+    //     accessKeyId: credentials.access_key,
+    //     secretAccessKey: credentials.secret_key
+    //   }
+    // });
+    // 
+    // const command = new ListObjectsV2Command({
+    //   Bucket: credentials.bucket,
+    //   Prefix: path,
+    //   Delimiter: '/',
+    //   MaxKeys: limit
+    // });
+    // 
+    // const response = await client.send(command);
+    
+    // Simulamos respuesta con carpetas y archivos
+    const now = new Date();
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    // Simulamos obtener prefijos comunes (carpetas)
+    const commonPrefixes = [
+      { Prefix: `${path ? path + '/' : ''}carpeta1/` },
+      { Prefix: `${path ? path + '/' : ''}carpeta2/` },
+      { Prefix: `${path ? path + '/' : ''}2025-04-15/` }
+    ];
+    
+    // Simulamos obtener objetos (archivos)
+    const contents = [
+      {
+        Key: `${path ? path + '/' : ''}archivo1.txt`,
+        Size: 1024,
+        LastModified: now,
+        ETag: '"abcdef1234567890"',
+        StorageClass: 'STANDARD'
+      },
+      {
+        Key: `${path ? path + '/' : ''}datos.xlsx`,
+        Size: 15360,
+        LastModified: yesterday,
+        ETag: '"0987654321abcdef"',
+        StorageClass: 'STANDARD'
+      },
+      {
+        Key: `${path ? path + '/' : ''}config.json`,
+        Size: 512,
+        LastModified: yesterday,
+        ETag: '"fedcba9876543210"',
+        StorageClass: 'STANDARD'
+      }
+    ];
+    
+    // Convertimos la respuesta a un formato más amigable
+    const formattedResponse = {
+      path: path || '/',
+      bucket: credentials.bucket,
+      region: config.region || 'us-east-1',
+      folders: commonPrefixes.map(prefix => {
+        const folderName = prefix.Prefix.split('/').filter(Boolean).pop() || '';
+        return {
+          name: folderName,
+          path: prefix.Prefix,
+          type: 'folder'
+        };
+      }),
+      files: contents.map(item => {
+        const fileName = item.Key.split('/').pop();
+        return {
+          name: fileName,
+          path: item.Key,
+          size: item.Size,
+          lastModified: item.LastModified,
+          type: 'file',
+          extension: fileName.includes('.') ? fileName.split('.').pop().toLowerCase() : '',
+          storageClass: item.StorageClass
+        };
+      }),
+      parentPath: path.split('/').slice(0, -1).join('/'),
+      delimiter: '/',
+      truncated: false, // Indica si hay más resultados
+      totalSize: contents.reduce((acc, item) => acc + item.Size, 0)
+    };
+    
+    return formattedResponse;
+  } catch (error) {
+    console.error('[S3] Error al listar contenido:', error);
+    throw error;
+  }
+}
+
 export default {
   createClient,
   uploadFile,
   downloadFile,
   listFiles,
   getSignedUrl,
-  testConnection
+  testConnection,
+  listContents
 };

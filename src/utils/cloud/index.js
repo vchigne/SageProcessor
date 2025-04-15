@@ -108,6 +108,22 @@ export async function createCloudClient(providerId) {
 }
 
 /**
+ * Obtiene el adaptador para un tipo de proveedor específico
+ * @param {string} type Tipo de proveedor (s3, azure, etc.)
+ * @param {Object} config Configuración combinada (credenciales + configuración)
+ * @returns {Object} Adaptador para el tipo de proveedor
+ */
+export async function getCloudAdapter(type, config = {}) {
+  try {
+    const adapter = await loadAdapter(type);
+    return adapter;
+  } catch (error) {
+    console.error(`Error al obtener adaptador para ${type}:`, error);
+    throw error;
+  }
+}
+
+/**
  * Sube un archivo a un proveedor de nube
  * @param {number} providerId ID del proveedor
  * @param {string} localPath Ruta local del archivo
@@ -306,6 +322,7 @@ export default {
   getCloudProvider,
   getActiveCloudProviders,
   createCloudClient,
+  getCloudAdapter,
   uploadFile,
   downloadFile,
   listFiles,
