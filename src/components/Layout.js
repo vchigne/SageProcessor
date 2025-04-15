@@ -19,7 +19,6 @@ import {
   EnvelopeIcon, // Ícono para configuraciones de correo
   Cog8ToothIcon, // Ícono para maestros
   PencilSquareIcon, // Ícono para YAML Editor
-  CloudIcon, // Added for SAGE Clouds menu item
 } from '@heroicons/react/24/outline'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
