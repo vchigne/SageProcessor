@@ -19,6 +19,7 @@ import {
   EnvelopeIcon, // Ícono para configuraciones de correo
   Cog8ToothIcon, // Ícono para maestros
   PencilSquareIcon, // Ícono para YAML Editor
+  CloudIcon, // Added for SAGE Clouds menu item
 } from '@heroicons/react/24/outline'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
@@ -34,9 +35,10 @@ const navigation = [
   { name: 'Casillas de Datos', href: '/admin/data-boxes', icon: InboxStackIcon },
   { name: 'Portales', href: '/admin/portales', icon: WindowIcon },
   { name: 'Control de Acceso', href: '/access', icon: ShieldCheckIcon },
+  { name: 'SAGE Clouds', href: '/admin/clouds', icon: CloudIcon }, // Added SAGE Clouds
   { 
     name: 'Maestros', 
-    href: '#', // Usamos # como placeholder para elementos de menú que solo despliegan submenús
+    href: '#',
     icon: Cog8ToothIcon,
     submenu: [
       { name: 'Organizaciones', href: '/maestros/organizaciones' },
@@ -220,7 +222,7 @@ export default function Layout({ children }) {
   useEffect(() => {
     setSidebarOpen(false)
   }, [router.asPath])
-  
+
   const toggleSubmenu = (menuName) => {
     setOpenSubmenus(prev => ({
       ...prev,
