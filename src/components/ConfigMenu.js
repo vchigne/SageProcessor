@@ -40,10 +40,10 @@ export default function ConfigMenu() {
       description: 'Personalizar plantillas para diferentes tipos de notificaciones' 
     },
     { 
-      name: 'Configuración General', 
+      name: 'Configuración YAML Studio', 
       href: '/settings', 
       icon: WrenchScrewdriverIcon, 
-      description: 'Ajustes generales del sistema' 
+      description: 'Administrar configuración del YAML Studio' 
     },
   ];
 
