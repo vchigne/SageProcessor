@@ -83,7 +83,9 @@ const LogViewerModal: React.FC<{
   };
 
   // Función para abrir en nueva pestaña
-  const openInNewTab = (url: string) => {
+  const openInNewTab = (event: React.MouseEvent, url: string) => {
+    // Detener la propagación del evento para evitar que cierre el modal
+    event.stopPropagation();
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
@@ -120,7 +122,10 @@ const LogViewerModal: React.FC<{
               className={`px-4 py-2 font-medium text-sm ${activeTab === 'log' 
                 ? 'text-blue-600 border-b-2 border-blue-600' 
                 : 'text-gray-500 hover:text-gray-700 hover:border-b-2 hover:border-gray-300'}`}
-              onClick={() => setActiveTab('log')}
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveTab('log');
+              }}
             >
               Log de Procesamiento
             </button>
@@ -129,7 +134,10 @@ const LogViewerModal: React.FC<{
               className={`px-4 py-2 font-medium text-sm ${activeTab === 'html' 
                 ? 'text-blue-600 border-b-2 border-blue-600' 
                 : 'text-gray-500 hover:text-gray-700 hover:border-b-2 hover:border-gray-300'}`}
-              onClick={() => setActiveTab('html')}
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveTab('html');
+              }}
             >
               Reporte HTML
             </button>
@@ -158,14 +166,14 @@ const LogViewerModal: React.FC<{
             <div className="flex space-x-2">
               <button 
                 type="button"
-                onClick={() => openInNewTab(reportHtmlUrl)}
+                onClick={(e) => openInNewTab(e, reportHtmlUrl)}
                 className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
               >
                 Ver reporte HTML
               </button>
               <button 
                 type="button"
-                onClick={() => openInNewTab(reportJsonUrl)}
+                onClick={(e) => openInNewTab(e, reportJsonUrl)}
                 className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
               >
                 Descargar reporte JSON
@@ -423,7 +431,11 @@ export const FileUploadModal: React.FC<FileUploadModalProps> = ({
                       </div>
                     </div>
                     <button
-                      onClick={() => setShowResults(true)}
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowResults(true);
+                      }}
                       className="text-blue-600 hover:text-blue-800 underline text-sm mt-2"
                     >
                       Ver resultados detallados
