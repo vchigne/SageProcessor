@@ -1,8 +1,5 @@
 import { Pool } from 'pg';
-import { getConfig } from '@/utils/db';
-
-// Conexión a la base de datos
-const pool = new Pool(getConfig());
+import { pool } from '../../../../lib/db';
 
 // Simuladores para probar la conexión a diferentes proveedores de nube
 const cloudAdapters = {
