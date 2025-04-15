@@ -62,6 +62,14 @@ const LogViewerModal: React.FC<{
   // Estado para controlar qué reporte se está visualizando
   const [activeTab, setActiveTab] = useState<'log' | 'html'>('log');
 
+  // Estado para controlar si la iframe está cargando
+  const [loading, setLoading] = useState<boolean>(true);
+
+  useEffect(() => {
+    // Cada vez que cambia la pestaña, marcar como cargando
+    setLoading(true);
+  }, [activeTab]);
+
   useEffect(() => {
     if (!isOpen) return;
     document.body.style.overflow = 'hidden';
@@ -69,6 +77,15 @@ const LogViewerModal: React.FC<{
       document.body.style.overflow = 'unset';
     };
   }, [isOpen]);
+
+  const handleIframeLoad = () => {
+    setLoading(false);
+  };
+
+  // Función para abrir en nueva pestaña
+  const openInNewTab = (url: string) => {
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
 
   return (
     <Dialog
@@ -88,6 +105,7 @@ const LogViewerModal: React.FC<{
               onClick={onClose}
               className="p-2 text-gray-400 hover:text-gray-600 transition-colors rounded-lg hover:bg-gray-100"
               aria-label="Cerrar"
+              type="button"
             >
               <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -98,6 +116,7 @@ const LogViewerModal: React.FC<{
           {/* Menú de navegación entre tipos de reportes */}
           <div className="flex border-b border-gray-200">
             <button
+              type="button"
               className={`px-4 py-2 font-medium text-sm ${activeTab === 'log' 
                 ? 'text-blue-600 border-b-2 border-blue-600' 
                 : 'text-gray-500 hover:text-gray-700 hover:border-b-2 hover:border-gray-300'}`}
@@ -106,6 +125,7 @@ const LogViewerModal: React.FC<{
               Log de Procesamiento
             </button>
             <button
+              type="button"
               className={`px-4 py-2 font-medium text-sm ${activeTab === 'html' 
                 ? 'text-blue-600 border-b-2 border-blue-600' 
                 : 'text-gray-500 hover:text-gray-700 hover:border-b-2 hover:border-gray-300'}`}
@@ -116,6 +136,11 @@ const LogViewerModal: React.FC<{
           </div>
 
           <div className="p-6">
+            {loading && (
+              <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-75 z-10">
+                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+              </div>
+            )}
             <div className="relative rounded-lg border border-gray-200 bg-gray-50 overflow-hidden">
               <iframe
                 src={activeTab === 'log' ? logUrl : reportHtmlUrl}
@@ -123,6 +148,7 @@ const LogViewerModal: React.FC<{
                 title={activeTab === 'log' ? "Log de Procesamiento" : "Reporte HTML"}
                 sandbox="allow-same-origin allow-scripts"
                 loading="eager"
+                onLoad={handleIframeLoad}
               />
             </div>
           </div>
@@ -130,22 +156,20 @@ const LogViewerModal: React.FC<{
           <div className="flex justify-between px-6 py-4 border-t border-gray-200">
             {/* Botones de acciones de reporte */}
             <div className="flex space-x-2">
-              <a 
-                href={reportHtmlUrl} 
-                target="_blank" 
-                rel="noopener noreferrer"
+              <button 
+                type="button"
+                onClick={() => openInNewTab(reportHtmlUrl)}
                 className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
               >
                 Ver reporte HTML
-              </a>
-              <a 
-                href={reportJsonUrl} 
-                target="_blank" 
-                rel="noopener noreferrer"
+              </button>
+              <button 
+                type="button"
+                onClick={() => openInNewTab(reportJsonUrl)}
                 className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
               >
                 Descargar reporte JSON
-              </a>
+              </button>
             </div>
             
             {/* Botón de cerrar */}
