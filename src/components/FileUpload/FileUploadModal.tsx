@@ -304,17 +304,17 @@ export const FileUploadModal: React.FC<FileUploadModalProps> = ({
   return (
     <>
       <Dialog 
-        open={isOpen} 
-        onClose={() => {
+        open={isOpen}
+        onClose={() => {}} // Prevent closing with escape key
+        className="relative z-50"
+      >
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm" aria-hidden="true" onClick={() => {
           if (!processingStatus.isProcessing) {
             onClose();
           }
-        }}
-        className="relative z-50"
-      >
-        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm" aria-hidden="true" />
-        <div className="fixed inset-0 flex items-center justify-center p-4">
-          <Dialog.Panel className="w-full max-w-lg rounded-lg bg-white dark:bg-dark-card p-6 shadow-xl">
+        }} />
+        <div className="fixed inset-0 flex items-center justify-center p-4" onClick={e => e.stopPropagation()}>
+          <Dialog.Panel className="w-full max-w-lg rounded-lg bg-white dark:bg-dark-card p-6 shadow-xl" onClick={e => e.stopPropagation()}>
             <Dialog.Title className="text-lg font-medium mb-4 dark:text-gray-100">
               Cargar Archivo
             </Dialog.Title>
