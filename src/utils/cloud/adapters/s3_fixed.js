@@ -468,32 +468,40 @@ async function listContents(credentials, config = {}, path = '') {
     // Parsear la respuesta XML
     const text = await response.text();
     
-    // Parsear el XML para extraer prefijos comunes (carpetas) y contenido (archivos)
-    console.log('[S3] Respuesta XML del bucket:', text.substring(0, 200) + '...');
+    // Parsear la respuesta XML para extraer datos reales
+    console.log('[S3] Respuesta XML del bucket completa:', text);
     
     // Extraer prefijos comunes (carpetas)
-    const commonPrefixesMatch = text.match(/<CommonPrefixes>[\s\S]*?<Prefix>(.*?)<\/Prefix>[\s\S]*?<\/CommonPrefixes>/g) || [];
-    const commonPrefixes = commonPrefixesMatch.map(match => {
-      const prefixMatch = match.match(/<Prefix>(.*?)<\/Prefix>/);
-      return { Prefix: prefixMatch ? prefixMatch[1] : '' };
-    });
+    const commonPrefixes = [];
+    const commonPrefixesRegex = /<CommonPrefixes>\s*<Prefix>([^<]+)<\/Prefix>\s*<\/CommonPrefixes>/g;
+    let prefixMatch;
+    while ((prefixMatch = commonPrefixesRegex.exec(text)) !== null) {
+      commonPrefixes.push({ Prefix: prefixMatch[1] });
+    }
     
-    // Extraer objetos (archivos)
-    const contentsMatch = text.match(/<Contents>[\s\S]*?<\/Contents>/g) || [];
-    const contents = contentsMatch.map(match => {
-      const keyMatch = match.match(/<Key>(.*?)<\/Key>/);
-      const sizeMatch = match.match(/<Size>(.*?)<\/Size>/);
-      const lastModifiedMatch = match.match(/<LastModified>(.*?)<\/LastModified>/);
-      const eTagMatch = match.match(/<ETag>(.*?)<\/ETag>/);
-      const storageClassMatch = match.match(/<StorageClass>(.*?)<\/StorageClass>/);
+    // Extraer contenido (archivos) - Ajustado para manejar diferentes formatos de XML de S3
+    const contents = [];
+    
+    // Intentar con una expresión regular más flexible para extraer archivos
+    // Esto debería funcionar con la mayoría de las respuestas de S3, incluso si varían ligeramente
+    const contentsMatches = text.match(/<Contents>[\s\S]*?<\/Contents>/g) || [];
+    
+    contentsMatches.forEach(match => {
+      const keyMatch = match.match(/<Key>([^<]+)<\/Key>/);
+      const sizeMatch = match.match(/<Size>(\d+)<\/Size>/);
+      const lastModifiedMatch = match.match(/<LastModified>([^<]+)<\/LastModified>/);
+      const eTagMatch = match.match(/<ETag>([^<]+)<\/ETag>/);
+      const storageClassMatch = match.match(/<StorageClass>([^<]+)<\/StorageClass>/);
       
-      return {
-        Key: keyMatch ? keyMatch[1] : '',
-        Size: sizeMatch ? parseInt(sizeMatch[1]) : 0,
-        LastModified: lastModifiedMatch ? new Date(lastModifiedMatch[1]) : new Date(),
-        ETag: eTagMatch ? eTagMatch[1] : '',
-        StorageClass: storageClassMatch ? storageClassMatch[1] : 'STANDARD'
-      };
+      if (keyMatch) {
+        contents.push({
+          Key: keyMatch[1],
+          LastModified: lastModifiedMatch ? new Date(lastModifiedMatch[1]) : new Date(),
+          ETag: eTagMatch ? eTagMatch[1] : '',
+          Size: sizeMatch ? parseInt(sizeMatch[1], 10) : 0,
+          StorageClass: storageClassMatch ? storageClassMatch[1] : 'STANDARD'
+        });
+      }
     });
     
     // Convertimos la respuesta a un formato más amigable
