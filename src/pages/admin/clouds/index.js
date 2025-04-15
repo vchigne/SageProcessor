@@ -40,6 +40,7 @@ const CloudProviders = () => {
         </div>
         <Button 
           variant="primary"
+          color="blue"
           icon={PlusIcon}
           onClick={() => console.log('Abrir modal nuevo proveedor')}
         >
@@ -59,6 +60,7 @@ const CloudProviders = () => {
           <div className="mt-6">
             <Button
               variant="primary"
+              color="blue"
               icon={PlusIcon}
               onClick={() => console.log('Abrir modal nuevo proveedor')}
             >
