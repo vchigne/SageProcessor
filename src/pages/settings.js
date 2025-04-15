@@ -18,6 +18,7 @@ import {
   PlusIcon,
   BuildingStorefrontIcon,
   EnvelopeIcon,
+  CodeBracketSquareIcon,
 } from '@heroicons/react/24/outline'
 import { NewOrganizacionModal } from '@/components/Settings/NewOrganizacionModal'
 import { NewPaisModal } from '@/components/Settings/NewPaisModal'
@@ -27,6 +28,7 @@ import { EditOrganizacionModal } from '@/components/Settings/EditOrganizacionMod
 import { EditPaisModal } from '@/components/Settings/EditPaisModal'
 import { EditProductoModal } from '@/components/Settings/EditProductoModal'
 import { EditInstalacionModal } from '@/components/Settings/EditInstalacionModal'
+import { YAMLStudioConfigPanel } from '@/components/Settings/YAMLStudioConfigPanel'
 
 const OrganizacionesPanel = () => {
   const [organizaciones, setOrganizaciones] = useState([]);
@@ -619,6 +621,7 @@ export default function Settings() {
           <Tab icon={GlobeAmericasIcon}>Países</Tab>
           <Tab icon={CubeIcon}>Productos</Tab>
           <Tab icon={BuildingStorefrontIcon}>Instalaciones</Tab>
+          <Tab icon={CodeBracketSquareIcon}>YAML Studio</Tab>
         </TabList>
 
         <TabPanels>
