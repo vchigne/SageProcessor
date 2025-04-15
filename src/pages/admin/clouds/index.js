@@ -9,7 +9,8 @@ import {
   TrashIcon, 
   PencilIcon, 
   CheckCircleIcon, 
-  XCircleIcon
+  XCircleIcon,
+  ArrowPathIcon
 } from '@heroicons/react/24/outline';
 import { Metric, Text, Title, Subtitle, Badge, Button, Card, Table } from '@tremor/react';
 
@@ -328,13 +329,22 @@ function CloudProviders() {
             <Title>Gestión de Proveedores de Nube</Title>
             <Text>Administra las conexiones a proveedores de almacenamiento en la nube</Text>
           </div>
-          <Button 
-            icon={PlusCircleIcon} 
-            onClick={() => setShowForm(!showForm)}
-            color="indigo"
-          >
-            {showForm ? 'Cancelar' : 'Nuevo Proveedor'}
-          </Button>
+          <div className="flex space-x-3">
+            <Button 
+              icon={ArrowPathIcon} 
+              onClick={() => router.push('/admin/clouds/migrations')}
+              color="cyan"
+            >
+              Migraciones
+            </Button>
+            <Button 
+              icon={PlusCircleIcon} 
+              onClick={() => setShowForm(!showForm)}
+              color="indigo"
+            >
+              {showForm ? 'Cancelar' : 'Nuevo Proveedor'}
+            </Button>
+          </div>
         </div>
         
         {showForm && (
