@@ -698,8 +698,8 @@ function CloudProviders() {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <Badge color={provider.ultima_verificacion_ok ? "green" : provider.ultima_verificacion ? "red" : "yellow"}>
-                          {provider.ultima_verificacion_ok ? "Conectado" : provider.ultima_verificacion ? "Error" : "Pendiente"}
+                        <Badge color={provider.estado === 'conectado' ? "green" : provider.estado === 'error' ? "red" : "yellow"}>
+                          {provider.estado === 'conectado' ? "Conectado" : provider.estado === 'error' ? "Error" : "Pendiente"}
                         </Badge>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
