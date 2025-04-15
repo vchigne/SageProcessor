@@ -161,9 +161,9 @@ function CloudProviders() {
       const url = isEditing 
         ? `/api/clouds/${currentProvider.id}` 
         : '/api/clouds';
-      
+
       const method = isEditing ? 'PUT' : 'POST';
-      
+
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
@@ -217,13 +217,13 @@ function CloudProviders() {
       });
 
       const result = await response.json();
-      
+
       if (result.success) {
         toast.success(`Conexión exitosa: ${result.message}`);
       } else {
         toast.error(`Error de conexión: ${result.message}`);
       }
-      
+
       // Actualizar estado de proveedor en la lista
       fetchProviders();
     } catch (error) {
@@ -239,18 +239,18 @@ function CloudProviders() {
     try {
       const response = await fetch(`/api/clouds/${id}`);
       if (!response.ok) throw new Error('Error al cargar datos del proveedor');
-      
+
       const data = await response.json();
-      
+
       // Asegurarse de que las credenciales y configuración sean objetos
       data.credenciales = typeof data.credenciales === 'string' 
         ? JSON.parse(data.credenciales) 
         : data.credenciales;
-        
+
       data.configuracion = typeof data.configuracion === 'string' 
         ? JSON.parse(data.configuracion) 
         : data.configuracion;
-      
+
       setCurrentProvider(data);
       setIsEditing(true);
       setShowForm(true);
@@ -271,7 +271,7 @@ function CloudProviders() {
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
     const val = type === 'checkbox' ? checked : value;
-    
+
     if (name.includes('.')) {
       const [section, field] = name.split('.');
       setCurrentProvider(prev => ({
@@ -292,7 +292,7 @@ function CloudProviders() {
   // Cuando cambia el tipo de proveedor, reiniciar credenciales y configuración
   const handleProviderTypeChange = (e) => {
     const newType = e.target.value;
-    
+
     // Inicializar credenciales con valores por defecto
     const defaultCredentials = {};
     credentialSchemas[newType].forEach(cred => {
@@ -300,7 +300,7 @@ function CloudProviders() {
         defaultCredentials[cred.name] = cred.default;
       }
     });
-    
+
     // Inicializar configuración con valores por defecto
     const defaultConfig = {};
     configSchemas[newType].forEach(conf => {
@@ -308,7 +308,7 @@ function CloudProviders() {
         defaultConfig[conf.name] = conf.default;
       }
     });
-    
+
     setCurrentProvider(prev => ({
       ...prev,
       tipo: newType,
@@ -322,7 +322,7 @@ function CloudProviders() {
       <Head>
         <title>SAGE Clouds | SAGE Admin</title>
       </Head>
-      
+
       <div className="p-6">
         <div className="flex justify-between items-center mb-6">
           <div>
@@ -346,13 +346,13 @@ function CloudProviders() {
             </Button>
           </div>
         </div>
-        
+
         {showForm && (
           <Card className="mb-6">
             <Subtitle className="mb-4">
               {isEditing ? 'Editar Proveedor' : 'Nuevo Proveedor de Nube'}
             </Subtitle>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -368,7 +368,7 @@ function CloudProviders() {
                   required
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Tipo de Proveedor*
@@ -387,7 +387,7 @@ function CloudProviders() {
                   ))}
                 </select>
               </div>
-              
+
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Descripción
@@ -402,7 +402,7 @@ function CloudProviders() {
                 />
               </div>
             </div>
-            
+
             <div className="mb-6">
               <Subtitle className="mb-3">Credenciales</Subtitle>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -442,7 +442,7 @@ function CloudProviders() {
                 ))}
               </div>
             </div>
-            
+
             <div className="mb-6">
               <Subtitle className="mb-3">Configuración</Subtitle>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -482,7 +482,7 @@ function CloudProviders() {
                 ))}
               </div>
             </div>
-            
+
             <div className="flex justify-between items-center">
               <div>
                 <label className="inline-flex items-center gap-2">
@@ -496,7 +496,7 @@ function CloudProviders() {
                   <span className="text-sm text-gray-700">Proveedor activo</span>
                 </label>
               </div>
-              
+
               <div className="flex gap-2">
                 <Button
                   onClick={resetForm}
@@ -514,7 +514,7 @@ function CloudProviders() {
             </div>
           </Card>
         )}
-        
+
         <Card>
           {loading ? (
             <div className="text-center py-4">Cargando...</div>
