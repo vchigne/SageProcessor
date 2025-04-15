@@ -235,15 +235,50 @@ function CloudProviders() {
       });
       
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || `Error al inspeccionar el proveedor: ${error.message}`);
+        const errorData = await response.json();
+        // Mostrar mensaje detallado si está disponible
+        const errorMessage = errorData.message || errorData.error || 'Error desconocido';
+        throw new Error(errorMessage);
       }
       
       const data = await response.json();
       setExplorerData(data);
     } catch (error) {
       console.error('Error al inspeccionar proveedor:', error);
-      toast.error(`Error al inspeccionar proveedor: ${error.message}`);
+      
+      // Mensaje más amigable para errores comunes
+      let errorMessage = error.message;
+      
+      // Para errores de firma AWS
+      if (errorMessage.includes('SignatureDoesNotMatch')) {
+        toast.error(
+          'Error de autenticación con AWS: La firma generada no coincide. Verifica que la clave de acceso y la clave secreta sean correctas, así como la región configurada.',
+          { autoClose: 8000 } // Más tiempo para leer el mensaje
+        );
+      } 
+      // Para errores de bucket inexistente
+      else if (errorMessage.includes('NoSuchBucket')) {
+        toast.error(
+          'El bucket especificado no existe o no es accesible con las credenciales proporcionadas. Verifica el nombre del bucket y la región.',
+          { autoClose: 8000 }
+        );
+      } 
+      // Para errores de acceso denegado
+      else if (errorMessage.includes('AccessDenied')) {
+        toast.error(
+          'Acceso denegado. Las credenciales no tienen permisos suficientes para acceder al bucket. Verifica los permisos del usuario IAM.',
+          { autoClose: 8000 }
+        );
+      } 
+      // Para otros errores AWS
+      else if (errorMessage.includes('AWS S3')) {
+        toast.error(errorMessage, { autoClose: 8000 });
+      } 
+      // Mensaje genérico para otros errores
+      else {
+        toast.error(`Error al inspeccionar proveedor: ${errorMessage}`);
+      }
+      
       setShowExplorer(false);
     } finally {
       setExplorerLoading(false);
@@ -263,7 +298,37 @@ function CloudProviders() {
       if (result.success) {
         toast.success(`Conexión exitosa: ${result.message}`);
       } else {
-        toast.error(`Error de conexión: ${result.message}`);
+        // Mensaje más amigable para errores comunes
+        let errorMessage = result.message || 'Error desconocido';
+        
+        // Para errores de firma AWS
+        if (errorMessage.includes('SignatureDoesNotMatch')) {
+          toast.error(
+            'Error de autenticación con AWS: La firma generada no coincide. Verifica que la clave de acceso y la clave secreta sean correctas, así como la región configurada.',
+            { autoClose: 8000 } // Más tiempo para leer el mensaje
+          );
+        } 
+        // Para errores de bucket inexistente
+        else if (errorMessage.includes('NoSuchBucket')) {
+          toast.error(
+            'El bucket especificado no existe o no es accesible con las credenciales proporcionadas. Verifica el nombre del bucket y la región.',
+            { autoClose: 8000 }
+          );
+        } 
+        // Para errores de acceso denegado
+        else if (errorMessage.includes('AccessDenied')) {
+          toast.error(
+            'Acceso denegado. Las credenciales no tienen permisos suficientes para acceder al bucket. Verifica los permisos del usuario IAM.',
+            { autoClose: 8000 }
+          );
+        } 
+        // Para otros errores AWS
+        else if (errorMessage.includes('AWS S3')) {
+          toast.error(errorMessage, { autoClose: 8000 });
+        } 
+        else {
+          toast.error(`Error de conexión: ${errorMessage}`);
+        }
       }
       
       // Actualizar estado de proveedor en la lista
