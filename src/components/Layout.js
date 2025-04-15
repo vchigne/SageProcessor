@@ -1,6 +1,7 @@
 import { Fragment, useState, useEffect } from 'react'
 import { Dialog, Transition } from '@headlessui/react'
 import EmailConfigNotifier from './EmailConfigNotifier'
+import ConfigMenu from './ConfigMenu'
 import ThemeToggle from './ThemeToggle'
 import {
   Bars3Icon,
@@ -367,6 +368,7 @@ export default function Layout({ children }) {
             <div className="flex items-center space-x-4">
               <ThemeToggle />
               <EmailConfigNotifier />
+              <ConfigMenu />
             </div>
           </div>
         </div>
