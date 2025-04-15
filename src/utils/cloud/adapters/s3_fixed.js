@@ -70,9 +70,9 @@ async function testConnection(credentials, config = {}) {
   try {
     const region = config.region || 'us-east-1';
     
-    // Construir URL del bucket
-    const host = `${credentials.bucket}.s3.${region}.amazonaws.com`;
-    const url = `https://${host}/?max-keys=1`;
+    // Construir URL del bucket usando el formato path-style (más compatible)
+    const host = `s3.${region}.amazonaws.com`;
+    const url = `https://${host}/${credentials.bucket}?max-keys=1`;
     
     // Fecha y timestamp para la firma
     const amzDate = getAmzDate();
@@ -86,7 +86,7 @@ async function testConnection(credentials, config = {}) {
     };
     
     // Paso 1: Crear solicitud canónica
-    const canonicalUri = '/';
+    const canonicalUri = `/${credentials.bucket}`;
     const canonicalQueryString = 'max-keys=1';
     
     // Construir los headers canónicos
@@ -192,6 +192,25 @@ async function testConnection(credentials, config = {}) {
             success: false,
             message: `Error de autenticación con AWS: La firma generada no coincide. Verifica que la clave secreta sea correcta.`
           };
+        } else if (errorCode === 'PermanentRedirect') {
+          // Intentar extraer la región correcta del mensaje
+          const endpointMatch = errorDetail.match(/endpoint/i);
+          let redirectMessage = `El bucket "${credentials.bucket}" está en una región diferente a la especificada (${region}).`;
+          
+          // Normalmente AWS devuelve un header en la respuesta con la región correcta
+          // Aquí intentamos extraerla del mensaje de error
+          const regionMatch = errorDetail.match(/s3[.-]([a-z0-9-]+).amazonaws.com/i);
+          if (regionMatch && regionMatch[1]) {
+            const suggestedRegion = regionMatch[1];
+            redirectMessage += ` Es posible que la región correcta sea "${suggestedRegion}".`;
+          } else {
+            redirectMessage += ` Por favor, verifica la región correcta en la consola de AWS.`;
+          }
+          
+          return {
+            success: false,
+            message: redirectMessage
+          };
         } else {
           return {
             success: false,
@@ -285,10 +304,10 @@ async function listContents(credentials, config = {}, path = '') {
   
   try {
     // Construir la URL para listar el contenido con prefijo y delimitador
-    // Usamos delimitador '/' para simular carpetas
-    const host = `${bucket}.s3.${region}.amazonaws.com`;
+    // Usamos delimitador '/' para simular carpetas y path-style para mejor compatibilidad
+    const host = `s3.${region}.amazonaws.com`;
     const prefix = path ? encodeURIComponent(path + (path.endsWith('/') ? '' : '/')) : '';
-    const url = `https://${host}/?delimiter=%2F&list-type=2&max-keys=50&prefix=${prefix}`;
+    const url = `https://${host}/${bucket}?delimiter=%2F&list-type=2&max-keys=50&prefix=${prefix}`;
     
     // Fecha y timestamp para la firma
     const amzDate = getAmzDate();
@@ -302,7 +321,7 @@ async function listContents(credentials, config = {}, path = '') {
     };
     
     // Construir la solicitud canónica
-    const canonicalUri = '/';
+    const canonicalUri = `/${bucket}`;
     const canonicalQueryString = `delimiter=%2F&list-type=2&max-keys=50&prefix=${prefix}`;
     
     const sortedHeaders = Object.keys(headers).sort();
@@ -416,6 +435,14 @@ async function listContents(credentials, config = {}, path = '') {
           errorMessage += `\n\nLa clave de acceso AWS proporcionada no existe. Verifica:\n` +
             `1. Que la clave de acceso sea correcta\n` +
             `2. Que la clave no haya sido eliminada o desactivada en la consola de AWS IAM`;
+        } else if (errorCode === 'PermanentRedirect') {
+          errorMessage += `\n\nEl bucket '${bucket}' está en una región diferente a la especificada (${region}). Verifica la región correcta en la consola de AWS.`;
+          
+          // Intentar extraer la región correcta si está disponible en el mensaje de error
+          const endpointMatch = errorDetail.match(/specified endpoint/i);
+          if (endpointMatch) {
+            errorMessage += ` Por favor, usa la región correcta para acceder a este bucket.`;
+          }
         }
       }
       
