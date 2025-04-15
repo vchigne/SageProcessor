@@ -20,7 +20,14 @@ const processFile = (
   yamlPath: string, 
   casilla_id?: number, 
   emisor_id?: number
-): Promise<{ execution_uuid: string; errors: number; warnings: number }> => {
+): Promise<{ 
+  execution_uuid: string; 
+  errors: number; 
+  warnings: number; 
+  log_url: string;
+  report_html_url: string;
+  report_json_url: string;
+}> => {
   return new Promise((resolve, reject) => {
     const args = ['-m', 'sage.main', yamlPath, filePath];
     
@@ -67,10 +74,14 @@ const processFile = (
         const warningsMatch = output.match(/Total warnings: (\d+)/);
 
         if (uuidMatch && errorsMatch && warningsMatch) {
+          const executionUuid = uuidMatch[1];
           resolve({
-            execution_uuid: uuidMatch[1],
+            execution_uuid: executionUuid,
             errors: parseInt(errorsMatch[1]),
-            warnings: parseInt(warningsMatch[1])
+            warnings: parseInt(warningsMatch[1]),
+            log_url: `/api/executions/${executionUuid}/log`,
+            report_html_url: `/api/executions/${executionUuid}/report-html`,
+            report_json_url: `/api/executions/${executionUuid}/report-json`
           });
         } else {
           // Si no podemos extraer la información necesaria, es un error real
