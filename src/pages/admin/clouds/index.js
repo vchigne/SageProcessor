@@ -718,7 +718,7 @@ function CloudProviders() {
                         </Badge>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {provider.ultima_verificacion ? new Date(provider.ultima_verificacion).toLocaleString() : 'Nunca'}
+                        {provider.ultimo_chequeo ? new Date(provider.ultimo_chequeo).toLocaleString() : 'Nunca'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
                         <Button
