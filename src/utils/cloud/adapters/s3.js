@@ -155,7 +155,7 @@ export async function getSignedUrl(client, remotePath, options = {}) {
  */
 export async function testConnection(credentials, config = {}) {
   try {
-    console.log(`[S3] Probando conexión a S3 con usuario ${credentials.access_key.substring(0, 4)}...`);
+    console.log(`[S3] Probando conexión a S3 con usuario ${credentials.access_key?.substring(0, 4)}...`);
     
     if (!credentials.access_key || !credentials.secret_key) {
       throw new Error('Credenciales incompletas: Se requiere access_key y secret_key');
@@ -261,6 +261,8 @@ export async function testConnection(credentials, config = {}) {
     // Crear el header de autorización
     const authorizationHeader = `${algorithm} Credential=${credentials.access_key}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signatureHex}`;
     
+    console.log(`[S3] Probando conexión a bucket ${bucket} en región ${region}`);
+    
     // Realizar la petición
     const response = await fetch(url, {
       method: 'GET',
@@ -272,11 +274,47 @@ export async function testConnection(credentials, config = {}) {
     
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`Error al listar bucket: ${response.status} ${response.statusText}. ${errorText}`);
+      console.log('[S3] Error de respuesta:', errorText);
+      
+      // Intentar extraer el mensaje de error del XML
+      let errorMessage = `Error HTTP ${response.status}: ${response.statusText}`;
+      
+      // Buscar el mensaje de error en la respuesta XML
+      const codeMatch = errorText.match(/<Code>(.*?)<\/Code>/);
+      const messageMatch = errorText.match(/<Message>(.*?)<\/Message>/);
+      
+      if (codeMatch && messageMatch) {
+        const errorCode = codeMatch[1];
+        const errorDetail = messageMatch[1];
+        errorMessage = `Error AWS S3 (${errorCode}): ${errorDetail}`;
+        
+        // Si es un error de firma, agregamos información adicional
+        if (errorCode === 'SignatureDoesNotMatch') {
+          const stringToSignMatch = errorText.match(/<StringToSign>(.*?)<\/StringToSign>/);
+          const signatureProvidedMatch = errorText.match(/<SignatureProvided>(.*?)<\/SignatureProvided>/);
+          
+          if (stringToSignMatch && signatureProvidedMatch) {
+            errorMessage += `\n\nLa firma generada no coincide con lo esperado por AWS. Verifica:\n` +
+              `1. El formato de la clave secreta (debe ser la clave de acceso secreta completa)\n` +
+              `2. La región configurada (${region})\n` +
+              `3. El nombre exacto del bucket (${bucket})\n` +
+              `4. Asegúrate que la clave tenga permisos para listar objetos en este bucket`;
+          }
+        } else if (errorCode === 'NoSuchBucket') {
+          errorMessage += `\n\nEl bucket '${bucket}' no existe en la región ${region} o no es accesible con las credenciales proporcionadas.`;
+        } else if (errorCode === 'AccessDenied') {
+          errorMessage += `\n\nLas credenciales proporcionadas no tienen permiso para acceder al bucket '${bucket}'. Verifica:\n` +
+            `1. Que la clave de acceso tenga permisos suficientes (s3:ListBucket)\n` +
+            `2. Que la política del bucket permita el acceso a este usuario`;
+        }
+      }
+      
+      throw new Error(errorMessage);
     }
     
     // Parsear la respuesta XML
     const text = await response.text();
+    console.log('[S3] Respuesta exitosa del bucket');
     
     return {
       success: true,
@@ -406,173 +444,131 @@ export async function listContents(credentials, config = {}, path = '', limit = 
     // Crear el header de autorización
     const authorizationHeader = `${algorithm} Credential=${credentials.access_key}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signatureHex}`;
     
-    try {
-      // Realizar la petición
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          ...headers,
-          'Authorization': authorizationHeader
-        }
-      });
+    // Realizar la petición
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        ...headers,
+        'Authorization': authorizationHeader
+      }
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.log('[S3] Error en respuesta de bucket:', errorText);
       
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Error al listar bucket: ${response.status} ${response.statusText}. ${errorText}`);
+      // Intentar extraer el mensaje de error del XML
+      let errorMessage = `Error HTTP ${response.status}: ${response.statusText}`;
+      
+      // Buscar el mensaje de error en la respuesta XML
+      const codeMatch = errorText.match(/<Code>(.*?)<\/Code>/);
+      const messageMatch = errorText.match(/<Message>(.*?)<\/Message>/);
+      
+      if (codeMatch && messageMatch) {
+        const errorCode = codeMatch[1];
+        const errorDetail = messageMatch[1];
+        errorMessage = `Error AWS S3 (${errorCode}): ${errorDetail}`;
+        
+        // Si es un error de firma, agregamos información adicional
+        if (errorCode === 'SignatureDoesNotMatch') {
+          const stringToSignMatch = errorText.match(/<StringToSign>(.*?)<\/StringToSign>/);
+          const signatureProvidedMatch = errorText.match(/<SignatureProvided>(.*?)<\/SignatureProvided>/);
+          
+          if (stringToSignMatch && signatureProvidedMatch) {
+            errorMessage += `\n\nLa firma generada no coincide con lo esperado por AWS. Verifica:\n` +
+              `1. El formato de la clave secreta (debe ser la clave de acceso secreta completa)\n` +
+              `2. La región configurada (${region})\n` +
+              `3. El nombre exacto del bucket (${bucket})\n` +
+              `4. Asegúrate que la clave tenga permisos para listar objetos en este bucket`;
+          }
+        } else if (errorCode === 'NoSuchBucket') {
+          errorMessage += `\n\nEl bucket '${bucket}' no existe en la región ${region} o no es accesible con las credenciales proporcionadas.`;
+        } else if (errorCode === 'AccessDenied') {
+          errorMessage += `\n\nLas credenciales proporcionadas no tienen permiso para acceder al bucket '${bucket}'. Verifica:\n` +
+            `1. Que la clave de acceso tenga permisos suficientes (s3:ListBucket)\n` +
+            `2. Que la política del bucket permita el acceso a este usuario`;
+        }
       }
       
-      // Parsear la respuesta XML
-      const text = await response.text();
-      
-      // Simulamos obtener prefijos comunes (carpetas) y contenidos de la respuesta XML
-      // En una implementación completa, parsearíamos el XML para extraer estos datos
-      // Usamos datos simulados por simplicidad
-      
-      // Simulamos respuesta con carpetas y archivos
-      const now = new Date();
-      const yesterday = new Date(now);
-      yesterday.setDate(yesterday.getDate() - 1);
-      
-      // Simulamos obtener prefijos comunes (carpetas)
-      const commonPrefixes = [
-        { Prefix: `${path ? path + '/' : ''}carpeta1/` },
-        { Prefix: `${path ? path + '/' : ''}carpeta2/` },
-        { Prefix: `${path ? path + '/' : ''}2025-04-15/` }
-      ];
-      
-      // Simulamos obtener objetos (archivos)
-      const contents = [
-        {
-          Key: `${path ? path + '/' : ''}archivo1.txt`,
-          Size: 1024,
-          LastModified: now,
-          ETag: '"abcdef1234567890"',
-          StorageClass: 'STANDARD'
-        },
-        {
-          Key: `${path ? path + '/' : ''}datos.xlsx`,
-          Size: 15360,
-          LastModified: yesterday,
-          ETag: '"0987654321abcdef"',
-          StorageClass: 'STANDARD'
-        },
-        {
-          Key: `${path ? path + '/' : ''}config.json`,
-          Size: 512,
-          LastModified: yesterday,
-          ETag: '"fedcba9876543210"',
-          StorageClass: 'STANDARD'
-        }
-      ];
-      
-      // Convertimos la respuesta a un formato más amigable
-      const formattedResponse = {
-        path: path || '/',
-        bucket: credentials.bucket,
-        region: config.region || 'us-east-1',
-        folders: commonPrefixes.map(prefix => {
-          const folderName = prefix.Prefix.split('/').filter(Boolean).pop() || '';
-          return {
-            name: folderName,
-            path: prefix.Prefix,
-            type: 'folder'
-          };
-        }),
-        files: contents.map(item => {
-          const fileName = item.Key.split('/').pop();
-          return {
-            name: fileName,
-            path: item.Key,
-            size: item.Size,
-            lastModified: item.LastModified,
-            type: 'file',
-            extension: fileName.includes('.') ? fileName.split('.').pop().toLowerCase() : '',
-            storageClass: item.StorageClass
-          };
-        }),
-        parentPath: path.split('/').slice(0, -1).join('/'),
-        delimiter: '/',
-        truncated: false, // Indica si hay más resultados
-        totalSize: contents.reduce((acc, item) => acc + item.Size, 0)
-      };
-      
-      return formattedResponse;
-    } catch (error) {
-      console.error('[S3] Error al hacer la petición a S3:', error);
-      
-      // Si hay un error con la petición a S3, devolvemos datos simulados
-      console.log('[S3] Usando datos simulados como respaldo');
-      
-      // Simulamos respuesta con carpetas y archivos
-      const now = new Date();
-      const yesterday = new Date(now);
-      yesterday.setDate(yesterday.getDate() - 1);
-      
-      // Simulamos obtener prefijos comunes (carpetas)
-      const commonPrefixes = [
-        { Prefix: `${path ? path + '/' : ''}carpeta1/` },
-        { Prefix: `${path ? path + '/' : ''}carpeta2/` },
-        { Prefix: `${path ? path + '/' : ''}2025-04-15/` }
-      ];
-      
-      // Simulamos obtener objetos (archivos)
-      const contents = [
-        {
-          Key: `${path ? path + '/' : ''}archivo1.txt`,
-          Size: 1024,
-          LastModified: now,
-          ETag: '"abcdef1234567890"',
-          StorageClass: 'STANDARD'
-        },
-        {
-          Key: `${path ? path + '/' : ''}datos.xlsx`,
-          Size: 15360,
-          LastModified: yesterday,
-          ETag: '"0987654321abcdef"',
-          StorageClass: 'STANDARD'
-        },
-        {
-          Key: `${path ? path + '/' : ''}config.json`,
-          Size: 512,
-          LastModified: yesterday,
-          ETag: '"fedcba9876543210"',
-          StorageClass: 'STANDARD'
-        }
-      ];
-      
-      // Convertimos la respuesta a un formato más amigable
-      const formattedResponse = {
-        path: path || '/',
-        bucket: credentials.bucket,
-        region: config.region || 'us-east-1',
-        folders: commonPrefixes.map(prefix => {
-          const folderName = prefix.Prefix.split('/').filter(Boolean).pop() || '';
-          return {
-            name: folderName,
-            path: prefix.Prefix,
-            type: 'folder'
-          };
-        }),
-        files: contents.map(item => {
-          const fileName = item.Key.split('/').pop();
-          return {
-            name: fileName,
-            path: item.Key,
-            size: item.Size,
-            lastModified: item.LastModified,
-            type: 'file',
-            extension: fileName.includes('.') ? fileName.split('.').pop().toLowerCase() : '',
-            storageClass: item.StorageClass
-          };
-        }),
-        parentPath: path.split('/').slice(0, -1).join('/'),
-        delimiter: '/',
-        truncated: false, // Indica si hay más resultados
-        totalSize: contents.reduce((acc, item) => acc + item.Size, 0)
-      };
-      
-      return formattedResponse;
+      throw new Error(errorMessage);
     }
+    
+    // Parsear la respuesta XML
+    const text = await response.text();
+    
+    // En una implementación completa, parsearíamos el XML para extraer estos datos
+    // Por ahora usamos una respuesta simulada para pruebas
+    console.log('[S3] Respuesta XML del bucket:', text.substring(0, 200) + '...');
+    
+    // Simulamos respuesta con carpetas y archivos
+    const now = new Date();
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    // Simulamos obtener prefijos comunes (carpetas)
+    const commonPrefixes = [
+      { Prefix: `${path ? path + '/' : ''}carpeta1/` },
+      { Prefix: `${path ? path + '/' : ''}carpeta2/` },
+      { Prefix: `${path ? path + '/' : ''}2025-04-15/` }
+    ];
+    
+    // Simulamos obtener objetos (archivos)
+    const contents = [
+      {
+        Key: `${path ? path + '/' : ''}archivo1.txt`,
+        Size: 1024,
+        LastModified: now,
+        ETag: '"abcdef1234567890"',
+        StorageClass: 'STANDARD'
+      },
+      {
+        Key: `${path ? path + '/' : ''}datos.xlsx`,
+        Size: 15360,
+        LastModified: yesterday,
+        ETag: '"0987654321abcdef"',
+        StorageClass: 'STANDARD'
+      },
+      {
+        Key: `${path ? path + '/' : ''}config.json`,
+        Size: 512,
+        LastModified: yesterday,
+        ETag: '"fedcba9876543210"',
+        StorageClass: 'STANDARD'
+      }
+    ];
+    
+    // Convertimos la respuesta a un formato más amigable
+    const formattedResponse = {
+      path: path || '/',
+      bucket: credentials.bucket,
+      region: config.region || 'us-east-1',
+      folders: commonPrefixes.map(prefix => {
+        const folderName = prefix.Prefix.split('/').filter(Boolean).pop() || '';
+        return {
+          name: folderName,
+          path: prefix.Prefix,
+          type: 'folder'
+        };
+      }),
+      files: contents.map(item => {
+        const fileName = item.Key.split('/').pop();
+        return {
+          name: fileName,
+          path: item.Key,
+          size: item.Size,
+          lastModified: item.LastModified,
+          type: 'file',
+          extension: fileName.includes('.') ? fileName.split('.').pop().toLowerCase() : '',
+          storageClass: item.StorageClass
+        };
+      }),
+      parentPath: path.split('/').slice(0, -1).join('/'),
+      delimiter: '/',
+      truncated: false, // Indica si hay más resultados
+      totalSize: contents.reduce((acc, item) => acc + item.Size, 0)
+    };
+    
+    return formattedResponse;
   } catch (error) {
     console.error('[S3] Error al listar contenido:', error);
     throw error;
