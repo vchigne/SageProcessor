@@ -4,7 +4,7 @@ modules = ["python-3.11", "nodejs-20", "postgresql-16", "python3"]
 channel = "stable-24_05"
 
 [workflows]
-runButton = "Project"
+runButton = "UI Dev Server"
 
 [[workflows.workflow]]
 name = "UI Dev Server"
