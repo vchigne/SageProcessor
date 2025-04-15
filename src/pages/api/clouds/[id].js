@@ -70,11 +70,16 @@ export default async function handler(req, res) {
         return res.status(404).json({ error: 'Proveedor no encontrado' });
       }
       
-      // Obtener credenciales existentes si no se proporcionan nuevas
+      // Obtener credenciales existentes si no se proporcionan nuevas o si contienen asteriscos
       let updatedCredentials = credenciales;
       let updatedConfig = configuracion;
       
-      if (!credenciales) {
+      // Si no hay credenciales o contienen asteriscos, usamos las credenciales originales
+      const containsAsterisks = credenciales && typeof credenciales === 'object' && 
+        Object.values(credenciales).some(value => typeof value === 'string' && value.includes('*'));
+      
+      if (!credenciales || containsAsterisks) {
+        console.log('[UPDATE] Detectadas credenciales enmascaradas, manteniendo credenciales originales');
         const currentResult = await pool.query('SELECT credenciales FROM cloud_providers WHERE id = $1', [providerId]);
         updatedCredentials = currentResult.rows[0].credenciales;
       } else if (typeof credenciales !== 'string') {
