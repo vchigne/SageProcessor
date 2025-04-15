@@ -627,6 +627,15 @@ function CloudProviders() {
                         <Button
                           size="xs"
                           variant="secondary"
+                          color="cyan"
+                          onClick={() => inspectProvider(provider)}
+                          icon={MagnifyingGlassIcon}
+                        >
+                          Inspeccionar
+                        </Button>
+                        <Button
+                          size="xs"
+                          variant="secondary"
                           color="gray"
                           onClick={() => editProvider(provider.id)}
                           icon={PencilIcon}
@@ -649,6 +658,146 @@ function CloudProviders() {
               </table>
             </div>
           </Card>
+        )}
+        
+        {/* Modal Explorador */}
+        {showExplorer && (
+          <div className="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg shadow-lg w-full max-w-5xl max-h-[90vh] flex flex-col">
+              {/* Cabecera */}
+              <div className="p-4 border-b border-gray-200 flex justify-between items-center">
+                <div>
+                  <h3 className="text-xl font-semibold text-gray-900">
+                    Explorador: {explorerProvider?.nombre}
+                  </h3>
+                  <p className="text-sm text-gray-500">
+                    Tipo: {providerTypes.find(t => t.value === explorerProvider?.tipo)?.label}
+                  </p>
+                </div>
+                <button
+                  className="p-1 rounded-full hover:bg-gray-200"
+                  onClick={() => setShowExplorer(false)}
+                >
+                  <XCircleIcon className="h-6 w-6 text-gray-500" />
+                </button>
+              </div>
+              
+              {/* Contenido */}
+              <div className="p-4 flex-1 overflow-auto">
+                {explorerLoading ? (
+                  <div className="flex justify-center items-center h-64">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500"></div>
+                  </div>
+                ) : !explorerData ? (
+                  <div className="text-center py-12">
+                    <CloudIcon className="mx-auto h-16 w-16 text-gray-400" />
+                    <p className="mt-2 text-gray-500">No se pudo cargar el contenido</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {/* Ruta de navegación */}
+                    <div className="flex items-center space-x-2 bg-gray-50 p-2 rounded">
+                      <button 
+                        className="p-1 rounded hover:bg-gray-200"
+                        disabled={!explorerData.parentPath && currentPath === ''}
+                        onClick={() => {
+                          if (explorerData.parentPath || currentPath !== '') {
+                            inspectProvider(explorerProvider, explorerData.parentPath);
+                          }
+                        }}
+                      >
+                        <ArrowUturnLeftIcon className="h-5 w-5 text-gray-600" />
+                      </button>
+                      <div className="flex-1 text-sm text-gray-700 truncate">
+                        {explorerData.bucket}/{currentPath || '/'}
+                      </div>
+                    </div>
+                    
+                    {/* Lista de carpetas */}
+                    {explorerData.folders.length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-medium text-gray-700 mb-2">Carpetas</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                          {explorerData.folders.map((folder, idx) => (
+                            <div
+                              key={idx}
+                              className="flex items-center p-2 rounded border border-gray-200 hover:bg-gray-50 hover:border-blue-300 cursor-pointer"
+                              onClick={() => inspectProvider(explorerProvider, folder.path)}
+                            >
+                              <FolderIcon className="h-6 w-6 text-yellow-500 mr-2" />
+                              <span className="text-sm truncate">{folder.name}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Lista de archivos */}
+                    {explorerData.files.length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-medium text-gray-700 mb-2">Archivos</h4>
+                        <div className="overflow-x-auto">
+                          <table className="min-w-full divide-y divide-gray-200">
+                            <thead className="bg-gray-50">
+                              <tr>
+                                <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Nombre</th>
+                                <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Tamaño</th>
+                                <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Última modificación</th>
+                                <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Tipo</th>
+                              </tr>
+                            </thead>
+                            <tbody className="bg-white divide-y divide-gray-200">
+                              {explorerData.files.map((file, idx) => (
+                                <tr key={idx} className="hover:bg-gray-50">
+                                  <td className="px-3 py-2 whitespace-nowrap">
+                                    <div className="flex items-center">
+                                      <DocumentTextIcon className="h-5 w-5 text-blue-500 mr-2" />
+                                      <span className="text-sm font-medium text-gray-900">{file.name}</span>
+                                    </div>
+                                  </td>
+                                  <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">
+                                    {(file.size / 1024).toFixed(2)} KB
+                                  </td>
+                                  <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">
+                                    {new Date(file.lastModified).toLocaleString()}
+                                  </td>
+                                  <td className="px-3 py-2 whitespace-nowrap">
+                                    <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                                      {file.extension.toUpperCase()}
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {explorerData.folders.length === 0 && explorerData.files.length === 0 && (
+                      <div className="text-center py-12 border border-dashed border-gray-300 rounded-lg">
+                        <FolderIcon className="mx-auto h-12 w-12 text-gray-400" />
+                        <h3 className="mt-2 text-sm font-medium text-gray-900">Carpeta vacía</h3>
+                        <p className="mt-1 text-sm text-gray-500">
+                          Esta ubicación no contiene archivos ni carpetas.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+              
+              {/* Pie de modal */}
+              <div className="p-4 border-t border-gray-200 flex justify-end">
+                <Button 
+                  color="gray"
+                  onClick={() => setShowExplorer(false)}
+                >
+                  Cerrar
+                </Button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </>

@@ -1,80 +1,58 @@
-import { getPool } from '../../../../lib/db';
-import { getCloudAdapter } from '../../../../utils/cloud';
+/**
+ * Endpoint para inspeccionar el contenido de un proveedor de nube
+ * 
+ * Este endpoint permite listar archivos y carpetas de un proveedor de nube
+ * con un nivel de detalle mayor que el listado básico, incluyendo mejor
+ * organización y metadatos.
+ */
+
+import { getCloudProvider, getCloudAdapter } from '../../../../utils/cloud';
 
 export default async function handler(req, res) {
-  // Solo aceptamos POST para esta acción
+  const { id } = req.query;
+  
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Método no permitido' });
   }
-
-  const { id } = req.query;
-  const { path = '', limit = 50 } = req.body;
-
+  
   try {
-    // 1. Obtener información del proveedor de la base de datos
-    const pool = getPool();
-    const result = await pool.query(
-      'SELECT * FROM cloud_providers WHERE id = $1',
-      [id]
-    );
-
-    if (result.rows.length === 0) {
+    // Validar que tenemos un ID válido
+    if (!id || isNaN(parseInt(id))) {
+      return res.status(400).json({ error: 'ID de proveedor inválido' });
+    }
+    
+    // Obtener datos del body
+    const { path = '' } = req.body;
+    
+    // Obtener el proveedor
+    const provider = await getCloudProvider(parseInt(id));
+    
+    if (!provider) {
       return res.status(404).json({ error: 'Proveedor no encontrado' });
     }
-
-    const provider = result.rows[0];
     
-    // Asegurarnos de que las credenciales y configuración son objetos
-    const credenciales = typeof provider.credenciales === 'string' 
-      ? JSON.parse(provider.credenciales) 
-      : provider.credenciales;
-      
-    const configuracion = typeof provider.configuracion === 'string' 
-      ? JSON.parse(provider.configuracion) 
-      : provider.configuracion;
-
-    // 2. Crear el adaptador para el tipo de proveedor
-    const adapter = getCloudAdapter(provider.tipo, {
-      ...credenciales,
-      ...configuracion
-    });
-
-    // 3. Listar el contenido del bucket/contenedor
-    const contents = await adapter.listContents(path, limit);
-
-    // 4. Guardar la fecha de última verificación exitosa
-    await pool.query(
-      'UPDATE cloud_providers SET ultima_verificacion = NOW(), ultima_verificacion_ok = true WHERE id = $1',
-      [id]
-    );
-
-    return res.status(200).json({ 
-      success: true, 
-      provider: {
-        id: provider.id,
-        nombre: provider.nombre,
-        tipo: provider.tipo
-      },
-      path,
-      contents
-    });
-  } catch (error) {
-    console.error('Error al inspeccionar proveedor cloud:', error);
+    // Cargar el adaptador específico para este tipo de proveedor
+    const adapter = await getCloudAdapter(provider.tipo);
     
-    // Si es un error de conexión, actualizar la fecha de verificación como fallida
-    try {
-      const pool = getPool();
-      await pool.query(
-        'UPDATE cloud_providers SET ultima_verificacion = NOW(), ultima_verificacion_ok = false WHERE id = $1',
-        [id]
-      );
-    } catch (dbError) {
-      console.error('Error al actualizar estado de verificación:', dbError);
+    if (!adapter || !adapter.listContents) {
+      return res.status(400).json({ 
+        error: `El adaptador para ${provider.tipo} no soporta la función de inspección` 
+      });
     }
-
+    
+    // Ejecutar la función de listado de contenido
+    const contents = await adapter.listContents(
+      provider.credenciales,
+      provider.configuracion,
+      path
+    );
+    
+    return res.status(200).json(contents);
+  } catch (error) {
+    console.error('Error al inspeccionar proveedor:', error);
     return res.status(500).json({ 
-      success: false, 
-      message: `Error al inspeccionar proveedor cloud: ${error.message}` 
+      error: 'Error al inspeccionar proveedor',
+      message: error.message
     });
   }
 }
