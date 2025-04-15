@@ -10,6 +10,7 @@ import {
   PencilIcon, 
   CheckCircleIcon, 
   XCircleIcon,
+  ExclamationCircleIcon,
   ArrowPathIcon,
   FolderIcon,
   DocumentTextIcon,
@@ -234,51 +235,77 @@ function CloudProviders() {
         body: JSON.stringify({ path })
       });
       
-      if (!response.ok) {
-        const errorData = await response.json();
-        // Mostrar mensaje detallado si está disponible
-        const errorMessage = errorData.message || errorData.error || 'Error desconocido';
-        throw new Error(errorMessage);
-      }
-      
+      // Obtenemos los datos incluso si hay errores, ya que el adaptador ahora devuelve
+      // un objeto con error: true en lugar de lanzar excepciones
       const data = await response.json();
-      setExplorerData(data);
-    } catch (error) {
-      console.error('Error al inspeccionar proveedor:', error);
       
-      // Mensaje más amigable para errores comunes
-      let errorMessage = error.message;
-      
-      // Para errores de firma AWS
-      if (errorMessage.includes('SignatureDoesNotMatch')) {
-        toast.error(
-          'Error de autenticación con AWS: La firma generada no coincide. Verifica que la clave de acceso y la clave secreta sean correctas, así como la región configurada.',
-          { autoClose: 8000 } // Más tiempo para leer el mensaje
-        );
-      } 
-      // Para errores de bucket inexistente
-      else if (errorMessage.includes('NoSuchBucket')) {
-        toast.error(
-          'El bucket especificado no existe o no es accesible con las credenciales proporcionadas. Verifica el nombre del bucket y la región.',
-          { autoClose: 8000 }
-        );
-      } 
-      // Para errores de acceso denegado
-      else if (errorMessage.includes('AccessDenied')) {
-        toast.error(
-          'Acceso denegado. Las credenciales no tienen permisos suficientes para acceder al bucket. Verifica los permisos del usuario IAM.',
-          { autoClose: 8000 }
-        );
-      } 
-      // Para otros errores AWS
-      else if (errorMessage.includes('AWS S3')) {
-        toast.error(errorMessage, { autoClose: 8000 });
-      } 
-      // Mensaje genérico para otros errores
-      else {
+      if (data.error) {
+        // Es un objeto de error del adaptador
+        console.error('Error al inspeccionar proveedor:', data.errorMessage);
+        
+        // Mensaje más amigable para errores comunes
+        let errorMessage = data.errorMessage;
+        
+        // Para errores de firma AWS
+        if (errorMessage.includes('SignatureDoesNotMatch')) {
+          toast.error(
+            'Error de autenticación con AWS: La firma generada no coincide. Verifica que la clave de acceso y la clave secreta sean correctas, así como la región configurada.',
+            { autoClose: 8000 } // Más tiempo para leer el mensaje
+          );
+        } 
+        // Para errores de bucket inexistente
+        else if (errorMessage.includes('NoSuchBucket')) {
+          toast.error(
+            'El bucket especificado no existe o no es accesible con las credenciales proporcionadas. Verifica el nombre del bucket y la región.',
+            { autoClose: 8000 }
+          );
+        } 
+        // Para errores de acceso denegado
+        else if (errorMessage.includes('AccessDenied')) {
+          toast.error(
+            'Acceso denegado. Las credenciales no tienen permisos suficientes para acceder al bucket. Verifica los permisos del usuario IAM.',
+            { autoClose: 8000 }
+          );
+        } 
+        // Para errores de clave de acceso inválida
+        else if (errorMessage.includes('InvalidAccessKeyId')) {
+          toast.error(
+            'La clave de acceso AWS proporcionada no existe. Verifica que la clave de acceso sea correcta y esté activa en tu cuenta AWS.',
+            { autoClose: 8000 }
+          );
+        }
+        // Para otros errores AWS
+        else if (errorMessage.includes('AWS S3')) {
+          toast.error(errorMessage, { autoClose: 8000 });
+        } 
+        // Mensaje genérico para otros errores
+        else {
+          toast.error(`Error al inspeccionar proveedor: ${errorMessage}`);
+        }
+        
+        // Mantenemos el modal abierto pero mostramos un estado de error
+        setExplorerData({
+          error: true,
+          errorMessage: errorMessage,
+          path: path || '/',
+          bucket: data.bucket,
+          folders: [],
+          files: []
+        });
+      } else if (!response.ok) {
+        // Error HTTP pero no es del adaptador
+        const errorData = await response.json();
+        const errorMessage = errorData.message || errorData.error || 'Error desconocido';
         toast.error(`Error al inspeccionar proveedor: ${errorMessage}`);
+        setShowExplorer(false);
+      } else {
+        // Todo bien, datos normales
+        setExplorerData(data);
       }
-      
+    } catch (error) {
+      // Error de red u otro error no controlado
+      console.error('Error al inspeccionar proveedor:', error);
+      toast.error(`Error al inspeccionar proveedor: ${error.message}`);
       setShowExplorer(false);
     } finally {
       setExplorerLoading(false);
@@ -757,6 +784,59 @@ function CloudProviders() {
                   <div className="text-center py-12">
                     <CloudIcon className="mx-auto h-16 w-16 text-gray-400" />
                     <p className="mt-2 text-gray-500">No se pudo cargar el contenido</p>
+                  </div>
+                ) : explorerData.error ? (
+                  <div className="text-center py-12 space-y-4">
+                    <ExclamationCircleIcon className="mx-auto h-16 w-16 text-red-400" />
+                    <div>
+                      <h3 className="text-lg font-medium text-red-800">Error de conexión</h3>
+                      <p className="mt-2 text-sm text-gray-600 max-w-2xl mx-auto">
+                        {explorerData.errorMessage}
+                      </p>
+                    </div>
+                    <div className="mt-4 px-4 py-3 bg-red-50 border border-red-100 rounded-md text-left">
+                      <h4 className="text-sm font-medium text-red-800 mb-1">Sugerencias:</h4>
+                      <ul className="text-xs text-gray-700 space-y-1 list-disc pl-5">
+                        {explorerData.errorMessage.includes('SignatureDoesNotMatch') && (
+                          <>
+                            <li>Verifica que la <b>clave de acceso</b> y <b>clave secreta</b> sean correctas</li>
+                            <li>Comprueba que la <b>región</b> configurada sea la correcta</li>
+                            <li>Asegúrate de que las credenciales sigan activas en AWS</li>
+                          </>
+                        )}
+                        {explorerData.errorMessage.includes('NoSuchBucket') && (
+                          <>
+                            <li>Verifica que el nombre del <b>bucket '{explorerData.bucket}'</b> sea correcto</li>
+                            <li>Comprueba que el bucket exista en la región <b>{explorerData.region}</b></li>
+                            <li>Asegúrate de tener permisos para acceder a este bucket</li>
+                          </>
+                        )}
+                        {explorerData.errorMessage.includes('AccessDenied') && (
+                          <>
+                            <li>Las credenciales no tienen <b>permisos suficientes</b> para acceder al bucket</li>
+                            <li>Verifica la política de permisos en la consola de AWS IAM</li>
+                            <li>El usuario debe tener al menos permisos <b>s3:ListBucket</b></li>
+                          </>
+                        )}
+                        {explorerData.errorMessage.includes('InvalidAccessKeyId') && (
+                          <>
+                            <li>La <b>clave de acceso</b> proporcionada no existe en AWS</li>
+                            <li>Verifica que la clave no haya sido eliminada o desactivada</li>
+                            <li>Comprueba si hay errores de tipeo en el ID de clave de acceso</li>
+                          </>
+                        )}
+                        {!explorerData.errorMessage.includes('SignatureDoesNotMatch') && 
+                          !explorerData.errorMessage.includes('NoSuchBucket') && 
+                          !explorerData.errorMessage.includes('AccessDenied') &&
+                          !explorerData.errorMessage.includes('InvalidAccessKeyId') && (
+                          <>
+                            <li>Verifica la conexión a internet</li>
+                            <li>Comprueba si el servicio AWS S3 está experimentando problemas</li>
+                            <li>Revisa las credenciales y configuración del proveedor</li>
+                          </>
+                        )}
+                      </ul>
+                    </div>
                   </div>
                 ) : (
                   <div className="space-y-4">

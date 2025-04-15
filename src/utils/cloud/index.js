@@ -32,6 +32,13 @@ async function loadAdapter(type) {
   if (adapters[type]) return adapters[type];
   
   try {
+    // Para S3, usar la versión corregida del adaptador
+    if (type === 's3') {
+      const module = await import(`./adapters/s3_fixed`);
+      adapters[type] = module.default;
+      return adapters[type];
+    }
+    
     const module = await import(`./adapters/${type}`);
     adapters[type] = module.default;
     return adapters[type];
