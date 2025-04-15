@@ -637,6 +637,9 @@ export default function Settings() {
           <TabPanel>
             <InstalacionesPanel />
           </TabPanel>
+          <TabPanel>
+            <YAMLStudioConfigPanel />
+          </TabPanel>
         </TabPanels>
       </TabGroup>
     </div>
