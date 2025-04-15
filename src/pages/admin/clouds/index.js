@@ -130,7 +130,22 @@ function CloudProviders() {
       const response = await fetch('/api/clouds');
       if (!response.ok) throw new Error('Error al cargar proveedores de nube');
       const data = await response.json();
-      setProviders(data);
+      
+      // Verificamos los datos recibidos
+      console.log("Datos de proveedores recibidos:", data);
+      
+      // Aplicamos una transformación para formatear la fecha de última verificación
+      const processedData = data.map(provider => ({
+        ...provider,
+        // Transformamos la fecha a un formato adecuado si existe
+        ultimo_chequeo: provider.ultimo_chequeo 
+          ? new Date(provider.ultimo_chequeo).toISOString() 
+          : null
+      }));
+      
+      console.log("Datos procesados:", processedData);
+      
+      setProviders(processedData);
     } catch (error) {
       console.error('Error:', error);
       toast.error('Error al cargar proveedores de nube: ' + error.message);
