@@ -1,133 +1,6 @@
 import { Pool } from 'pg';
 import { pool } from '../../../../lib/db';
-
-// Simuladores para probar la conexión a diferentes proveedores de nube
-const cloudAdapters = {
-  's3': async (credentials) => {
-    // En una implementación real, aquí usaríamos el SDK de AWS
-    try {
-      // Simular una prueba de conexión a S3
-      console.log('Probando conexión a S3 con:', 
-                 credentials.access_key ? 
-                 `${credentials.access_key.substring(0, 4)}...` : 'No proporcionado');
-                 
-      if (!credentials.access_key || !credentials.secret_key) {
-        throw new Error('Credenciales incompletas para S3');
-      }
-      
-      // Simulamos éxito
-      return { 
-        success: true, 
-        message: 'Conexión a Amazon S3 exitosa',
-        details: {
-          bucket: credentials.bucket || 'No especificado',
-          region: credentials.region || 'us-east-1'
-        }
-      };
-    } catch (error) {
-      return { 
-        success: false, 
-        message: `Error al conectar con S3: ${error.message}`,
-        details: error
-      };
-    }
-  },
-  
-  'azure': async (credentials) => {
-    // Simular Azure Blob Storage
-    try {
-      if (!credentials.connection_string && !credentials.sas_token) {
-        throw new Error('Se requiere connection_string o SAS token para Azure');
-      }
-      
-      return { 
-        success: true, 
-        message: 'Conexión a Azure Blob Storage exitosa',
-        details: {
-          container: credentials.container_name || 'No especificado'
-        }
-      };
-    } catch (error) {
-      return { 
-        success: false, 
-        message: `Error al conectar con Azure: ${error.message}`,
-        details: error
-      };
-    }
-  },
-  
-  'gcp': async (credentials) => {
-    try {
-      if (!credentials.key_file) {
-        throw new Error('Se requiere archivo de clave JSON para Google Cloud Storage');
-      }
-      
-      return { 
-        success: true, 
-        message: 'Conexión a Google Cloud Storage exitosa',
-        details: {
-          bucket: credentials.bucket_name || 'No especificado'
-        }
-      };
-    } catch (error) {
-      return { 
-        success: false, 
-        message: `Error al conectar con GCP: ${error.message}`,
-        details: error
-      };
-    }
-  },
-  
-  'sftp': async (credentials) => {
-    try {
-      if (!credentials.host || !credentials.user || (!credentials.password && !credentials.key_path)) {
-        throw new Error('Credenciales incompletas para SFTP');
-      }
-      
-      // Simular conexión SFTP exitosa
-      return { 
-        success: true, 
-        message: 'Conexión a servidor SFTP exitosa',
-        details: {
-          host: credentials.host,
-          port: credentials.port || 22,
-          path: credentials.path || '/'
-        }
-      };
-    } catch (error) {
-      return { 
-        success: false, 
-        message: `Error al conectar con SFTP: ${error.message}`,
-        details: error
-      };
-    }
-  },
-  
-  'minio': async (credentials) => {
-    try {
-      if (!credentials.endpoint || !credentials.access_key || !credentials.secret_key) {
-        throw new Error('Credenciales incompletas para MinIO');
-      }
-      
-      // Simular conexión MinIO exitosa
-      return { 
-        success: true, 
-        message: 'Conexión a MinIO exitosa',
-        details: {
-          endpoint: credentials.endpoint,
-          bucket: credentials.bucket || 'No especificado',
-          ssl: credentials.secure === undefined ? true : credentials.secure
-        }
-      };
-    } catch (error) {
-      return { 
-        success: false, 
-        message: `Error al conectar con MinIO: ${error.message}`,
-        details: error
-      };
-    }
-  }
-};
+import { getCloudAdapter } from '../../../../utils/cloud';
 
 export default async function handler(req, res) {
   // Solo permitimos POST para pruebas de conexión
@@ -162,15 +35,22 @@ export default async function handler(req, res) {
       ? JSON.parse(provider.credenciales) 
       : provider.credenciales;
     
-    // Verificar si tenemos un adaptador para este tipo de proveedor
-    if (!cloudAdapters[provider.tipo]) {
+    // Cargar el adaptador para este tipo de proveedor
+    const adapter = await getCloudAdapter(provider.tipo);
+    
+    if (!adapter || !adapter.testConnection) {
       return res.status(400).json({ 
-        error: `Tipo de proveedor no soportado: ${provider.tipo}` 
+        error: `El adaptador para ${provider.tipo} no soporta la función de prueba de conexión` 
       });
     }
     
-    // Probar la conexión
-    const testResult = await cloudAdapters[provider.tipo](credentials);
+    // Parsear configuración
+    const config = typeof provider.configuracion === 'string' 
+      ? JSON.parse(provider.configuracion) 
+      : provider.configuracion;
+    
+    // Probar la conexión usando el adaptador real
+    const testResult = await adapter.testConnection(credentials, config);
     
     // Actualizar el estado del proveedor
     await pool.query(`
