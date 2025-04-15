@@ -5,8 +5,7 @@ import {
   ServerIcon,
   Cog6ToothIcon,
   CodeBracketIcon,
-  DocumentTextIcon,
-  CloudIcon
+  DocumentTextIcon
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 
@@ -45,13 +44,7 @@ export default function ConfigMenu() {
       href: '/settings', 
       icon: WrenchScrewdriverIcon, 
       description: 'Administrar configuración del YAML Studio' 
-    },
-    { 
-      name: 'SAGE Clouds', 
-      href: '/admin/clouds', 
-      icon: CloudIcon, 
-      description: 'Gestionar proveedores de almacenamiento en la nube' 
-    },
+    }
   ];
 
   // Cerrar el menú cuando se hace clic fuera de él
