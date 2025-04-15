@@ -621,7 +621,7 @@ except Exception as e:
           // Obtener el ID de la ejecución si está disponible
           const ejecucionId = ejecucionQuery.rowCount > 0 ? ejecucionQuery.rows[0].id : null;
           
-          // 8. Responder con éxito, incluyendo UUID para poder mostrar el log
+          // 8. Responder con éxito, incluyendo UUID para poder mostrar el log y los reportes
           return res.status(200).json({
             success: true,
             message: 'Datos procesados correctamente',
@@ -631,7 +631,9 @@ except Exception as e:
             ejecucion_id: ejecucionId, // Podría ser null si no se encontró el registro
             fecha: now.toISOString(),
             archivo: archivoName + fileExt,
-            log_url: `/api/executions/${directoryUuid}/log` // Usar el UUID correcto en la URL del log
+            log_url: `/api/executions/${directoryUuid}/log`, // Usar el UUID correcto en la URL del log
+            report_html_url: `/api/executions/${directoryUuid}/report-html`, // URL para el reporte HTML
+            report_json_url: `/api/executions/${directoryUuid}/report-json` // URL para el reporte JSON
           });
         } catch (execError) {
           console.error('Error al ejecutar el procesamiento:', execError);

@@ -51,6 +51,8 @@ export default function EntradaDatosDirectosPage() {
   // Estado para mostrar el log de procesamiento
   const [showLog, setShowLog] = useState<boolean>(false);
   const [logUrl, setLogUrl] = useState<string>('');
+  const [reportHtmlUrl, setReportHtmlUrl] = useState<string>('');
+  const [reportJsonUrl, setReportJsonUrl] = useState<string>('');
   const [executionUuid, setExecutionUuid] = useState<string>('');
   
   // Cargar datos de la casilla al montar el componente
@@ -315,6 +317,11 @@ export default function EntradaDatosDirectosPage() {
       if (result.execution_uuid && result.log_url) {
         setExecutionUuid(result.execution_uuid);
         setLogUrl(result.log_url);
+        
+        // Establecer URLs para los reportes HTML y JSON desde la respuesta
+        setReportHtmlUrl(result.report_html_url || `/api/executions/${result.execution_uuid}/report-html`);
+        setReportJsonUrl(result.report_json_url || `/api/executions/${result.execution_uuid}/report-json`);
+        
         setShowLog(true);
       } else {
         // Si no hay log para mostrar, redirigir al portal
@@ -420,6 +427,27 @@ export default function EntradaDatosDirectosPage() {
                   className="w-full h-96 border-0" 
                   title="Log de procesamiento"
                 ></iframe>
+              </div>
+              
+              {/* Botones para ver/descargar reportes */}
+              <div className="mt-4 flex flex-wrap gap-2">
+                <h3 className="w-full text-lg font-semibold mb-2">Reportes disponibles:</h3>
+                <a 
+                  href={reportHtmlUrl} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                >
+                  Ver reporte HTML
+                </a>
+                <a 
+                  href={reportJsonUrl} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                >
+                  Descargar reporte JSON
+                </a>
               </div>
               
               <div className="mt-6 flex justify-end space-x-3">
