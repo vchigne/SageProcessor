@@ -68,7 +68,10 @@ async function testConnection(credentials, config = {}) {
   }
   
   try {
-    const region = config.region || 'us-east-1';
+    console.log('Configuración recibida en S3 adapter:', JSON.stringify(config, null, 2));
+    // Asegurarnos de tomar la región de las credenciales si no está en config
+    const region = config.region || credentials.region || 'us-east-1';
+    console.log('Usando región:', region);
     
     // Construir URL del bucket usando el formato path-style (más compatible)
     const host = `s3.${region}.amazonaws.com`;
@@ -261,7 +264,8 @@ async function listContents(credentials, config = {}, path = '') {
   // Esto es importante para navegar por "carpetas" en S3
   
   const bucket = credentials.bucket;
-  const region = config.region || 'us-east-1';
+  const region = config.region || credentials.region || 'us-east-1';
+  console.log('[S3] Listando bucket:', bucket, 'en región:', region);
   
   if (USE_MOCK_DATA) {
     // Simulamos una respuesta para pruebas
