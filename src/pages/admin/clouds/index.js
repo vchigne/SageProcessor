@@ -38,13 +38,14 @@ const CloudProviders = () => {
           <Title>Proveedores Cloud</Title>
           <Text>Gestión de conexiones cloud</Text>
         </div>
-        <Button 
-          variant="primary"
-          icon={PlusIcon}
-          onClick={() => console.log('Nuevo proveedor')}
-        >
-          Nuevo Proveedor
-        </Button>
+        {clouds.length > 0 && (
+          <Button 
+            variant="secondary"
+            icon={PlusIcon}
+          >
+            Agregar Proveedor
+          </Button>
+        )}
       </div>
 
       {loading ? (
@@ -57,10 +58,9 @@ const CloudProviders = () => {
             Comienza agregando un nuevo proveedor de almacenamiento en la nube.
           </p>
           <div className="mt-6">
-            <Button
+            <Button 
               variant="secondary"
               icon={PlusIcon}
-              onClick={() => console.log('Nuevo proveedor')}
             >
               Agregar Proveedor
             </Button>
