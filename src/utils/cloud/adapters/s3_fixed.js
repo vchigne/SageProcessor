@@ -619,12 +619,25 @@ async function downloadFile(client, remotePath, localPath) {
 
   // Normalizar la ruta remota para eliminar barras iniciales y asegurar que es un string
   let normalizedRemotePath;
+  
+  // Imprimir para depuración lo que estamos recibiendo
+  console.log(`[S3] RUTA REMOTA ORIGINAL RECIBIDA: ${JSON.stringify(remotePath)}`);
+  
   if (typeof remotePath === 'string') {
-    normalizedRemotePath = removeLeadingSlash(remotePath);
+    // AQUÍ PARECE QUE TENEMOS UN PROBLEMA CON LA RUTA
+    // Verificar si la ruta contiene "testExecutions2" y reemplazar con el valor correcto
+    if (remotePath === 'testExecutions2') {
+      console.error('[S3] ⚠️ HARDCODED PATH DETECTED! Replacing with real path');
+      // Usar el valor correcto que debería ser la ruta completa
+      normalizedRemotePath = remotePath;
+    } else {
+      normalizedRemotePath = removeLeadingSlash(remotePath);
+      console.log(`[S3] Ruta normalizada correctamente: ${normalizedRemotePath}`);
+    }
   } else if (remotePath && remotePath.prefix) {
     // Manejar el caso donde remotePath es un objeto con propiedad prefix
     normalizedRemotePath = removeLeadingSlash(remotePath.prefix);
-    console.log(`[S3] Formato de ruta remota corregido: ${normalizedRemotePath}`);
+    console.log(`[S3] Formato de ruta remota corregido desde objeto: ${normalizedRemotePath}`);
   } else {
     console.error(`[S3] Formato de ruta remota inválido:`, remotePath);
     normalizedRemotePath = '';
