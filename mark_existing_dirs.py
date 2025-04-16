@@ -125,8 +125,8 @@ def upload_to_s3(local_path, cloud_path, provider):
     from botocore.exceptions import ClientError
     
     # Parsear credenciales y configuración
-    config = provider['config'] if isinstance(provider['config'], dict) else json.loads(provider['config'])
-    credentials = provider['credentials'] if isinstance(provider['credentials'], dict) else json.loads(provider['credentials'])
+    config = provider['configuracion'] if isinstance(provider['configuracion'], dict) else json.loads(provider['configuracion'])
+    credentials = provider['credenciales'] if isinstance(provider['credenciales'], dict) else json.loads(provider['credenciales'])
     
     logger.info(f"Credenciales S3: {credentials}")
     
