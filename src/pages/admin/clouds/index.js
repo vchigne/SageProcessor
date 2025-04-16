@@ -102,6 +102,16 @@ const configSchemas = {
 };
 
 // Estado de los proveedores
+// Función auxiliar para obtener la extensión de un archivo a partir de su nombre
+function getFileExtension(filename) {
+  if (!filename) return '-';
+  const parts = filename.split('.');
+  if (parts.length === 1 || parts[0] === '' && parts.length === 2) {
+    return '-';
+  }
+  return parts.pop().toUpperCase();
+}
+
 function CloudProviders() {
   const router = useRouter();
   const [providers, setProviders] = useState([]);
@@ -947,7 +957,7 @@ function CloudProviders() {
                                   </td>
                                   <td className="px-3 py-2 whitespace-nowrap">
                                     <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
-                                      {file.extension.toUpperCase()}
+                                      {getFileExtension(file.name)}
                                     </span>
                                   </td>
                                 </tr>
