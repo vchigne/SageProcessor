@@ -279,28 +279,29 @@ function CloudProviders() {
           );
         } 
         // Para errores de bucket inexistente
-        else if (errorMessage.includes('NoSuchBucket')) {
+        else if (errorMessage && errorMessage.includes && errorMessage.includes('NoSuchBucket')) {
           toast.error(
             'El bucket especificado no existe o no es accesible con las credenciales proporcionadas. Verifica el nombre del bucket y la región.',
             { autoClose: 8000 }
           );
         } 
         // Para errores de acceso denegado
-        else if (errorMessage.includes('AccessDenied')) {
+        else if (errorMessage && errorMessage.includes && errorMessage.includes('AccessDenied')) {
           toast.error(
             'Acceso denegado. Las credenciales no tienen permisos suficientes para acceder al bucket. Verifica los permisos del usuario IAM.',
             { autoClose: 8000 }
           );
         } 
         // Para errores de clave de acceso inválida
-        else if (errorMessage.includes('InvalidAccessKeyId')) {
+        else if (errorMessage && errorMessage.includes && errorMessage.includes('InvalidAccessKeyId')) {
           toast.error(
             'La clave de acceso AWS proporcionada no existe. Verifica que la clave de acceso sea correcta y esté activa en tu cuenta AWS.',
             { autoClose: 8000 }
           );
         }
         // Para errores específicos de Azure
-        else if (errorMessage.includes('AccountName=') && errorMessage.includes('AccountKey=')) {
+        else if (errorMessage && errorMessage.includes && 
+                errorMessage.includes('AccountName=') && errorMessage.includes('AccountKey=')) {
           // Error de connection string de Azure
           toast.error(
             'Error en la cadena de conexión de Azure. Asegúrate de usar el formato correcto que incluya AccountName y AccountKey. ' +
@@ -308,11 +309,12 @@ function CloudProviders() {
             { autoClose: 10000 }
           );
         }
-        else if (errorMessage.includes('connection string') || errorMessage.includes('Azure')) {
+        else if (errorMessage && errorMessage.includes && 
+                (errorMessage.includes('connection string') || errorMessage.includes('Azure'))) {
           toast.error(`Error de Azure: ${errorMessage}`, { autoClose: 8000 });
         }
         // Para otros errores AWS
-        else if (errorMessage.includes('AWS S3')) {
+        else if (errorMessage && errorMessage.includes && errorMessage.includes('AWS S3')) {
           toast.error(errorMessage, { autoClose: 8000 });
         } 
         // Mensaje genérico para otros errores
@@ -366,28 +368,29 @@ function CloudProviders() {
         let errorMessage = result.message || 'Error desconocido';
         
         // Para errores de firma AWS
-        if (errorMessage.includes('SignatureDoesNotMatch')) {
+        if (errorMessage && errorMessage.includes && errorMessage.includes('SignatureDoesNotMatch')) {
           toast.error(
             'Error de autenticación con AWS: La firma generada no coincide. Verifica que la clave de acceso y la clave secreta sean correctas, así como la región configurada.',
             { autoClose: 8000 } // Más tiempo para leer el mensaje
           );
         } 
         // Para errores de bucket inexistente
-        else if (errorMessage.includes('NoSuchBucket')) {
+        else if (errorMessage && errorMessage.includes && errorMessage.includes('NoSuchBucket')) {
           toast.error(
             'El bucket especificado no existe o no es accesible con las credenciales proporcionadas. Verifica el nombre del bucket y la región.',
             { autoClose: 8000 }
           );
         } 
         // Para errores de acceso denegado
-        else if (errorMessage.includes('AccessDenied')) {
+        else if (errorMessage && errorMessage.includes && errorMessage.includes('AccessDenied')) {
           toast.error(
             'Acceso denegado. Las credenciales no tienen permisos suficientes para acceder al bucket. Verifica los permisos del usuario IAM.',
             { autoClose: 8000 }
           );
         } 
         // Para errores específicos de Azure
-        else if (errorMessage.includes('AccountName=') && errorMessage.includes('AccountKey=')) {
+        else if (errorMessage && errorMessage.includes && 
+                 errorMessage.includes('AccountName=') && errorMessage.includes('AccountKey=')) {
           // Error de connection string de Azure
           toast.error(
             'Error en la cadena de conexión de Azure. Asegúrate de usar el formato correcto que incluya AccountName y AccountKey. ' +
@@ -395,20 +398,23 @@ function CloudProviders() {
             { autoClose: 10000 }
           );
         }
-        else if (errorMessage.includes('connection string') || errorMessage.includes('Azure')) {
+        else if (errorMessage && errorMessage.includes && 
+                (errorMessage.includes('connection string') || errorMessage.includes('Azure'))) {
           toast.error(`Error de Azure: ${errorMessage}`, { autoClose: 8000 });
         }
         // Para errores específicos de SFTP
-        else if (errorMessage.includes('SFTP') || errorMessage.includes('sftp') || 
-                errorMessage.includes('conexión SSH') || errorMessage.includes('Authentication failed')) {
+        else if (errorMessage && errorMessage.includes && 
+                (errorMessage.includes('SFTP') || errorMessage.includes('sftp') || 
+                 errorMessage.includes('conexión SSH') || errorMessage.includes('Authentication failed'))) {
           toast.error(`Error de conexión SFTP: ${errorMessage}`, { autoClose: 8000 });
         }
         // Para errores de Google Cloud
-        else if (errorMessage.includes('GCP') || errorMessage.includes('Google Cloud')) {
+        else if (errorMessage && errorMessage.includes && 
+                (errorMessage.includes('GCP') || errorMessage.includes('Google Cloud'))) {
           toast.error(`Error de Google Cloud: ${errorMessage}`, { autoClose: 8000 });
         }
         // Para otros errores AWS
-        else if (errorMessage.includes('AWS S3')) {
+        else if (errorMessage && errorMessage.includes && errorMessage.includes('AWS S3')) {
           toast.error(errorMessage, { autoClose: 8000 });
         } 
         else {
