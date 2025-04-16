@@ -393,6 +393,9 @@ class JanitorDaemon:
         """Subir un directorio a la nube usando el proveedor adecuado"""
         logger.info(f"Subiendo {local_path} a {provider['nombre']}/{cloud_path}")
         
+        # Log de proveedor para depuración
+        logger.info(f"Detalles del proveedor: ID={provider.get('id')}, Nombre={provider.get('nombre')}, Tipo={provider.get('tipo')}")
+        
         # La lógica de subida dependerá del tipo de proveedor
         provider_type = provider['tipo'].lower()
         
