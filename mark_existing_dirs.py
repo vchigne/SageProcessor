@@ -62,9 +62,9 @@ def get_cloud_provider_info(conn):
                 cloud_providers[provider[0]] = {
                     'id': provider[0],
                     'nombre': provider[1],
-                    'tipo': provider[2],
-                    'config': provider[3],
-                    'credentials': provider[4]
+                    'tipo': provider[3],  # Corregido: tipo está en la posición 3, no 2
+                    'config': provider[5],  # Corregido: configuracion está en la posición 5, no 3
+                    'credentials': provider[4]  # Correcto: credenciales está en la posición 4
                 }
                 
         logger.info(f"Se cargaron {len(cloud_providers)} proveedores de nube")
@@ -128,16 +128,18 @@ def upload_to_s3(local_path, cloud_path, provider):
     config = json.loads(provider['config'])
     credentials = json.loads(provider['credentials'])
     
+    logger.info(f"Credenciales S3: {credentials}")
+    
     # Crear cliente S3
     s3_client = boto3.client(
         's3',
-        endpoint_url=config.get('endpoint'),
-        aws_access_key_id=credentials.get('accessKeyId'),
-        aws_secret_access_key=credentials.get('secretAccessKey'),
-        region_name=config.get('region')
+        endpoint_url=credentials.get('endpoint'),
+        aws_access_key_id=credentials.get('access_key'),
+        aws_secret_access_key=credentials.get('secret_key'),
+        region_name=credentials.get('region')
     )
     
-    bucket = config.get('bucket')
+    bucket = credentials.get('bucket')
     
     # Subir todos los archivos en el directorio
     for root, dirs, files in os.walk(local_path):
@@ -165,30 +167,20 @@ def upload_to_azure(local_path, cloud_path, provider):
     config = json.loads(provider['config'])
     credentials = json.loads(provider['credentials'])
     
+    logger.info(f"Credenciales Azure: {credentials}")
+    
     # Obtener string de conexión o SAS token
-    connection_string = credentials.get('connectionString')
-    sas_token = credentials.get('sasToken')
-    account_name = config.get('accountName')
-    account_key = credentials.get('accountKey')
+    connection_string = credentials.get('connection_string')
+    container_name = credentials.get('container_name')
     
     # Crear cliente de servicio
     if connection_string:
         # Usar connection string completo
         blob_service_client = BlobServiceClient.from_connection_string(connection_string)
-    elif sas_token and account_name:
-        # Usar SAS token
-        account_url = f"https://{account_name}.blob.core.windows.net"
-        blob_service_client = BlobServiceClient(account_url=account_url, credential=sas_token)
-    elif account_name and account_key:
-        # Usar nombre y clave de cuenta
-        account_url = f"https://{account_name}.blob.core.windows.net"
-        blob_service_client = BlobServiceClient(account_url=account_url, credential=account_key)
+        # Obtener cliente de contenedor
+        container_client = blob_service_client.get_container_client(container_name)
     else:
         raise ValueError("No se configuraron credenciales válidas para Azure")
-    
-    # Obtener cliente de contenedor
-    container = config.get('container')
-    container_client = blob_service_client.get_container_client(container)
     
     # Subir todos los archivos en el directorio
     for root, dirs, files in os.walk(local_path):
