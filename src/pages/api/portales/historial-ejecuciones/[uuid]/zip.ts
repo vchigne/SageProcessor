@@ -48,7 +48,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         error: 'No se pudo encontrar el directorio de archivos para esta ejecución.',
         details: 'Es posible que los archivos hayan sido eliminados o movidos a un almacenamiento en la nube.',
         tipo: 'directorio_no_encontrado',
-        solucion: 'Si la ejecución fue migrada a la nube, contacte al administrador para activar la descarga desde la nube.'
+        solucion: 'Si la ejecución fue migrada a la nube, contacte al administrador para activar la descarga desde la nube.',
+        rutaDirectorio: execDir,
+        rutaEjecucion: ejecucion.ruta_directorio,
+        migradoANube: ejecucion.migrado_a_nube === true,
+        rutaNube: ejecucion.ruta_nube
       });
     }
 
@@ -78,6 +82,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     zipfile.outputStream.pipe(res);
   } catch (error) {
     console.error('Error al crear archivo ZIP:', error);
-    return res.status(500).json({ message: 'Error al crear archivo ZIP', error: error.message });
+    return res.status(500).json({ 
+      message: 'Error al crear archivo ZIP', 
+      error: 'No se pudo crear el archivo ZIP con los archivos de la ejecución.',
+      details: 'Ocurrió un error al procesar su solicitud. Por favor intente nuevamente más tarde.',
+      tipo: 'error_crear_zip',
+      errorTecnico: error.message,
+      uuid: uuid
+    });
   }
 }
