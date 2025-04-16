@@ -70,19 +70,56 @@ export default async function handler(req, res) {
         return res.status(404).json({ error: 'Proveedor no encontrado' });
       }
       
-      // Obtener credenciales existentes si no se proporcionan nuevas o si contienen asteriscos
+      // Obtener credenciales existentes si no se proporcionan nuevas o algunas contienen asteriscos
       let updatedCredentials = credenciales;
       let updatedConfig = configuracion;
       
-      // Si no hay credenciales o contienen asteriscos, usamos las credenciales originales
-      const containsAsterisks = credenciales && typeof credenciales === 'object' && 
-        Object.values(credenciales).some(value => typeof value === 'string' && value.includes('*'));
-      
-      if (!credenciales || containsAsterisks) {
-        console.log('[UPDATE] Detectadas credenciales enmascaradas, manteniendo credenciales originales');
+      // Tenemos que manejar las credenciales con cuidado
+      if (credenciales && typeof credenciales === 'object') {
+        // Obtener las credenciales actuales
+        const currentResult = await pool.query('SELECT credenciales FROM cloud_providers WHERE id = $1', [providerId]);
+        const currentCredentials = typeof currentResult.rows[0].credenciales === 'string' 
+          ? JSON.parse(currentResult.rows[0].credenciales) 
+          : currentResult.rows[0].credenciales || {};
+        
+        // Crear un objeto nuevo combinando las actuales con las nuevas
+        const merged = { ...currentCredentials };
+        
+        // Para cada credencial proporcionada, actualizar solo si no contiene asteriscos
+        // (los campos que contienen asteriscos son los que se muestran enmascarados en la UI)
+        let containsSensitiveFields = false;
+        
+        Object.keys(credenciales).forEach(key => {
+          const value = credenciales[key];
+          
+          // Verificar si es un campo sensible enmascarado
+          const isSensitive = key.toLowerCase().includes('key') || 
+            key.toLowerCase().includes('secret') || 
+            key.toLowerCase().includes('password') || 
+            key.toLowerCase().includes('token');
+          
+          // Si el campo es sensible y contiene asteriscos, no actualizar
+          if (isSensitive && typeof value === 'string' && value.includes('*')) {
+            containsSensitiveFields = true;
+            console.log(`[UPDATE] Campo sensible enmascarado detectado: ${key}, manteniendo valor original`);
+          } else {
+            // Caso contrario, actualizar con el nuevo valor
+            merged[key] = value;
+          }
+        });
+        
+        if (containsSensitiveFields) {
+          console.log('[UPDATE] Algunos campos sensibles mantienen sus valores originales');
+        }
+        
+        // Convertir a string para almacenar en la BD
+        updatedCredentials = JSON.stringify(merged);
+      } else if (!credenciales) {
+        // Si no se proporcionan credenciales, mantener las originales
         const currentResult = await pool.query('SELECT credenciales FROM cloud_providers WHERE id = $1', [providerId]);
         updatedCredentials = currentResult.rows[0].credenciales;
       } else if (typeof credenciales !== 'string') {
+        // Si las credenciales son un objeto, convertir a string
         updatedCredentials = JSON.stringify(credenciales);
       }
       
