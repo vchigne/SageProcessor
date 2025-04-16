@@ -4,7 +4,7 @@ modules = ["python-3.11", "nodejs-20", "postgresql-16", "python3"]
 channel = "stable-24_05"
 
 [workflows]
-runButton = "Project"
+runButton = "Run"
 
 [[workflows.workflow]]
 name = "UI Dev Server"
@@ -83,6 +83,15 @@ task = "packager.installForAll"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "cd /home/runner/$REPL_SLUG && bash run_janitor_daemon.sh"
+
+[[workflows.workflow]]
+name = "Run"
+author = 39710120
+mode = "sequential"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run dev"
 
 [deployment]
 run = ["sh", "-c", "npm run dev"]
