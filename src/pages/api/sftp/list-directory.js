@@ -1,9 +1,12 @@
 /**
  * API endpoint para listar directorios via SFTP
  * 
- * Este endpoint utiliza la lógica existente en SAGE Daemon 2 para
+ * Este endpoint utiliza un script Python con paramiko para
  * conectarse a servidores SFTP y listar contenido de directorios.
  */
+
+import { spawn } from 'child_process';
+import path from 'path';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -11,7 +14,7 @@ export default async function handler(req, res) {
   }
   
   try {
-    const { host, port, username, auth, path } = req.body;
+    const { host, port, username, auth, path: sftpPath } = req.body;
     
     // Validaciones básicas
     if (!host) {
@@ -26,18 +29,84 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Se requiere contraseña o clave SSH para la conexión SFTP' });
     }
     
-    console.log(`[SFTP] Conectando a ${host}:${port || 22} como ${username}, path: ${path || '/'}`);
+    const targetPort = port || 22;
+    const targetPath = sftpPath || '/';
     
-    // En un entorno real, aquí usaríamos la librería paramiko desde Python
-    // para establecer la conexión SFTP y listar los archivos
+    console.log(`[SFTP] Conectando a ${host}:${targetPort} como ${username}, path: ${targetPath}`);
     
-    // Para no simular datos y proporcionar retroalimentación precisa al usuario,
-    // devolvemos un error detallado pero útil
-    return res.status(501).json({
-      error: 'Módulo de conexión SFTP no implementado en este entorno. ' +
-             'La implementación requiere integración con paramiko que ya está ' +
-             'disponible en SAGE Daemon 2. Por favor contacta al administrador ' +
-             'para completar la integración.'
+    // Ejecutar el script Python para listar el directorio SFTP
+    const scriptPath = path.resolve('./utils/sftp_lister.py');
+    
+    // Preparar los argumentos para el script
+    const args = [
+      scriptPath,
+      host,
+      targetPort.toString(),
+      username,
+    ];
+    
+    // Agregar autenticación (contraseña o clave SSH)
+    if (auth.password) {
+      args.push(auth.password);
+      args.push(''); // Clave SSH vacía
+    } else if (auth.privateKey) {
+      args.push(''); // Contraseña vacía
+      args.push(auth.privateKey);
+    } else {
+      return res.status(400).json({ error: 'Se requiere contraseña o clave SSH para la conexión SFTP' });
+    }
+    
+    // Agregar el directorio a listar
+    args.push(targetPath);
+    
+    // Ejecutar el script
+    const pythonProcess = spawn('python', args);
+    
+    let dataString = '';
+    let errorString = '';
+    
+    pythonProcess.stdout.on('data', (data) => {
+      dataString += data.toString();
+    });
+    
+    pythonProcess.stderr.on('data', (data) => {
+      errorString += data.toString();
+      console.error(`[SFTP] Error de Python: ${data.toString()}`);
+    });
+    
+    pythonProcess.on('close', (code) => {
+      if (code !== 0) {
+        console.error(`[SFTP] Script Python terminó con código ${code}`);
+        console.error(`[SFTP] Error: ${errorString}`);
+        return res.status(500).json({
+          error: `Error al listar directorio SFTP: ${errorString || 'Error desconocido'}`,
+          code
+        });
+      }
+      
+      try {
+        // Parsear la salida JSON del script
+        const result = JSON.parse(dataString);
+        
+        if (result.error) {
+          return res.status(500).json({
+            error: result.message || 'Error al listar directorio SFTP'
+          });
+        }
+        
+        return res.status(200).json({
+          files: result.files || [],
+          folders: result.folders || [],
+          path: result.path,
+          parentPath: result.parentPath
+        });
+      } catch (parseError) {
+        console.error('[SFTP] Error al parsear la salida JSON:', parseError);
+        console.error('[SFTP] Salida del script:', dataString);
+        return res.status(500).json({
+          error: `Error al parsear la respuesta: ${parseError.message}`
+        });
+      }
     });
     
   } catch (error) {

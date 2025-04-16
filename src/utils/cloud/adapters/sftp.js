@@ -277,54 +277,43 @@ export async function testConnection(credentials, config = {}) {
       throw new Error('Se requiere una contraseña o una clave SSH para la conexión SFTP');
     }
     
-    try {
-      // Intentamos listar el directorio raíz como test de conexión
-      // Limitamos a 1 elemento para que sea más rápido
-      const result = await listContents(credentials, config, '/', 1);
-      
-      // Si hay error en el resultado, lo propagamos
-      if (result.error) {
-        throw new Error(result.errorMessage);
-      }
-      
-      return {
-        success: true,
-        message: 'Conexión a servidor SFTP exitosa',
-        details: {
-          host: credentials.host,
-          port: credentials.port || 22,
-          path: credentials.path || '/'
-        }
-      };
-    } catch (listError) {
-      // Si el error indica que el API no está implementado pero los
-      // parámetros de conexión parecen válidos, consideramos éxito parcial
-      if (listError.message && (
-        listError.message.includes('no implementado') || 
-        listError.message.includes('funcionalidad') ||
-        listError.message.includes('contacta al administrador')
-      )) {
-        console.log('[SFTP] API no implementado completamente, pero credenciales válidas');
-        return {
-          success: true,
-          message: `Configuración válida para ${credentials.host}:${credentials.port || 22} (verificación parcial)`,
-          details: {
-            host: credentials.host,
-            port: credentials.port || 22,
-            path: credentials.path || '/',
-            partial: true
-          }
-        };
-      }
-      
-      // Cualquier otro error indica un problema real de conexión
-      throw listError;
+    // Intentamos listar el directorio raíz como test de conexión
+    // Limitamos a 1 elemento para que sea más rápido
+    const result = await listContents(credentials, config, '/', 1);
+    
+    // Si hay error en el resultado, lo propagamos
+    if (result.error) {
+      throw new Error(result.errorMessage);
     }
+    
+    return {
+      success: true,
+      message: 'Conexión a servidor SFTP exitosa',
+      details: {
+        host: credentials.host,
+        port: credentials.port || 22,
+        path: credentials.path || '/'
+      }
+    };
   } catch (error) {
     console.error('[SFTP] Error al probar conexión:', error);
+    // Mejoramos el mensaje de error para que sea más claro
+    let errorMessage = error.message || 'Error desconocido de conexión';
+    
+    // Detectamos errores comunes y proporcionamos mensajes más amigables
+    if (errorMessage.includes('Authentication failed')) {
+      errorMessage = 'Fallo de autenticación: Usuario o contraseña incorrectos';
+    } else if (errorMessage.includes('Connection refused')) {
+      errorMessage = 'Conexión rechazada: Verifica que el servidor SFTP esté funcionando y accesible';
+    } else if (errorMessage.includes('Cannot resolve hostname')) {
+      errorMessage = 'No se puede resolver el nombre del host: Verifica que el nombre del servidor sea correcto';
+    } else if (errorMessage.includes('Timed out')) {
+      errorMessage = 'Tiempo de espera agotado: El servidor no responde';
+    }
+    
     return {
       success: false,
-      message: `Error al conectar con servidor SFTP: ${error.message}`,
+      message: `Error al conectar con servidor SFTP: ${errorMessage}`,
       details: error
     };
   }
@@ -342,9 +331,8 @@ export async function listContents(credentials, config = {}, path = '', limit = 
   console.log(`[SFTP] Listando contenido en ${credentials.host}:${credentials.port || 22}${path ? '/' + path : ''}`);
   
   // Resultado por defecto para errores
-  const errorResult = {
-    error: true,
-    errorMessage: '',
+  const defaultResult = {
+    error: false,
     path: path || '/',
     files: [],
     folders: [],
@@ -352,119 +340,56 @@ export async function listContents(credentials, config = {}, path = '', limit = 
   };
   
   try {
-    // Validación básica
-    if (!credentials.host) {
-      errorResult.errorMessage = 'Se requiere un host para la conexión SFTP';
-      return errorResult;
+    // Preparar credenciales para el API
+    const authData = {};
+    if (credentials.password) {
+      authData.password = credentials.password;
+    } else if (credentials.key_path) {
+      authData.privateKey = credentials.key_path;
+    } else {
+      throw new Error('Se requiere contraseña o clave SSH para conectar con SFTP');
     }
     
-    if (!credentials.user) {
-      errorResult.errorMessage = 'Se requiere un usuario para la conexión SFTP';
-      return errorResult;
+    // Llamar al endpoint API que usa paramiko
+    const response = await fetch('/api/sftp/list-directory', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        host: credentials.host,
+        port: credentials.port || 22,
+        username: credentials.user,
+        auth: authData,
+        path: path || '/'
+      }),
+    });
+    
+    // Verificar si hubo error HTTP
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Error al listar directorio SFTP');
     }
     
-    if (!credentials.password && !credentials.key_path) {
-      errorResult.errorMessage = 'Se requiere una contraseña o una clave SSH para la conexión SFTP';
-      return errorResult;
-    }
+    // Procesar la respuesta
+    const data = await response.json();
     
-    // Preparamos el directorio a listar
-    const targetPath = path || '/';
-    
-    // Primer intento: Proxy SFTP
-    try {
-      // URL completa para el proxy
-      const proxyUrl = typeof window !== 'undefined'
-        ? `${window.location.origin}/api/sftp-proxy/list`
-        : 'http://localhost:5000/api/sftp-proxy/list';
-      
-      const proxyResponse = await fetch(proxyUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          host: credentials.host,
-          port: credentials.port || 22,
-          username: credentials.user,
-          password: credentials.password,
-          key_path: credentials.key_path,
-          path: targetPath
-        })
-      });
-      
-      if (!proxyResponse.ok) {
-        const errorData = await proxyResponse.json();
-        throw new Error(errorData.error || `Error al listar archivos: ${proxyResponse.status} ${proxyResponse.statusText}`);
-      }
-      
-      // Proceso de respuesta exitosa
-      const proxyData = await proxyResponse.json();
-      
-      return {
-        error: false,
-        path: targetPath,
-        files: (proxyData.files || []).map(file => ({
-          name: file.name,
-          path: file.path,
-          size: file.size,
-          lastModified: new Date(file.lastModified),
-          type: 'file'
-        })),
-        folders: (proxyData.folders || []).map(folder => ({
-          name: folder.name,
-          path: folder.path,
-          type: 'folder'
-        })),
-        service: 'sftp'
-      };
-    } catch (proxyError) {
-      // Si falla el proxy, intentamos conexión directa
-      console.log('[SFTP] No se pudo usar el proxy, intentando conexión directa');
-      
-      // Autenticación 
-      const auth = credentials.password 
-        ? { password: credentials.password } 
-        : { privateKey: credentials.key_path };
-      
-      // URL completa para conexión directa
-      const directUrl = typeof window !== 'undefined'
-        ? `${window.location.origin}/api/sftp/list-directory`
-        : 'http://localhost:5000/api/sftp/list-directory';
-      
-      const directResponse = await fetch(directUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          host: credentials.host,
-          port: credentials.port || 22,
-          username: credentials.user,
-          auth,
-          path: targetPath
-        })
-      });
-      
-      if (!directResponse.ok) {
-        const errorText = await directResponse.text();
-        throw new Error(`Error en conexión SFTP directa: ${errorText}`);
-      }
-      
-      const responseData = await directResponse.json();
-      
-      if (responseData.error) {
-        throw new Error(responseData.error);
-      }
-      
-      return {
-        error: false,
-        path: targetPath,
-        files: responseData.files || [],
-        folders: responseData.folders || [],
-        service: 'sftp'
-      };
-    }
+    // Convertir al formato esperado por la interfaz
+    return {
+      error: false,
+      path: data.path || path || '/',
+      parentPath: data.parentPath || '/',
+      files: data.files || [],
+      folders: data.folders || [],
+      service: 'sftp'
+    };
   } catch (error) {
     console.error('[SFTP] Error al listar contenido:', error);
-    errorResult.errorMessage = error.message || 'Error desconocido al listar contenido SFTP';
-    return errorResult;
+    return {
+      ...defaultResult,
+      error: true,
+      errorMessage: `Error al listar directorio SFTP: ${error.message}`,
+    };
   }
 }
 
