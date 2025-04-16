@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import PortalLayout from '@/components/Portal/PortalLayout';
+import ErrorModal from '@/components/Portal/ErrorModal';
 import { 
   CalendarIcon, 
   DocumentTextIcon, 
@@ -102,6 +103,16 @@ export default function HistorialPage() {
   const [fechaHasta, setFechaHasta] = useState('');
   const [periodoSeleccionado, setPeriodoSeleccionado] = useState<string>('ultimos90');
   const [itemsPorPagina, setItemsPorPagina] = useState<number>(10);
+  
+  // Estados para el modal de error
+  const [errorModal, setErrorModal] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    details: '',
+    technicalDetails: '',
+    errorType: '',
+  });
   const [datosPortal, setDatosPortal] = useState<DatosPortal>({
     titulo: 'Historial de ejecuciones',
     uuid: '',
