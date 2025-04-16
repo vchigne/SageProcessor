@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import axios from 'axios';
 import { 
   Card, 
   Title, 
@@ -33,8 +32,11 @@ export default function EjecucionesConfigPage() {
   const { data: proveedores, isLoading: cargandoProveedores } = useQuery({
     queryKey: ['cloudProviders'],
     queryFn: async () => {
-      const { data } = await axios.get('/api/clouds');
-      return data;
+      const response = await fetch('/api/clouds');
+      if (!response.ok) {
+        throw new Error('Error cargando proveedores de nube');
+      }
+      return await response.json();
     }
   });
 
@@ -43,10 +45,16 @@ export default function EjecucionesConfigPage() {
     queryKey: ['ejecucionesConfig'],
     queryFn: async () => {
       try {
-        const { data } = await axios.get('/api/ejecuciones-config');
-        return data;
+        const response = await fetch('/api/ejecuciones-config');
+        if (response.status === 404) {
+          return null; // No hay configuración todavía
+        }
+        if (!response.ok) {
+          throw new Error('Error cargando configuración');
+        }
+        return await response.json();
       } catch (error) {
-        if (error.response?.status === 404) {
+        if (error.message.includes('404')) {
           return null; // No hay configuración todavía
         }
         throw error;
@@ -57,7 +65,19 @@ export default function EjecucionesConfigPage() {
   // Guardar configuración
   const guardarConfigMutation = useMutation({
     mutationFn: async (configData) => {
-      return await axios.post('/api/ejecuciones-config', configData);
+      const response = await fetch('/api/ejecuciones-config', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(configData),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Error al guardar la configuración');
+      }
+      
+      return await response.json();
     },
     onSuccess: () => {
       toast.success('Configuración guardada correctamente');
