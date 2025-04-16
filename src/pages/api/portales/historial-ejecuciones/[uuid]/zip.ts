@@ -5,11 +5,11 @@ import path from 'path';
 import * as yazl from 'yazl';
 import * as os from 'os';
 import { v4 as uuidv4 } from 'uuid';
-import * as s3Adapter from '@/utils/cloud/adapters/s3_fixed';
-import * as azureAdapter from '@/utils/cloud/adapters/azure';
-import * as gcpAdapter from '@/utils/cloud/adapters/gcp';
-import * as sftpAdapter from '@/utils/cloud/adapters/sftp';
-import * as minioAdapter from '@/utils/cloud/adapters/minio';
+import s3Adapter from '@/utils/cloud/adapters/s3_fixed';
+import azureAdapter from '@/utils/cloud/adapters/azure';
+import gcpAdapter from '@/utils/cloud/adapters/gcp';
+import sftpAdapter from '@/utils/cloud/adapters/sftp';
+import minioAdapter from '@/utils/cloud/adapters/minio';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
