@@ -398,12 +398,33 @@ function CloudProviders() {
         else if (errorMessage.includes('connection string') || errorMessage.includes('Azure')) {
           toast.error(`Error de Azure: ${errorMessage}`, { autoClose: 8000 });
         }
+        // Para errores específicos de SFTP
+        else if (errorMessage.includes('SFTP') || errorMessage.includes('sftp') || 
+                errorMessage.includes('conexión SSH') || errorMessage.includes('Authentication failed')) {
+          toast.error(`Error de conexión SFTP: ${errorMessage}`, { autoClose: 8000 });
+        }
+        // Para errores de Google Cloud
+        else if (errorMessage.includes('GCP') || errorMessage.includes('Google Cloud')) {
+          toast.error(`Error de Google Cloud: ${errorMessage}`, { autoClose: 8000 });
+        }
         // Para otros errores AWS
         else if (errorMessage.includes('AWS S3')) {
           toast.error(errorMessage, { autoClose: 8000 });
         } 
         else {
-          toast.error(`Error de conexión: ${errorMessage}`);
+          // Mensajes genéricos con detección del tipo de proveedor
+          const providerType = document.querySelector('[name="tipo"]:checked')?.value;
+          if (providerType === 'sftp') {
+            toast.error(`Error de conexión SFTP: ${errorMessage}. Verifica las credenciales y que el servidor sea accesible.`, { autoClose: 8000 });
+          } else if (providerType === 'azure') {
+            toast.error(`Error de conexión Azure: ${errorMessage}. Verifica la cadena de conexión o las credenciales.`, { autoClose: 8000 });
+          } else if (providerType === 'gcp') {
+            toast.error(`Error de conexión Google Cloud: ${errorMessage}. Verifica el archivo de clave JSON y los permisos.`, { autoClose: 8000 });
+          } else if (providerType === 'minio') {
+            toast.error(`Error de conexión MinIO: ${errorMessage}. Verifica la configuración del endpoint y credenciales.`, { autoClose: 8000 });
+          } else {
+            toast.error(`Error de conexión: ${errorMessage}`);
+          }
         }
       }
       
