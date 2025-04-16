@@ -215,21 +215,60 @@ export default function EjecucionesConfigPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Proveedores de nube alternativos
                 </label>
-                <Select
-                  value={config.nubes_alternativas}
-                  onValueChange={(value) => handleChange('nubes_alternativas', 
-                    Array.isArray(value) ? value : [value])}
-                  placeholder="Seleccione proveedores alternativos (opcional)"
-                  enableClear={true}
-                  multiple={true}
-                  className="w-full"
-                >
-                  {proveedores?.filter(p => p.id !== config.nube_primaria_id).map((proveedor) => (
-                    <SelectItem key={proveedor.id} value={proveedor.id}>
-                      {proveedor.nombre} ({proveedor.tipo})
-                    </SelectItem>
-                  ))}
-                </Select>
+                <div className="border border-gray-300 rounded-md p-2">
+                  <div className="mb-2">
+                    <label className="text-sm font-medium text-gray-700">Proveedores alternativos seleccionados:</label>
+                  </div>
+                  {/* Lista de proveedores seleccionados como tags */}
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {config.nubes_alternativas?.length > 0 ? (
+                      config.nubes_alternativas.map((id) => {
+                        const proveedor = proveedores?.find(p => p.id === id);
+                        return proveedor ? (
+                          <div key={id} className="flex items-center bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-1 rounded-full">
+                            {proveedor.nombre} ({proveedor.tipo})
+                            <button 
+                              type="button"
+                              className="ml-1 text-blue-500 hover:text-blue-700"
+                              onClick={() => {
+                                const nuevaLista = config.nubes_alternativas.filter(pId => pId !== id);
+                                handleChange('nubes_alternativas', nuevaLista);
+                              }}
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ) : null;
+                      })
+                    ) : (
+                      <p className="text-sm text-gray-500">No hay proveedores alternativos seleccionados</p>
+                    )}
+                  </div>
+                  
+                  {/* Selector para añadir nuevos proveedores */}
+                  <div className="mt-3">
+                    <Select
+                      value=""
+                      onValueChange={(id) => {
+                        if (id && !config.nubes_alternativas.includes(id)) {
+                          const nuevaLista = [...(config.nubes_alternativas || []), id];
+                          handleChange('nubes_alternativas', nuevaLista);
+                        }
+                      }}
+                      placeholder="Añadir proveedor alternativo..."
+                      className="w-full"
+                    >
+                      {proveedores?.filter(p => 
+                        p.id !== config.nube_primaria_id && 
+                        !config.nubes_alternativas?.includes(p.id)
+                      ).map((proveedor) => (
+                        <SelectItem key={proveedor.id} value={proveedor.id}>
+                          {proveedor.nombre} ({proveedor.tipo})
+                        </SelectItem>
+                      ))}
+                    </Select>
+                  </div>
+                </div>
                 <p className="mt-1 text-xs text-gray-500">
                   Respaldos adicionales para las ejecuciones (opcional)
                 </p>
