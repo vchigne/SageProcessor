@@ -186,23 +186,22 @@ class JanitorDaemon:
         # Obtener ejecuciones antiguas no migradas
         with self.db_connection.cursor() as cursor:
             try:
-                # Usar una cadena de texto para la fecha en lugar de un objeto datetime
+                # Usar directamente la consulta SQL sin parámetros dinámicos para evitar problemas
                 fecha_limite_str = fecha_limite.strftime('%Y-%m-%d %H:%M:%S')
                 logger.info(f"Fecha límite formateada: {fecha_limite_str}")
                 
-                # La clave es usar %s como marcador de posición para un único parámetro
-                sql_query = """
+                # En esta versión, incluimos la fecha directamente en la consulta SQL
+                sql_query = f"""
                     SELECT id, nombre_yaml, ruta_directorio, fecha_ejecucion, casilla_id
                     FROM ejecuciones_yaml
-                    WHERE fecha_ejecucion < %s
+                    WHERE fecha_ejecucion < '{fecha_limite_str}'
                     AND (migrado_a_nube = FALSE OR migrado_a_nube IS NULL)
                     AND ruta_directorio IS NOT NULL
-                    AND ruta_directorio NOT LIKE 'cloud://%%'
+                    AND ruta_directorio NOT LIKE 'cloud://%'
                 """
-                logger.debug(f"Ejecutando SQL: {sql_query}")
-                logger.debug(f"Parámetros: {fecha_limite_str}")
+                logger.info(f"Ejecutando SQL: {sql_query}")
                 
-                cursor.execute(sql_query, (fecha_limite_str,))
+                cursor.execute(sql_query)
                 
                 ejecuciones = cursor.fetchall()
                 
