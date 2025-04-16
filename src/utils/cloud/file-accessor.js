@@ -5,7 +5,6 @@
  * ya sea que estén almacenados localmente o en proveedores de nube.
  */
 
-import axios from 'axios';
 import fs from 'fs';
 import path from 'path';
 import { promisify } from 'util';
@@ -165,15 +164,15 @@ async function readCloudFile(cloudUri) {
     throw new Error(`URI de nube inválida: ${cloudUri}`);
   }
 
-  // Obtener el archivo a través de la API
-  const { data } = await axios.get('/api/cloud-files/content', {
-    params: {
-      path: cloudUri
-    },
-    responseType: 'arraybuffer'
-  });
-
-  return Buffer.from(data);
+  // Obtener el archivo a través de la API usando fetch en lugar de axios
+  const response = await fetch(`/api/cloud-files/content?path=${encodeURIComponent(cloudUri)}`);
+  
+  if (!response.ok) {
+    throw new Error(`Error al obtener el archivo: ${response.status} ${response.statusText}`);
+  }
+  
+  const arrayBuffer = await response.arrayBuffer();
+  return Buffer.from(arrayBuffer);
 }
 
 /**
@@ -197,11 +196,9 @@ export async function readFileAsText(filePath, encoding = 'utf-8') {
 export async function fileExists(filePath) {
   try {
     if (filePath.startsWith('cloud://')) {
-      // Verificar existencia a través de la API
-      await axios.get('/api/cloud-files/exists', {
-        params: { path: filePath }
-      });
-      return true;
+      // Verificar existencia a través de la API usando fetch en lugar de axios
+      const response = await fetch(`/api/cloud-files/exists?path=${encodeURIComponent(filePath)}`);
+      return response.ok;
     } else {
       // Archivo local
       return fs.existsSync(filePath);
@@ -220,10 +217,14 @@ export async function fileExists(filePath) {
 export async function listFiles(dirPath) {
   try {
     if (dirPath.startsWith('cloud://')) {
-      // Listar a través de la API
-      const { data } = await axios.get('/api/cloud-files/list', {
-        params: { path: dirPath }
-      });
+      // Listar a través de la API usando fetch en lugar de axios
+      const response = await fetch(`/api/cloud-files/list?path=${encodeURIComponent(dirPath)}`);
+      
+      if (!response.ok) {
+        throw new Error(`Error al listar archivos: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json();
       return data;
     } else {
       // Directorio local
