@@ -247,18 +247,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           console.error('Error parseando configuración del proveedor:', parseError);
         }
         
-        // Extraer correctamente la ruta del archivo en la nube 
-        // La ruta completa está en formato cloud://proveedor/ruta/al/archivo
-        // IMPORTANTE: Debemos ignorar el nombre descriptivo del proveedor y usar solo la ruta real
+        // Primero obtenemos y normalizamos las credenciales
+        // Ya hemos declarado 'credentials' y 'config' arriba, así que usamos esas referencias
+        let credentials = provider.credenciales;
+        let config = provider.configuracion;
         
-        // 1. Extracción de la URI completa ignorando el nombre del proveedor
-        const uriSinProtocolo = execDir.substring(8); // Quitar 'cloud://'
-        const primerSlash = uriSinProtocolo.indexOf('/');
-        
-        // 2. Extraer la ruta real después del primer slash (ignorando el nombre del proveedor)
-        const rutaReal = primerSlash !== -1 ? uriSinProtocolo.substring(primerSlash + 1) : '';
-        
-        // Asegurarse de que las credenciales y configuraciones están en formato objeto
+        // Asegurarse de que credentials y config sean objetos, no strings
         try {
             if (typeof credentials === 'string') {
                 credentials = JSON.parse(credentials);
@@ -269,6 +263,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         } catch (err) {
             console.error('Error parseando credenciales o configuración:', err);
         }
+        
+        // Extraer correctamente la ruta del archivo en la nube 
+        // La ruta completa está en formato cloud://proveedor/ruta/al/archivo
+        // IMPORTANTE: Debemos ignorar el nombre descriptivo del proveedor y usar solo la ruta real
+        
+        // 1. Extracción de la URI completa ignorando el nombre del proveedor
+        const uriSinProtocolo = execDir.substring(8); // Quitar 'cloud://'
+        const primerSlash = uriSinProtocolo.indexOf('/');
+        
+        // 2. Extraer la ruta real después del primer slash (ignorando el nombre del proveedor)
+        const rutaReal = primerSlash !== -1 ? uriSinProtocolo.substring(primerSlash + 1) : '';
         
         console.log(`ANÁLISIS DE RUTA:
           - URI original: ${execDir}
@@ -294,29 +299,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         console.log(`Descargando ${relativePath} desde ${cloudPath} a ${tempFilePath}`);
         console.log('Tipo de proveedor:', provider.tipo);
         
-        // Ya hemos declarado 'credentials' y 'config' arriba, así que usamos esas referencias
-        // En lugar de crear nuevas variables con el mismo nombre
-        credentials = provider.credenciales;
-        config = provider.configuracion;
-        
-        // Asegurarse de que credentials y config sean objetos, no strings
-        if (typeof credentials === 'string') {
-          try {
-            credentials = JSON.parse(credentials);
-          } catch (e) {
-            console.error('Error al parsear credenciales:', e);
-            throw new Error('Formato de credenciales inválido');
-          }
-        }
-        
-        if (typeof config === 'string') {
-          try {
-            config = JSON.parse(config);
-          } catch (e) {
-            console.error('Error al parsear configuración:', e);
-            throw new Error('Formato de configuración inválido');
-          }
-        }
+        // Usamos las credenciales que ya normalizamos arriba
+        // No es necesario volver a parsear
         
         // Seleccionar el adaptador según el tipo de proveedor
         const providerTipo = provider.tipo ? provider.tipo.toLowerCase() : '';
