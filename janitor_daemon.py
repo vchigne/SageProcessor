@@ -289,6 +289,20 @@ class JanitorDaemon:
         
         if not proveedor_primario:
             raise ValueError(f"No se encontró el proveedor primario con ID {nube_primaria_id}")
+            
+        # Asegurar que tenemos la configuración como diccionario
+        if 'config' in proveedor_primario and not isinstance(proveedor_primario['config'], dict):
+            try:
+                proveedor_primario['config'] = json.loads(proveedor_primario['config'])
+            except:
+                logger.warning(f"No se pudo parsear la configuración del proveedor {proveedor_primario['nombre']}")
+                
+        # Asegurar que tenemos las credenciales como diccionario
+        if 'credenciales' in proveedor_primario and not isinstance(proveedor_primario['credenciales'], dict):
+            try:
+                proveedor_primario['credenciales'] = json.loads(proveedor_primario['credenciales'])
+            except:
+                logger.warning(f"No se pudo parsear las credenciales del proveedor {proveedor_primario['nombre']}")
         
         # Construir la ruta URI para la nube primaria
         ruta_nube_primaria = f"cloud://{proveedor_primario['nombre']}/{carpeta_nube}"
@@ -309,6 +323,20 @@ class JanitorDaemon:
                 try:
                     proveedor_alt = self.cloud_providers.get(nube_alt_id)
                     if proveedor_alt:
+                        # Asegurar que tenemos la configuración como diccionario
+                        if 'config' in proveedor_alt and not isinstance(proveedor_alt['config'], dict):
+                            try:
+                                proveedor_alt['config'] = json.loads(proveedor_alt['config'])
+                            except:
+                                logger.warning(f"No se pudo parsear la configuración del proveedor alternativo {proveedor_alt['nombre']}")
+                                
+                        # Asegurar que tenemos las credenciales como diccionario
+                        if 'credenciales' in proveedor_alt and not isinstance(proveedor_alt['credenciales'], dict):
+                            try:
+                                proveedor_alt['credenciales'] = json.loads(proveedor_alt['credenciales'])
+                            except:
+                                logger.warning(f"No se pudo parsear las credenciales del proveedor alternativo {proveedor_alt['nombre']}")
+                                
                         # Construir la ruta URI para la nube alternativa
                         ruta_alt = f"cloud://{proveedor_alt['nombre']}/{carpeta_nube}"
                         rutas_alternativas.append(ruta_alt)
