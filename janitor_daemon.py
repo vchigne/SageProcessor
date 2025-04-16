@@ -304,6 +304,9 @@ class JanitorDaemon:
             except:
                 logger.warning(f"No se pudo parsear las credenciales del proveedor {proveedor_primario['nombre']}")
         
+        # Debug para ver qué tiene el proveedor
+        logger.info(f"Estructura del proveedor primario: {proveedor_primario.keys()}")
+        
         # Construir la ruta URI para la nube primaria
         ruta_nube_primaria = f"cloud://{proveedor_primario['nombre']}/{carpeta_nube}"
         
@@ -410,8 +413,8 @@ class JanitorDaemon:
         from botocore.exceptions import ClientError
         
         # Parsear credenciales y configuración
-        config = provider['config'] if isinstance(provider['config'], dict) else json.loads(provider['config'])
-        credentials = provider['credentials'] if isinstance(provider['credentials'], dict) else json.loads(provider['credentials'])
+        config = provider['config'] if isinstance(provider['config'], dict) else json.loads(provider['config']) if 'config' in provider else {}
+        credentials = provider['credenciales'] if isinstance(provider['credenciales'], dict) else json.loads(provider['credenciales']) if 'credenciales' in provider else {}
         
         # Crear cliente S3
         s3_client = boto3.client(
@@ -446,8 +449,8 @@ class JanitorDaemon:
         from azure.storage.blob import BlobServiceClient
         
         # Parsear credenciales y configuración
-        config = provider['config'] if isinstance(provider['config'], dict) else json.loads(provider['config'])
-        credentials = provider['credentials'] if isinstance(provider['credentials'], dict) else json.loads(provider['credentials'])
+        config = provider['config'] if isinstance(provider['config'], dict) else json.loads(provider['config']) if 'config' in provider else {}
+        credentials = provider['credenciales'] if isinstance(provider['credenciales'], dict) else json.loads(provider['credenciales']) if 'credenciales' in provider else {}
         
         logger.info(f"Credenciales Azure: {credentials}")
         
@@ -491,8 +494,8 @@ class JanitorDaemon:
         import tempfile
         
         # Parsear credenciales y configuración
-        config = provider['config'] if isinstance(provider['config'], dict) else json.loads(provider['config'])
-        credentials = provider['credentials'] if isinstance(provider['credentials'], dict) else json.loads(provider['credentials'])
+        config = provider['config'] if isinstance(provider['config'], dict) else json.loads(provider['config']) if 'config' in provider else {}
+        credentials = provider['credenciales'] if isinstance(provider['credenciales'], dict) else json.loads(provider['credenciales']) if 'credenciales' in provider else {}
         
         logger.info(f"Credenciales GCP: {credentials.keys()}")
         
@@ -543,8 +546,8 @@ class JanitorDaemon:
         import paramiko
         
         # Parsear credenciales y configuración
-        config = provider['config'] if isinstance(provider['config'], dict) else json.loads(provider['config'])
-        credentials = provider['credentials'] if isinstance(provider['credentials'], dict) else json.loads(provider['credentials'])
+        config = provider['config'] if isinstance(provider['config'], dict) else json.loads(provider['config']) if 'config' in provider else {}
+        credentials = provider['credenciales'] if isinstance(provider['credenciales'], dict) else json.loads(provider['credenciales']) if 'credenciales' in provider else {}
         
         logger.info(f"Credenciales SFTP: {credentials}")
         
