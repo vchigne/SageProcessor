@@ -57,7 +57,7 @@ const ErrorModal: React.FC<ErrorModalProps> = ({
                     </div>
                   )}
                   
-                  {technicalDetails && showTechnicalDetails && (
+                  {technicalDetails && (
                     <div className="mt-3">
                       <div className="flex items-center">
                         <InformationCircleIcon className="h-4 w-4 text-gray-400 mr-1" />

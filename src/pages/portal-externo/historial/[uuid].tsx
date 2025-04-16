@@ -330,12 +330,44 @@ export default function HistorialPage() {
   const manejarErrorArchivo = async (response: Response) => {
     try {
       const data = await response.json();
+      
+      // Construir detalles técnicos detallados
+      let technicalDetails = '';
+      
+      // Agregar ruta del archivo y directorio
+      if (data.rutaArchivo) {
+        technicalDetails += `Ruta del archivo: ${data.rutaArchivo}\n`;
+      }
+      
+      if (data.rutaDirectorio) {
+        technicalDetails += `Directorio: ${data.rutaDirectorio}\n`;
+      }
+      
+      // Agregar información del proveedor de nube
+      if (data.proveedorNube) {
+        technicalDetails += `Proveedor de nube: ${data.proveedorNube}\n`;
+      }
+      
+      if (data.rutaNube) {
+        technicalDetails += `Ruta en la nube: ${data.rutaNube}\n`;
+      }
+      
+      // Agregar detalles del error técnico
+      if (data.errorTecnico) {
+        technicalDetails += `Error técnico: ${data.errorTecnico}\n`;
+      }
+      
+      // Agregar detalles de conexión si están disponibles
+      if (data.detallesConexion) {
+        technicalDetails += `Detalles de conexión: ${JSON.stringify(data.detallesConexion, null, 2)}\n`;
+      }
+      
       setErrorModal({
         isOpen: true,
         title: 'Error al acceder al archivo',
         message: data.error || 'No se pudo acceder al archivo solicitado.',
         details: data.details || 'El archivo pudo haber sido eliminado o movido a otro almacenamiento.',
-        technicalDetails: data.errorTecnico || data.rutaArchivo || data.rutaDirectorio || '',
+        technicalDetails: technicalDetails || data.errorTecnico || data.rutaArchivo || data.rutaDirectorio || '',
         errorType: data.tipo || 'error_desconocido',
       });
       return false;
@@ -371,12 +403,29 @@ export default function HistorialPage() {
       return true;
     } catch (error) {
       console.error('Error al verificar ZIP:', error);
+      
+      // Construir detalles técnicos detallados
+      let technicalDetails = '';
+      
+      if (error instanceof Error) {
+        technicalDetails += `Error: ${error.message}\n`;
+        if (error.stack) {
+          technicalDetails += `Stack: ${error.stack}\n`;
+        }
+      }
+      
+      // Si hay información adicional en el error, intentar extraerla
+      if (error.config) {
+        technicalDetails += `URL: ${error.config.url}\n`;
+        technicalDetails += `Método: ${error.config.method}\n`;
+      }
+      
       setErrorModal({
         isOpen: true,
         title: 'Error al descargar archivo ZIP',
         message: 'No se pudo descargar el archivo ZIP de la ejecución.',
         details: 'Ocurrió un error de comunicación con el servidor.',
-        technicalDetails: error instanceof Error ? error.message : 'Error desconocido',
+        technicalDetails: technicalDetails || (error instanceof Error ? error.message : 'Error desconocido'),
         errorType: 'error_comunicacion',
       });
       return false;
@@ -401,12 +450,32 @@ export default function HistorialPage() {
       return true;
     } catch (error) {
       console.error(`Error al verificar archivo ${tipo}:`, error);
+      
+      // Construir detalles técnicos detallados
+      let technicalDetails = '';
+      
+      if (error instanceof Error) {
+        technicalDetails += `Error: ${error.message}\n`;
+        if (error.stack) {
+          technicalDetails += `Stack: ${error.stack}\n`;
+        }
+      }
+      
+      // Si hay información adicional en el error, intentar extraerla
+      if (error.config) {
+        technicalDetails += `URL: ${error.config.url}\n`;
+        technicalDetails += `Método: ${error.config.method}\n`;
+      }
+      
+      technicalDetails += `Tipo de archivo solicitado: ${tipo}\n`;
+      technicalDetails += `UUID de ejecución: ${uuid}\n`;
+      
       setErrorModal({
         isOpen: true,
         title: `Error al abrir archivo ${tipo}`,
         message: `No se pudo abrir el archivo ${tipo} de la ejecución.`,
         details: 'Ocurrió un error de comunicación con el servidor.',
-        technicalDetails: error instanceof Error ? error.message : 'Error desconocido',
+        technicalDetails: technicalDetails || (error instanceof Error ? error.message : 'Error desconocido'),
         errorType: 'error_comunicacion',
       });
       return false;
