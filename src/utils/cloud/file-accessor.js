@@ -55,7 +55,7 @@ export function getCloudFileAccessor(providerType) {
        */
       downloadFile: async (provider, cloudPath, relativePath, localPath) => {
         try {
-          console.log(`Downloading: ${cloudPath}/${relativePath} to ${localPath}`);
+          console.log(`Downloading: ${cloudPath}${relativePath} to ${localPath}`);
           
           // Extraer las credenciales y configuración del proveedor
           let providerConfig = provider.configuracion;
@@ -63,15 +63,33 @@ export function getCloudFileAccessor(providerType) {
           
           // Asegurarse de que son objetos y no strings
           if (typeof providerConfig === 'string') {
-            providerConfig = JSON.parse(providerConfig);
+            try {
+              providerConfig = JSON.parse(providerConfig);
+            } catch (e) {
+              console.warn('Error al parsear configuración como JSON, usando como string:', e);
+            }
           }
           
           if (typeof providerCredentials === 'string') {
-            providerCredentials = JSON.parse(providerCredentials);
+            try {
+              providerCredentials = JSON.parse(providerCredentials);
+            } catch (e) {
+              console.warn('Error al parsear credenciales como JSON, usando como string:', e);
+            }
+          }
+          
+          // Verificar que tenemos un adaptador válido
+          if (!adapter) {
+            throw new Error(`Adaptador no disponible para tipo ${type}`);
+          }
+          
+          // Verificar que el adaptador tiene el método createClient
+          if (!adapter.createClient) {
+            throw new Error(`El adaptador para ${type} no implementa createClient`);
           }
           
           // Crear cliente para acceder al proveedor
-          const client = await adapter.createClient(providerCredentials, providerConfig);
+          const client = adapter.createClient(providerCredentials, providerConfig);
           
           // Asegurar que el directorio destino existe
           const localDir = path.dirname(localPath);
@@ -80,7 +98,12 @@ export function getCloudFileAccessor(providerType) {
           }
           
           // Combinar cloudPath con relativePath para obtener la ruta completa
-          const remotePath = path.posix.join(cloudPath, relativePath);
+          // Asegurarse de que no hay doble barra
+          const remotePath = cloudPath.endsWith('/') 
+            ? cloudPath + relativePath 
+            : `${cloudPath}/${relativePath}`;
+          
+          console.log(`Ruta remota final: ${remotePath}`);
           
           // Llamar al método de descarga específico del adaptador
           if (adapter.downloadFile) {

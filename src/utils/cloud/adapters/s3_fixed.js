@@ -590,6 +590,31 @@ async function uploadFile(client, localPath, remotePath) {
 }
 
 /**
+ * Calcula el hash SHA-256 de un string
+ * @param {string} message El mensaje para crear el hash
+ * @returns {Promise<string>} El hash en formato hexadecimal
+ */
+async function sha256(message) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(message);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Elimina barras al principio si existen
+ * @param {string} path Ruta para normalizar
+ * @returns {string} Ruta sin barra al principio
+ */
+function removeLeadingSlash(path) {
+  if (path.startsWith('/')) {
+    return path.slice(1);
+  }
+  return path;
+}
+
+/**
  * Descarga un archivo desde Amazon S3
  * @param {Object} client Cliente S3
  * @param {string} remotePath Ruta remota en S3
@@ -597,11 +622,15 @@ async function uploadFile(client, localPath, remotePath) {
  * @returns {Promise<Object>} Información sobre la descarga
  */
 async function downloadFile(client, remotePath, localPath) {
-  console.log(`[S3] Descargando s3://${client.bucket}/${remotePath} a ${localPath}`);
+  // Normalizar la ruta remota para eliminar barras iniciales
+  const normalizedRemotePath = removeLeadingSlash(remotePath);
+  
+  console.log(`[S3] Descargando s3://${client.bucket}/${normalizedRemotePath} a ${localPath}`);
+  console.log('Cliente S3:', JSON.stringify(client, null, 2));
   
   try {
     // Extraer el bucket y la clave del cliente
-    const bucket = client.bucket || client.config?.bucket;
+    const bucket = client.bucket || client.config?.bucket || client.credentials?.bucket;
     if (!bucket) {
       throw new Error('Bucket no especificado en la configuración');
     }
@@ -612,10 +641,11 @@ async function downloadFile(client, remotePath, localPath) {
     }
     
     // Extraer la región o usar el valor por defecto
-    const region = client.region || client.config?.region || 'us-east-1';
+    const region = client.region || client.config?.region || client.credentials?.region || 'us-east-1';
     
     // Construir la URL para acceder al objeto
-    const objectUrl = `https://${bucket}.s3.${region}.amazonaws.com/${remotePath}`;
+    const objectUrl = `https://${bucket}.s3.${region}.amazonaws.com/${normalizedRemotePath}`;
+    console.log(`[S3] URL del objeto: ${objectUrl}`);
     
     // Calcular la fecha en formato AWS
     const date = new Date();
@@ -630,7 +660,7 @@ async function downloadFile(client, remotePath, localPath) {
     };
     
     // Crear la cadena canónica
-    const canonicalUri = `/${remotePath}`;
+    const canonicalUri = `/${normalizedRemotePath}`;
     const canonicalQueryString = '';
     const canonicalHeaders = Object.keys(headers)
       .sort()
@@ -697,6 +727,8 @@ async function downloadFile(client, remotePath, localPath) {
     // Crear el header de autorización
     const authorizationHeader = `${algorithm} Credential=${client.credentials.access_key}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signatureHex}`;
     
+    console.log('[S3] Enviando solicitud a AWS...');
+    
     // Realizar la petición para descargar el objeto
     const response = await fetch(objectUrl, {
       method: 'GET',
@@ -722,6 +754,8 @@ async function downloadFile(client, remotePath, localPath) {
       throw new Error(errorMessage);
     }
     
+    console.log('[S3] Descarga exitosa, procesando respuesta...');
+    
     // Obtener el contenido del objeto
     const fileBuffer = await response.arrayBuffer();
     const fs = require('fs');
@@ -733,6 +767,8 @@ async function downloadFile(client, remotePath, localPath) {
     
     // Escribir el archivo en disco
     fs.writeFileSync(localPath, Buffer.from(fileBuffer));
+    
+    console.log(`[S3] Archivo descargado exitosamente en ${localPath} (${fileBuffer.byteLength} bytes)`);
     
     return {
       success: true,

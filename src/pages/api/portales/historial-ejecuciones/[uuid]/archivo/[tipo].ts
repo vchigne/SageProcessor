@@ -38,17 +38,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const ejecucion = result.rows[0];
     
+    console.log("Datos de ejecución:", JSON.stringify(ejecucion, null, 2));
+    
     // Determinar si el archivo está en la nube o local
-    const estaEnNube = ejecucion.migrado_a_nube && ejecucion.ruta_nube;
+    // Verificar tanto migrado_a_nube como si la ruta_nube o ruta_directorio comienza con "cloud://"
+    const estaEnNube = (ejecucion.migrado_a_nube && ejecucion.ruta_nube) || 
+                      (ejecucion.ruta_directorio && ejecucion.ruta_directorio.startsWith('cloud://'));
     let execDir;
     
     if (estaEnNube) {
-      console.log('Ejecución migrada a la nube:', ejecucion.ruta_nube);
-      // No necesitamos verificar si el directorio existe, porque accederemos a través del adaptador de nube
-      execDir = ejecucion.ruta_nube;
+      // Determinar si usamos ruta_nube o ruta_directorio (en caso de cloud://)
+      if (ejecucion.ruta_nube) {
+        console.log('Ejecución migrada a la nube (ruta_nube):', ejecucion.ruta_nube);
+        execDir = ejecucion.ruta_nube;
+      } else if (ejecucion.ruta_directorio && ejecucion.ruta_directorio.startsWith('cloud://')) {
+        console.log('Ejecución migrada a la nube (ruta_directorio):', ejecucion.ruta_directorio);
+        execDir = ejecucion.ruta_directorio;
+      } else {
+        return res.status(500).json({ message: 'Inconsistencia en datos de ejecución: marcada como migrada pero sin ruta de nube válida' });
+      }
     } else {
       // Usar el directorio almacenado en la base de datos si existe, sino construir la ruta por defecto
-      if (ejecucion.ruta_directorio) {
+      if (ejecucion.ruta_directorio && !ejecucion.ruta_directorio.startsWith('cloud://')) {
         execDir = ejecucion.ruta_directorio;
       } else {
         execDir = path.join(process.cwd(), 'executions', String(uuid));
@@ -109,26 +120,62 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     
     if (estaEnNube) {
       try {
-        // Obtener información del proveedor de la nube
-        const providerResult = await pool.query(
-          'SELECT id, nombre, tipo, descripcion, configuracion, credenciales FROM cloud_providers WHERE id = $1',
-          [ejecucion.nube_primaria_id]
-        );
+        // Determinar la ruta y el proveedor de nube a utilizar
+        let cloudPath;
+        let providerName;
+        let provider;
         
-        if (providerResult.rows.length === 0) {
-          return res.status(500).json({ message: 'Proveedor de nube no encontrado' });
+        // Si estamos usando ruta_directorio con formato cloud://
+        if (ejecucion.ruta_directorio && ejecucion.ruta_directorio.startsWith('cloud://') && (!ejecucion.ruta_nube || !ejecucion.nube_primaria_id)) {
+          // Extraer el nombre del proveedor de la URI en formato cloud://proveedor/ruta
+          const cloudParts = ejecucion.ruta_directorio.substring(8).split('/');
+          providerName = cloudParts[0];
+          
+          // Construir la ruta sin el prefijo cloud://proveedor
+          cloudPath = '/' + cloudParts.slice(1).join('/');
+          
+          console.log(`Usando ruta_directorio en formato cloud://, proveedor: ${providerName}, ruta: ${cloudPath}`);
+          
+          // Obtener información del proveedor por nombre
+          const providerResult = await pool.query(
+            'SELECT id, nombre, tipo, descripcion, configuracion, credenciales FROM cloud_providers WHERE nombre = $1',
+            [providerName]
+          );
+          
+          if (providerResult.rows.length === 0) {
+            return res.status(500).json({ message: `Proveedor de nube no encontrado: ${providerName}` });
+          }
+          
+          provider = providerResult.rows[0];
+        } else {
+          // Usar los campos estándar de la base de datos
+          // Obtener información del proveedor de la nube
+          const providerResult = await pool.query(
+            'SELECT id, nombre, tipo, descripcion, configuracion, credenciales FROM cloud_providers WHERE id = $1',
+            [ejecucion.nube_primaria_id]
+          );
+          
+          if (providerResult.rows.length === 0) {
+            return res.status(500).json({ message: 'Proveedor de nube no encontrado' });
+          }
+          
+          provider = providerResult.rows[0];
+          cloudPath = ejecucion.ruta_nube;
         }
         
-        const provider = providerResult.rows[0];
         console.log(`Obteniendo archivo desde nube ${provider.nombre} (${provider.tipo})`);
         
         // Crear un directorio temporal para el archivo
         const tempDir = path.join(os.tmpdir(), 'sage-cloud-downloads', uuidv4());
         fs.mkdirSync(tempDir, { recursive: true });
         
-        // Determinar la ruta del archivo en la nube
-        let cloudPath = ejecucion.ruta_nube;
+        // Variables para la ruta relativa
         let relativePath;
+        
+        // Verificar si la ruta de nube termina con "/" y añadirla si no
+        if (!cloudPath.endsWith('/')) {
+          cloudPath = cloudPath + '/';
+        }
         
         switch (String(tipo)) {
           case 'log':
@@ -151,8 +198,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         // Generar ruta temporal local para almacenar el archivo descargado
         const tempFilePath = path.join(tempDir, path.basename(relativePath));
         
+        try {
+          // Intentar parsear la configuración y credenciales si son strings
+          if (typeof provider.configuracion === 'string') {
+            provider.configuracion = JSON.parse(provider.configuracion);
+          }
+          
+          if (typeof provider.credenciales === 'string') {
+            provider.credenciales = JSON.parse(provider.credenciales);
+          }
+        } catch (parseError) {
+          console.error('Error parseando configuración del proveedor:', parseError);
+        }
+        
         // Descargar el archivo de la nube
         console.log(`Descargando ${relativePath} desde ${cloudPath} a ${tempFilePath}`);
+        console.log('Tipo de proveedor:', provider.tipo);
+        console.log('Configuración del proveedor:', JSON.stringify(provider.configuracion, null, 2));
+        
         await fileAccessor.downloadFile(provider, cloudPath, relativePath, tempFilePath);
         
         if (!fs.existsSync(tempFilePath)) {
