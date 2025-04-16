@@ -653,9 +653,11 @@ async function downloadFile(client, remotePath, localPath) {
     // Extraer la región o usar el valor por defecto
     const region = client.region || client.config?.region || client.credentials?.region || 'us-east-1';
     
-    // Construir la URL para acceder al objeto
-    const objectUrl = `https://${bucket}.s3.${region}.amazonaws.com/${normalizedRemotePath}`;
+    // Construir la URL para acceder al objeto correctamente formateada 
+    // Formato correcto: https://s3.REGION.amazonaws.com/BUCKET/KEY
+    const objectUrl = `https://s3.${region}.amazonaws.com/${bucket}/${normalizedRemotePath}`;
     console.log(`[S3] URL del objeto: ${objectUrl}`);
+    console.log(`[S3] Detalles de acceso: Región=${region}, Bucket=${bucket}, Path=${normalizedRemotePath}`);
     
     // Calcular la fecha en formato AWS
     const date = new Date();
@@ -664,13 +666,14 @@ async function downloadFile(client, remotePath, localPath) {
     
     // Crear los encabezados necesarios para la autenticación
     const headers = {
-      'host': `${bucket}.s3.${region}.amazonaws.com`,
+      'host': `s3.${region}.amazonaws.com`,
       'x-amz-date': amzDate,
       'x-amz-content-sha256': 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855' // Hash para cuerpo vacío
     };
     
     // Crear la cadena canónica
-    const canonicalUri = `/${normalizedRemotePath}`;
+    // En el formato de dirección virtual-hosted-style, debemos incluir el bucket en la URI canónica
+    const canonicalUri = `/${bucket}/${normalizedRemotePath}`;
     const canonicalQueryString = '';
     const canonicalHeaders = Object.keys(headers)
       .sort()
