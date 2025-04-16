@@ -326,14 +326,91 @@ export default function HistorialPage() {
   
 
   
-  // Función para descargar ZIP
-  const descargarZIP = (uuid: string) => {
-    window.open(`/api/portales/historial-ejecuciones/${uuid}/zip`, '_blank');
+  // Manejador de errores para archivos y ZIP
+  const manejarErrorArchivo = async (response: Response) => {
+    try {
+      const data = await response.json();
+      setErrorModal({
+        isOpen: true,
+        title: 'Error al acceder al archivo',
+        message: data.error || 'No se pudo acceder al archivo solicitado.',
+        details: data.details || 'El archivo pudo haber sido eliminado o movido a otro almacenamiento.',
+        technicalDetails: data.errorTecnico || data.rutaArchivo || data.rutaDirectorio || '',
+        errorType: data.tipo || 'error_desconocido',
+      });
+      return false;
+    } catch (error) {
+      console.error('Error al procesar respuesta de error:', error);
+      setErrorModal({
+        isOpen: true,
+        title: 'Error inesperado',
+        message: 'Ocurrió un error al procesar la respuesta del servidor.',
+        details: 'Por favor intente nuevamente más tarde.',
+        technicalDetails: error instanceof Error ? error.message : 'Error desconocido',
+        errorType: 'error_interno',
+      });
+      return false;
+    }
   };
 
-  // Función para abrir archivo en nueva pestaña
-  const abrirArchivo = (uuid: string, tipo: 'log' | 'yaml' | 'datos') => {
-    window.open(`/api/portales/historial-ejecuciones/${uuid}/archivo/${tipo}`, '_blank');
+  // Función para descargar ZIP con manejo de errores
+  const descargarZIP = async (uuid: string) => {
+    try {
+      // Primero verificamos si el archivo existe
+      const response = await fetch(`/api/portales/historial-ejecuciones/${uuid}/zip`, {
+        method: 'HEAD'
+      });
+      
+      if (!response.ok) {
+        const fullResponse = await fetch(`/api/portales/historial-ejecuciones/${uuid}/zip`);
+        return await manejarErrorArchivo(fullResponse);
+      }
+      
+      // Si llegamos aquí, el archivo existe y podemos descargarlo
+      window.open(`/api/portales/historial-ejecuciones/${uuid}/zip`, '_blank');
+      return true;
+    } catch (error) {
+      console.error('Error al verificar ZIP:', error);
+      setErrorModal({
+        isOpen: true,
+        title: 'Error al descargar archivo ZIP',
+        message: 'No se pudo descargar el archivo ZIP de la ejecución.',
+        details: 'Ocurrió un error de comunicación con el servidor.',
+        technicalDetails: error instanceof Error ? error.message : 'Error desconocido',
+        errorType: 'error_comunicacion',
+      });
+      return false;
+    }
+  };
+
+  // Función para abrir archivo en nueva pestaña con manejo de errores
+  const abrirArchivo = async (uuid: string, tipo: 'log' | 'yaml' | 'datos') => {
+    try {
+      // Primero verificamos si el archivo existe
+      const response = await fetch(`/api/portales/historial-ejecuciones/${uuid}/archivo/${tipo}`, {
+        method: 'HEAD'
+      });
+      
+      if (!response.ok) {
+        const fullResponse = await fetch(`/api/portales/historial-ejecuciones/${uuid}/archivo/${tipo}`);
+        return await manejarErrorArchivo(fullResponse);
+      }
+      
+      // Si llegamos aquí, el archivo existe y podemos abrirlo
+      window.open(`/api/portales/historial-ejecuciones/${uuid}/archivo/${tipo}`, '_blank');
+      return true;
+    } catch (error) {
+      console.error(`Error al verificar archivo ${tipo}:`, error);
+      setErrorModal({
+        isOpen: true,
+        title: `Error al abrir archivo ${tipo}`,
+        message: `No se pudo abrir el archivo ${tipo} de la ejecución.`,
+        details: 'Ocurrió un error de comunicación con el servidor.',
+        technicalDetails: error instanceof Error ? error.message : 'Error desconocido',
+        errorType: 'error_comunicacion',
+      });
+      return false;
+    }
   };
 
   // Función para formatear fecha
@@ -614,7 +691,7 @@ export default function HistorialPage() {
                             <button 
                               className="text-blue-600 hover:text-blue-900" 
                               title="Ver log"
-                              onClick={() => abrirArchivo(ejecucion.uuid, 'log')}
+                              onClick={async () => await abrirArchivo(ejecucion.uuid, 'log')}
                             >
                               <DocumentTextIcon className="h-5 w-5" />
                             </button>
@@ -623,7 +700,7 @@ export default function HistorialPage() {
                             <button 
                               className="text-green-600 hover:text-green-900" 
                               title="Ver YAML"
-                              onClick={() => abrirArchivo(ejecucion.uuid, 'yaml')}
+                              onClick={async () => await abrirArchivo(ejecucion.uuid, 'yaml')}
                             >
                               <DocumentIcon className="h-5 w-5" />
                             </button>
@@ -632,7 +709,7 @@ export default function HistorialPage() {
                             <button 
                               className="text-purple-600 hover:text-purple-900" 
                               title="Ver archivo de datos"
-                              onClick={() => abrirArchivo(ejecucion.uuid, 'datos')}
+                              onClick={async () => await abrirArchivo(ejecucion.uuid, 'datos')}
                             >
                               <ArchiveBoxIcon className="h-5 w-5" />
                             </button>
@@ -640,7 +717,7 @@ export default function HistorialPage() {
                           <button 
                             className="text-gray-600 hover:text-gray-900" 
                             title="Descargar todos los archivos (ZIP)"
-                            onClick={() => descargarZIP(ejecucion.uuid)}
+                            onClick={async () => await descargarZIP(ejecucion.uuid)}
                           >
                             <ArrowDownTrayIcon className="h-5 w-5" />
                           </button>
@@ -711,6 +788,18 @@ export default function HistorialPage() {
           </>
         )}
       </div>
+      
+      {/* Modal de error */}
+      <ErrorModal
+        isOpen={errorModal.isOpen}
+        onClose={() => setErrorModal({...errorModal, isOpen: false})}
+        title={errorModal.title}
+        message={errorModal.message}
+        details={errorModal.details}
+        technicalDetails={errorModal.technicalDetails}
+        errorType={errorModal.errorType}
+        showTechnicalDetails={false}
+      />
     </PortalLayout>
   );
 }
