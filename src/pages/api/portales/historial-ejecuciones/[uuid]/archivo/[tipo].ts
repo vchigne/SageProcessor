@@ -193,6 +193,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         // Variables para la ruta relativa
         let relativePath;
         
+        // Verificar que cloudPath existe y añadir / al final si no termina con eso
+        if (!cloudPath) {
+          console.error('Error: cloudPath es indefinido o nulo');
+          return res.status(500).json({
+            message: 'Error en la ruta de nube',
+            error: 'La ruta de almacenamiento en nube es inválida.',
+            details: 'No se pudo determinar la ruta en la nube para esta ejecución.',
+            tipo: 'error_ruta_nube',
+            nube_primaria_id: ejecucion.nube_primaria_id,
+            ruta_nube: ejecucion.ruta_nube
+          });
+        }
+        
+        // Asegurar que cloudPath es un string
+        cloudPath = String(cloudPath);
+        
         // Verificar si la ruta de nube termina con "/" y añadirla si no
         if (!cloudPath.endsWith('/')) {
           cloudPath = cloudPath + '/';

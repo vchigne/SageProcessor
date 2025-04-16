@@ -126,11 +126,52 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           });
         }
         
-        if (!cloudFiles || cloudFiles.length === 0) {
+        // Verificar si cloudFiles existe y tiene la estructura correcta
+        console.log('Estructura de cloudFiles:', JSON.stringify(cloudFiles, null, 2));
+        
+        if (!cloudFiles) {
           return res.status(404).json({
             message: 'No se encontraron archivos en la nube',
             error: 'No hay archivos disponibles para esta ejecución en el almacenamiento en nube.',
             tipo: 'archivos_nube_no_encontrados',
+            proveedor: providerName,
+            ruta: cloudPath,
+            detalles: 'La respuesta del adaptador es nula'
+          });
+        }
+        
+        // Normalizar la estructura de cloudFiles para asegurar que siempre sea iterable
+        let filesArray = [];
+        
+        if (Array.isArray(cloudFiles)) {
+          filesArray = cloudFiles;
+        } else if (cloudFiles.files && Array.isArray(cloudFiles.files)) {
+          filesArray = cloudFiles.files;
+        } else if (cloudFiles.Contents && Array.isArray(cloudFiles.Contents)) {
+          // Para respuestas de S3 que tienen un formato diferente
+          filesArray = cloudFiles.Contents.map(item => ({
+            name: item.Key.split('/').pop(),
+            path: item.Key,
+            size: item.Size,
+            lastModified: item.LastModified
+          }));
+        } else {
+          console.error('Formato de respuesta no reconocido:', cloudFiles);
+          return res.status(500).json({
+            message: 'Formato de respuesta no reconocido',
+            error: 'El proveedor de nube devolvió datos en un formato no compatible.',
+            tipo: 'error_formato_respuesta',
+            proveedor: providerName,
+            ruta: cloudPath,
+            respuestaOriginal: JSON.stringify(cloudFiles).substring(0, 1000)
+          });
+        }
+        
+        if (filesArray.length === 0) {
+          return res.status(404).json({
+            message: 'No se encontraron archivos en la nube',
+            error: 'No hay archivos disponibles para esta ejecución en el almacenamiento en nube.',
+            tipo: 'archivos_nube_vacios',
             proveedor: providerName,
             ruta: cloudPath
           });
@@ -144,7 +185,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const zipfile = new yazl.ZipFile();
         
         // Descargar cada archivo y agregarlo al ZIP
-        for (const file of cloudFiles) {
+        for (const file of filesArray) {
+          // Verificar que file y file.name existen
+          if (!file || !file.name) {
+            console.warn('Archivo inválido en la lista:', file);
+            continue;
+          }
+          
           const fileName = file.name;
           const tempFilePath = path.join(tempDir, fileName);
           
