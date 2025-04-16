@@ -1,10 +1,18 @@
-import { pool } from '../../../utils/db';
+import { Pool } from 'pg';
+
+// Conectar a la base de datos PostgreSQL
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
 
 export default async function handler(req, res) {
+  // Obtener una conexión del pool
+  const client = await pool.connect();
+
   try {
     if (req.method === 'GET') {
       // Obtener la configuración actual
-      const result = await pool.query(`
+      const result = await client.query(`
         SELECT * FROM ejecuciones_config 
         ORDER BY id DESC 
         LIMIT 1
@@ -27,12 +35,12 @@ export default async function handler(req, res) {
       } = req.body;
 
       // Verificar si ya existe una configuración
-      const checkResult = await pool.query('SELECT id FROM ejecuciones_config LIMIT 1');
+      const checkResult = await client.query('SELECT id FROM ejecuciones_config LIMIT 1');
       
       let result;
       if (checkResult.rows.length === 0) {
         // Insertar nueva configuración
-        result = await pool.query(`
+        result = await client.query(`
           INSERT INTO ejecuciones_config
           (nube_primaria_id, nubes_alternativas, tiempo_retencion_local, prefijo_ruta_nube, migrar_automaticamente)
           VALUES ($1, $2, $3, $4, $5)
@@ -40,7 +48,7 @@ export default async function handler(req, res) {
         `, [nube_primaria_id, nubes_alternativas, tiempo_retencion_local, prefijo_ruta_nube, migrar_automaticamente]);
       } else {
         // Actualizar configuración existente
-        result = await pool.query(`
+        result = await client.query(`
           UPDATE ejecuciones_config
           SET nube_primaria_id = $1,
               nubes_alternativas = $2,
@@ -60,5 +68,7 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error('Error en API ejecuciones-config:', error);
     return res.status(500).json({ message: 'Error interno del servidor', error: error.message });
+  } finally {
+    client.release();
   }
 }
