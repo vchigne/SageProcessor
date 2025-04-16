@@ -5,7 +5,11 @@ import path from 'path';
 import * as yazl from 'yazl';
 import * as os from 'os';
 import { v4 as uuidv4 } from 'uuid';
-import { getCloudFileAccessor, listFiles } from '@/utils/cloud/file-accessor';
+import * as s3Adapter from '@/utils/cloud/adapters/s3_fixed';
+import * as azureAdapter from '@/utils/cloud/adapters/azure';
+import * as gcpAdapter from '@/utils/cloud/adapters/gcp';
+import * as sftpAdapter from '@/utils/cloud/adapters/sftp';
+import * as minioAdapter from '@/utils/cloud/adapters/minio';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -49,11 +53,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     
     if (esRutaEnNube) {
       // Manejar archivos desde la nube
+      // Definir la variable provider a nivel del bloque try/catch para acceder a ella en caso de error
+      let provider = null;
+      let providerName = '';
+      let cloudPath = '';
+      
       try {
         // Extraer el nombre del proveedor de la URI en formato cloud://proveedor/ruta
         const cloudParts = execDir.substring(8).split('/');
-        const providerName = cloudParts[0];
-        const cloudPath = '/' + cloudParts.slice(1).join('/');
+        providerName = cloudParts[0];
+        cloudPath = '/' + cloudParts.slice(1).join('/');
         
         console.log(`Descargando archivos desde nube: ${providerName}, ruta: ${cloudPath}`);
         
@@ -71,7 +80,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           });
         }
         
-        const provider = providerResult.rows[0];
+        provider = providerResult.rows[0];
         
         // Asegurarse de que la configuración y credenciales son objetos
         try {
@@ -86,20 +95,36 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           console.error('Error parseando configuración del proveedor:', parseError);
         }
         
-        // Obtener el adaptador para el tipo de proveedor
-        const fileAccessor = getCloudFileAccessor(provider.tipo);
+        // Seleccionar el adaptador correcto según el tipo de proveedor
+        let cloudFiles;
+        const tipo = provider.tipo.toLowerCase();
+        console.log(`Usando adaptador para tipo de proveedor: ${tipo}`);
         
-        if (!fileAccessor) {
+        try {
+          if (tipo === 's3') {
+            cloudFiles = await s3Adapter.listContents(provider.credenciales, provider.configuracion, cloudPath);
+          } else if (tipo === 'azure') {
+            cloudFiles = await azureAdapter.listContents(provider.credenciales, provider.configuracion, cloudPath);
+          } else if (tipo === 'gcp') {
+            cloudFiles = await gcpAdapter.listContents(provider.credenciales, provider.configuracion, cloudPath);
+          } else if (tipo === 'sftp') {
+            cloudFiles = await sftpAdapter.listContents(provider.credenciales, provider.configuracion, cloudPath);
+          } else if (tipo === 'minio') {
+            cloudFiles = await minioAdapter.listContents(provider.credenciales, provider.configuracion, cloudPath);
+          } else {
+            throw new Error(`Tipo de proveedor no soportado: ${tipo}`);
+          }
+        } catch (adapterError) {
+          console.error(`Error al listar contenido desde ${tipo}:`, adapterError);
           return res.status(500).json({
-            message: `Adaptador no disponible para tipo ${provider.tipo}`,
-            error: `No hay adaptador configurado para el tipo de proveedor ${provider.tipo}.`,
-            tipo: 'adaptador_no_encontrado',
-            proveedor: providerName
+            message: `Error al listar archivos desde ${tipo}`,
+            error: `No se pudo obtener la lista de archivos desde el proveedor ${providerName}.`,
+            detallesTecnicos: adapterError.message,
+            tipo: 'error_listado_archivos',
+            proveedor: providerName,
+            rutaNube: cloudPath
           });
         }
-        
-        // Listar archivos en la nube usando el adaptador
-        const cloudFiles = await fileAccessor.listContents(provider.credenciales, provider.configuracion, cloudPath);
         
         if (!cloudFiles || cloudFiles.length === 0) {
           return res.status(404).json({
@@ -124,8 +149,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           const tempFilePath = path.join(tempDir, fileName);
           
           try {
-            // Descargar el archivo de la nube usando el adaptador
-            await fileAccessor.downloadFile(provider.credenciales, provider.configuracion, file.path, tempFilePath);
+            // Descargar el archivo de la nube usando el adaptador correcto según el tipo
+            if (tipo === 's3') {
+              await s3Adapter.downloadFile(provider.credenciales, provider.configuracion, file.path, tempFilePath);
+            } else if (tipo === 'azure') {
+              await azureAdapter.downloadFile(provider.credenciales, provider.configuracion, file.path, tempFilePath);
+            } else if (tipo === 'gcp') {
+              await gcpAdapter.downloadFile(provider.credenciales, provider.configuracion, file.path, tempFilePath);
+            } else if (tipo === 'sftp') {
+              await sftpAdapter.downloadFile(provider.credenciales, provider.configuracion, file.path, tempFilePath);
+            } else if (tipo === 'minio') {
+              await minioAdapter.downloadFile(provider.credenciales, provider.configuracion, file.path, tempFilePath);
+            }
             
             if (fs.existsSync(tempFilePath)) {
               // Agregar al ZIP
@@ -134,7 +169,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               console.warn(`Archivo ${fileName} no se pudo descargar correctamente`);
             }
           } catch (downloadError) {
-            console.error(`Error descargando archivo ${fileName}:`, downloadError);
+            console.error(`Error descargando archivo ${fileName} desde ${tipo}:`, downloadError);
             // Continuar con otros archivos incluso si hay error en uno
           }
         }
@@ -168,14 +203,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return;
       } catch (cloudError) {
         console.error('Error procesando archivos desde la nube:', cloudError);
-        // Asegurarnos de que provider esté definido para evitar errores
-        const providerName = (typeof provider !== 'undefined' && provider && provider.nombre) ? provider.nombre : 'desconocido';
+        // Usar el nombre del proveedor que ya definimos en el alcance superior
+        // o si no está disponible, usar el nombre del provider si existe
+        let providerDisplayName = 'desconocido';
+        if (providerName) {
+          providerDisplayName = providerName;
+        } else if (provider && provider.nombre) {
+          providerDisplayName = provider.nombre;
+        }
+        
         return res.status(500).json({
           message: 'Error al acceder a archivos en la nube',
           error: 'Ocurrió un error al acceder a los archivos en el almacenamiento en nube.',
           details: cloudError.message,
           tipo: 'error_acceso_nube',
-          proveedor: providerName,
+          proveedor: providerDisplayName,
           rutaNube: execDir
         });
       }
