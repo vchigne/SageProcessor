@@ -249,23 +249,43 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         
         // Extraer correctamente la ruta del archivo en la nube 
         // La ruta completa está en formato cloud://proveedor/ruta/al/archivo
-        const cloudParts = execDir.substring(8).split('/');
-        // Quitar el nombre del proveedor para obtener la ruta real
-        const actualBasePath = cloudParts.slice(1).join('/');
+        // IMPORTANTE: Debemos ignorar el nombre descriptivo del proveedor y usar solo la ruta real
+        
+        // 1. Extracción de la URI completa ignorando el nombre del proveedor
+        const uriSinProtocolo = execDir.substring(8); // Quitar 'cloud://'
+        const primerSlash = uriSinProtocolo.indexOf('/');
+        
+        // 2. Extraer la ruta real después del primer slash (ignorando el nombre del proveedor)
+        const rutaReal = primerSlash !== -1 ? uriSinProtocolo.substring(primerSlash + 1) : '';
+        
+        // Asegurarse de que las credenciales y configuraciones están en formato objeto
+        try {
+            if (typeof credentials === 'string') {
+                credentials = JSON.parse(credentials);
+            }
+            if (typeof config === 'string') {
+                config = JSON.parse(config);
+            }
+        } catch (err) {
+            console.error('Error parseando credenciales o configuración:', err);
+        }
         
         console.log(`ANÁLISIS DE RUTA:
           - URI original: ${execDir}
-          - Proveedor: ${cloudParts[0]} (${providerName})
-          - Ruta base: ${actualBasePath}
+          - Nombre descriptivo: ${uriSinProtocolo.substring(0, primerSlash)}
+          - Ruta real: ${rutaReal}
+          - Bucket real según credenciales: ${credentials.bucket || 'No disponible'}
           - Archivo solicitado: ${relativePath}
         `);
         
-        // Combinar la ruta base con el nombre del archivo
+        // Combinar la ruta real con el nombre del archivo solicitado
         let remoteFilePath;
-        if (actualBasePath.endsWith('/')) {
-          remoteFilePath = `${actualBasePath}${relativePath}`;
+        if (rutaReal.endsWith('/')) {
+          remoteFilePath = `${rutaReal}${relativePath}`;
+        } else if (rutaReal) {
+          remoteFilePath = `${rutaReal}/${relativePath}`;
         } else {
-          remoteFilePath = `${actualBasePath}/${relativePath}`;
+          remoteFilePath = relativePath;
         }
         
         console.log(`RUTA REMOTA FINAL: ${remoteFilePath}`);
@@ -274,9 +294,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         console.log(`Descargando ${relativePath} desde ${cloudPath} a ${tempFilePath}`);
         console.log('Tipo de proveedor:', provider.tipo);
         
-        // Normalizar las credenciales y la configuración
-        let credentials = provider.credenciales;
-        let config = provider.configuracion;
+        // Ya hemos declarado 'credentials' y 'config' arriba, así que usamos esas referencias
+        // En lugar de crear nuevas variables con el mismo nombre
+        credentials = provider.credenciales;
+        config = provider.configuracion;
         
         // Asegurarse de que credentials y config sean objetos, no strings
         if (typeof credentials === 'string') {
