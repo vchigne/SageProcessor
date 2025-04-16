@@ -49,10 +49,26 @@ export default async function handler(req, res) {
       ? JSON.parse(provider.configuracion) 
       : provider.configuracion;
     
-    // Si es MinIO, imprimir la configuración para debug
+    // Si es MinIO, imprimir la configuración completa para debug
     if (provider.tipo === 'minio') {
-      console.log('Probando conexión MinIO con config:', JSON.stringify(config));
-      console.log('Y credenciales (bucket solo):', credentials.bucket);
+      console.log('Probando conexión MinIO con config:', JSON.stringify(config, null, 2));
+      console.log('Y credenciales completas:', JSON.stringify(credentials, null, 2));
+      console.log('Validando endpoint existe:', config && config.endpoint ? 'Sí' : 'No');
+      console.log('Adaptador cargado:', adapter ? 'Sí' : 'No');
+      
+      // Si no hay endpoint en la configuración, revisar si está en las credenciales
+      if (!config?.endpoint && credentials?.endpoint) {
+        console.log('Endpoint encontrado en credenciales, moviendo a config');
+        config.endpoint = credentials.endpoint;
+      }
+      
+      // Si hay un endpoint pero no tiene protocolo, agregarlo
+      if (config?.endpoint && !config.endpoint.startsWith('http')) {
+        const useSSL = config.secure !== false;
+        const protocol = useSSL ? 'https://' : 'http://';
+        console.log(`Añadiendo protocolo ${protocol} al endpoint ${config.endpoint}`);
+        config.endpoint = protocol + config.endpoint;
+      }
     }
     
     // Probar la conexión usando el adaptador real

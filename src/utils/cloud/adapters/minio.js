@@ -51,11 +51,18 @@ async function testConnection(credentials, config = {}) {
     };
   }
   
+  // Verificar si el endpoint está en credenciales en lugar de config
   if (!config.endpoint) {
-    return {
-      success: false,
-      message: 'Falta la configuración del endpoint para MinIO'
-    };
+    if (credentials.endpoint) {
+      // Mover el endpoint a la configuración
+      config.endpoint = credentials.endpoint;
+      console.log("MinIO: Se encontró endpoint en credenciales, movido a config:", config.endpoint);
+    } else {
+      return {
+        success: false,
+        message: 'Falta la configuración del endpoint para MinIO. Por favor, verifica que el campo "Endpoint" esté completo.'
+      };
+    }
   }
   
   try {
@@ -245,8 +252,15 @@ async function listContents(credentials, config = {}, path = '') {
       throw new Error('Faltan credenciales requeridas para MinIO');
     }
 
+    // Verificar si el endpoint está en credenciales en lugar de config
     if (!config.endpoint) {
-      throw new Error('Falta la configuración del endpoint para MinIO');
+      if (credentials.endpoint) {
+        // Mover el endpoint a la configuración
+        config.endpoint = credentials.endpoint;
+        console.log("[MinIO] listContents: Se encontró endpoint en credenciales, movido a config:", config.endpoint);
+      } else {
+        throw new Error('Falta la configuración del endpoint para MinIO. Por favor, verifica que el campo "Endpoint" esté completo.');
+      }
     }
 
     // Determinar si el endpoint incluye el protocolo
