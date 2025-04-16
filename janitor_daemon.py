@@ -398,7 +398,7 @@ class JanitorDaemon:
             UPDATE ejecuciones_yaml
             SET nube_primaria_id = %s,
                 ruta_nube = %s,
-                ruta_directorio = %s,   -- Actualizar también la ruta_directorio para que sea la ruta en la nube
+                ruta_directorio = %s,   /* Actualizar también la ruta_directorio para que sea la ruta en la nube */
                 nubes_alternativas = %s,
                 rutas_alternativas = %s,
                 migrado_a_nube = TRUE
@@ -406,7 +406,7 @@ class JanitorDaemon:
         """, (
             nube_primaria_id,
             ruta_nube_primaria,
-            ruta_nube_primaria,         -- Usar la misma ruta_nube_primaria como ruta_directorio
+            ruta_nube_primaria,         # Usar la misma ruta_nube_primaria como ruta_directorio
             nubes_alt,
             rutas_alt,
             ejecucion_id
