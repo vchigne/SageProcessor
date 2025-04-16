@@ -309,7 +309,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             tipo: 'error_descarga_archivo',
             proveedor: provider.nombre,
             rutaRemota: remoteFilePath,
-            rutaLocal: tempFilePath
+            rutaRemotaCompleta: `Bucket: ${credentials.bucket || 'No especificado'}, Región: ${credentials.region || config.region || 'No especificado'}, Archivo: ${remoteFilePath}`,
+            rutaLocal: tempFilePath,
+            errorOriginal: downloadError.stack || 'No hay stack trace disponible'
           });
         }
         

@@ -201,7 +201,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           const tempFilePath = path.join(tempDir, fileName);
           
           try {
+            const rutaCompleta = `${cloudPath}/${file.path}`.replace(/\/+/g, '/');
             console.log(`Descargando archivo para ZIP desde proveedor ${tipo}: ${file.path}`);
+            console.log(`RUTA COMPLETA DEL ARCHIVO: ${rutaCompleta}`);
             
             // Normalizar las credenciales y la configuración
             let credentials = provider.credenciales;
@@ -231,6 +233,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               secret_key: credentials.secret_key ? '***' : undefined
             }, null, 2));
             
+            console.log(`Intentando acceder a: Bucket=${credentials.bucket}, Región=${credentials.region || config.region}, Archivo=${file.path}`);
+            
             // Descargar el archivo de la nube usando el adaptador correcto según el tipo
             if (tipo === 's3') {
               await s3Adapter.downloadFile(credentials, config, file.path, tempFilePath);
@@ -252,6 +256,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             }
           } catch (downloadError) {
             console.error(`Error descargando archivo ${fileName} desde ${tipo}:`, downloadError);
+            console.error(`DETALLES COMPLETOS DEL ERROR:
+              Proveedor: ${tipo}
+              Bucket: ${credentials.bucket || 'No especificado'}
+              Región: ${credentials.region || config.region || 'No especificado'}
+              Archivo: ${file.path}
+              Ruta completa: ${cloudPath}/${file.path}
+              Error: ${downloadError.message}
+              Stack: ${downloadError.stack || 'No disponible'}
+            `);
             // Continuar con otros archivos incluso si hay error en uno
           }
         }
