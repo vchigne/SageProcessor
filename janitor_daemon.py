@@ -388,13 +388,13 @@ class JanitorDaemon:
         # Crear cliente S3
         s3_client = boto3.client(
             's3',
-            endpoint_url=config.get('endpoint'),
-            aws_access_key_id=credentials.get('accessKeyId'),
-            aws_secret_access_key=credentials.get('secretAccessKey'),
-            region_name=config.get('region')
+            endpoint_url=credentials.get('endpoint'),
+            aws_access_key_id=credentials.get('access_key'),
+            aws_secret_access_key=credentials.get('secret_key'),
+            region_name=credentials.get('region')
         )
         
-        bucket = config.get('bucket')
+        bucket = credentials.get('bucket')
         
         # Subir todos los archivos en el directorio
         for root, dirs, files in os.walk(local_path):
@@ -421,33 +421,23 @@ class JanitorDaemon:
         config = json.loads(provider['config'])
         credentials = json.loads(provider['credentials'])
         
-        # Determinar el tipo de autenticación (SAS o Key)
-        connection_string = None
+        logger.info(f"Credenciales Azure: {credentials}")
         
-        # Si hay un SAS token
-        if 'sasToken' in credentials:
-            sas_token = credentials.get('sasToken')
-            account_name = config.get('accountName')
-            container = config.get('container')
+        # Obtener string de conexión y nombre del contenedor
+        connection_string = credentials.get('connection_string')
+        container_name = credentials.get('container_name')
+        
+        if not connection_string:
+            raise ValueError("No se configuró correctamente la cadena de conexión para Azure")
             
-            # Crear cliente de servicio
-            account_url = f"https://{account_name}.blob.core.windows.net"
-            blob_service_client = BlobServiceClient(
-                account_url=account_url,
-                credential=sas_token
-            )
-        else:
-            # Usar accountKey
-            account_name = config.get('accountName')
-            account_key = credentials.get('accountKey')
-            container = config.get('container')
+        if not container_name:
+            raise ValueError("No se configuró correctamente el nombre del contenedor para Azure")
             
-            # Crear conexión
-            connection_string = f"DefaultEndpointsProtocol=https;AccountName={account_name};AccountKey={account_key};EndpointSuffix=core.windows.net"
-            blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+        # Crear cliente de servicio usando la cadena de conexión
+        blob_service_client = BlobServiceClient.from_connection_string(connection_string)
         
         # Obtener cliente de contenedor
-        container_client = blob_service_client.get_container_client(container)
+        container_client = blob_service_client.get_container_client(container_name)
         
         # Subir todos los archivos en el directorio
         for root, dirs, files in os.walk(local_path):
@@ -462,7 +452,7 @@ class JanitorDaemon:
                 try:
                     with open(local_file_path, "rb") as data:
                         container_client.upload_blob(name=blob_name, data=data, overwrite=True)
-                    logger.debug(f"Archivo {local_file_path} subido a azure://{container}/{blob_name}")
+                    logger.debug(f"Archivo {local_file_path} subido a azure://{container_name}/{blob_name}")
                 except Exception as e:
                     logger.error(f"Error subiendo archivo a Azure: {e}")
                     raise
@@ -476,18 +466,26 @@ class JanitorDaemon:
         config = json.loads(provider['config'])
         credentials = json.loads(provider['credentials'])
         
+        logger.info(f"Credenciales GCP: {credentials.keys()}")
+        
+        # Obtener el archivo de clave y el nombre del bucket
+        key_data = credentials.get('key_file')
+        bucket_name = credentials.get('bucket_name')
+        
+        if not key_data or not bucket_name:
+            raise ValueError("Faltan credenciales necesarias para GCP (key_file o bucket_name)")
+        
         # Crear archivo temporal para las credenciales
         fd, path = tempfile.mkstemp()
         try:
             with os.fdopen(fd, 'w') as tmp:
                 # Guardar credenciales en archivo JSON
-                json.dump(credentials, tmp)
+                tmp.write(key_data)
             
             # Crear cliente de almacenamiento
             os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = path
             storage_client = storage.Client()
             
-            bucket_name = config.get('bucket')
             bucket = storage_client.bucket(bucket_name)
             
             # Subir todos los archivos en el directorio
@@ -520,9 +518,11 @@ class JanitorDaemon:
         config = json.loads(provider['config'])
         credentials = json.loads(provider['credentials'])
         
-        host = config.get('host')
-        port = int(config.get('port', 22))
-        username = credentials.get('username')
+        logger.info(f"Credenciales SFTP: {credentials}")
+        
+        host = credentials.get('host')
+        port = int(credentials.get('port', 22))
+        user = credentials.get('user')
         password = credentials.get('password')
         
         # Crear cliente SFTP

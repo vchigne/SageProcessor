@@ -195,7 +195,7 @@ def upload_to_azure(local_path, cloud_path, provider):
             try:
                 with open(local_file_path, "rb") as data:
                     container_client.upload_blob(name=blob_name, data=data, overwrite=True)
-                logger.debug(f"Archivo {local_file_path} subido a azure://{container}/{blob_name}")
+                logger.debug(f"Archivo {local_file_path} subido a azure://{container_name}/{blob_name}")
             except Exception as e:
                 logger.error(f"Error subiendo archivo a Azure: {e}")
                 raise
@@ -209,18 +209,26 @@ def upload_to_gcp(local_path, cloud_path, provider):
     config = json.loads(provider['config'])
     credentials = json.loads(provider['credentials'])
     
+    logger.info(f"Credenciales GCP: {credentials.keys()}")
+    
+    # Obtener el archivo de clave y el nombre del bucket
+    key_data = credentials.get('key_file')
+    bucket_name = credentials.get('bucket_name')
+    
+    if not key_data or not bucket_name:
+        raise ValueError("Faltan credenciales necesarias para GCP (key_file o bucket_name)")
+    
     # Crear archivo temporal para las credenciales
     fd, path = tempfile.mkstemp()
     try:
         with os.fdopen(fd, 'w') as tmp:
             # Guardar credenciales en archivo JSON
-            json.dump(credentials, tmp)
+            tmp.write(key_data)
         
         # Crear cliente de almacenamiento
         os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = path
         storage_client = storage.Client()
         
-        bucket_name = config.get('bucket')
         bucket = storage_client.bucket(bucket_name)
         
         # Subir todos los archivos en el directorio
@@ -253,12 +261,14 @@ def upload_to_sftp(local_path, cloud_path, provider):
     config = json.loads(provider['config'])
     credentials = json.loads(provider['credentials'])
     
+    logger.info(f"Credenciales SFTP: {credentials}")
+    
     # Crear cliente SFTP
-    host = config.get('host')
-    port = int(config.get('port', 22))
-    username = credentials.get('username')
+    host = credentials.get('host')
+    port = int(credentials.get('port', 22))
+    user = credentials.get('user')
     password = credentials.get('password')
-    key_path = credentials.get('keyPath')
+    key_path = credentials.get('key_path')
     
     # Inicializar cliente SSH
     ssh = paramiko.SSHClient()
@@ -269,10 +279,10 @@ def upload_to_sftp(local_path, cloud_path, provider):
         if key_path and os.path.exists(key_path):
             # Conectar con clave privada
             private_key = paramiko.RSAKey.from_private_key_file(key_path)
-            ssh.connect(host, port=port, username=username, pkey=private_key)
+            ssh.connect(host, port=port, username=user, pkey=private_key)
         else:
             # Conectar con contraseña
-            ssh.connect(host, port=port, username=username, password=password)
+            ssh.connect(host, port=port, username=user, password=password)
         
         # Abrir cliente SFTP
         sftp = ssh.open_sftp()
