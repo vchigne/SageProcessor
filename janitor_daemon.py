@@ -113,16 +113,29 @@ class JanitorDaemon:
         if self.config['nubes_alternativas']:
             provider_ids.extend(self.config['nubes_alternativas'])
         
+        logger.info(f"Cargando proveedores con IDs: {provider_ids}")
+        
         with self.db_connection.cursor() as cursor:
             placeholders = ','.join(['%s'] * len(provider_ids))
-            cursor.execute(f"SELECT * FROM cloud_providers WHERE id IN ({placeholders})", provider_ids)
+            query = f"SELECT * FROM cloud_providers WHERE id IN ({placeholders})"
+            logger.info(f"Ejecutando consulta: {query} con parámetros {provider_ids}")
+            
+            cursor.execute(query, provider_ids)
             providers = cursor.fetchall()
+            
+            logger.info(f"Proveedores obtenidos: {len(providers) if providers else 0}")
+            
+            if not providers:
+                logger.warning(f"No se encontraron proveedores con los IDs: {provider_ids}")
+                return
             
             # Convertir a diccionarios
             columns = [desc[0] for desc in cursor.description]
             for provider in providers:
                 provider_dict = dict(zip(columns, provider))
                 self.cloud_providers[provider_dict['id']] = provider_dict
+                
+            logger.info(f"Proveedores cargados: {list(self.cloud_providers.keys())}")
     
     def run(self):
         """Ejecutar el daemon"""
@@ -139,6 +152,9 @@ class JanitorDaemon:
                 logger.warning("No hay proveedor de nube primario configurado. No se realizará migración.")
                 return
             
+            logger.info(f"Configuración cargada: {self.config}")
+            logger.info(f"Proveedores de nube cargados: {list(self.cloud_providers.keys())}")
+            
             # Migrar ejecuciones antiguas a la nube
             self._migrate_old_executions()
             
@@ -148,7 +164,9 @@ class JanitorDaemon:
             logger.info("Janitor Daemon completado con éxito")
             
         except Exception as e:
+            import traceback
             logger.error(f"Error ejecutando Janitor Daemon: {e}")
+            logger.error(f"Traza completa: {traceback.format_exc()}")
             raise
         finally:
             # Cerrar la conexión a la base de datos
@@ -163,35 +181,45 @@ class JanitorDaemon:
         horas_retencion = self.config['tiempo_retencion_local']
         fecha_limite = datetime.now() - timedelta(hours=horas_retencion)
         
+        logger.info(f"Fecha límite para migración: {fecha_limite}")
+        
         # Obtener ejecuciones antiguas no migradas
         with self.db_connection.cursor() as cursor:
-            cursor.execute("""
-                SELECT id, nombre_yaml, ruta_directorio, fecha_ejecucion, casilla_id
-                FROM ejecuciones_yaml
-                WHERE fecha_ejecucion < %s
-                AND (migrado_a_nube = FALSE OR migrado_a_nube IS NULL)
-                AND ruta_directorio IS NOT NULL
-                AND ruta_directorio NOT LIKE 'cloud://%'
-            """, (fecha_limite,))
+            # Usar una lista en lugar de una tupla para los parámetros SQL
+            query_params = [fecha_limite]
+            logger.info(f"Ejecutando consulta con parámetros: {query_params}")
             
-            ejecuciones = cursor.fetchall()
-            
-            if not ejecuciones:
-                logger.info("No hay ejecuciones para migrar.")
-                return
-            
-            logger.info(f"Se encontraron {len(ejecuciones)} ejecuciones para migrar.")
-            
-            # Migrar cada ejecución
-            for ejecucion in ejecuciones:
-                try:
-                    self._migrate_execution(ejecucion, cursor)
-                    # Confirmar la transacción
-                    self.db_connection.commit()
-                except Exception as e:
-                    # Revertir la transacción en caso de error
-                    self.db_connection.rollback()
-                    logger.error(f"Error migrando ejecución {ejecucion[0]}: {e}")
+            try:
+                cursor.execute("""
+                    SELECT id, nombre_yaml, ruta_directorio, fecha_ejecucion, casilla_id
+                    FROM ejecuciones_yaml
+                    WHERE fecha_ejecucion < %s
+                    AND (migrado_a_nube = FALSE OR migrado_a_nube IS NULL)
+                    AND ruta_directorio IS NOT NULL
+                    AND ruta_directorio NOT LIKE 'cloud://%'
+                """, query_params)
+                
+                ejecuciones = cursor.fetchall()
+                
+                if not ejecuciones:
+                    logger.info("No hay ejecuciones para migrar.")
+                    return
+                
+                logger.info(f"Se encontraron {len(ejecuciones)} ejecuciones para migrar.")
+                
+                # Migrar cada ejecución
+                for ejecucion in ejecuciones:
+                    try:
+                        self._migrate_execution(ejecucion, cursor)
+                        # Confirmar la transacción
+                        self.db_connection.commit()
+                    except Exception as e:
+                        # Revertir la transacción en caso de error
+                        self.db_connection.rollback()
+                        logger.error(f"Error migrando ejecución {ejecucion[0]}: {e}")
+            except Exception as e:
+                logger.error(f"Error al obtener ejecuciones para migrar: {e}")
+                raise
     
     def _migrate_execution(self, ejecucion, cursor):
         """Migrar una ejecución específica a la nube"""
