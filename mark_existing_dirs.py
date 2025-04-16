@@ -63,8 +63,8 @@ def get_cloud_provider_info(conn):
                     'id': provider[0],
                     'nombre': provider[1],
                     'tipo': provider[3],  # Corregido: tipo está en la posición 3, no 2
-                    'config': provider[5],  # Corregido: configuracion está en la posición 5, no 3
-                    'credentials': provider[4]  # Correcto: credenciales está en la posición 4
+                    'configuracion': provider[5],  # Corregido: configuracion está en la posición 5, no 3
+                    'credenciales': provider[4]  # Correcto: credenciales está en la posición 4
                 }
                 
         logger.info(f"Se cargaron {len(cloud_providers)} proveedores de nube")
@@ -164,8 +164,8 @@ def upload_to_azure(local_path, cloud_path, provider):
     from azure.storage.blob import BlobServiceClient
     
     # Parsear credenciales y configuración
-    config = provider['config'] if isinstance(provider['config'], dict) else json.loads(provider['config'])
-    credentials = provider['credentials'] if isinstance(provider['credentials'], dict) else json.loads(provider['credentials'])
+    config = provider['configuracion'] if isinstance(provider['configuracion'], dict) else json.loads(provider['configuracion'])
+    credentials = provider['credenciales'] if isinstance(provider['credenciales'], dict) else json.loads(provider['credenciales'])
     
     logger.info(f"Credenciales Azure: {credentials}")
     
@@ -206,8 +206,8 @@ def upload_to_gcp(local_path, cloud_path, provider):
     import tempfile
     
     # Parsear credenciales y configuración
-    config = provider['config'] if isinstance(provider['config'], dict) else json.loads(provider['config'])
-    credentials = provider['credentials'] if isinstance(provider['credentials'], dict) else json.loads(provider['credentials'])
+    config = provider['configuracion'] if isinstance(provider['configuracion'], dict) else json.loads(provider['configuracion'])
+    credentials = provider['credenciales'] if isinstance(provider['credenciales'], dict) else json.loads(provider['credenciales'])
     
     logger.info(f"Credenciales GCP: {credentials.keys()}")
     
@@ -258,8 +258,8 @@ def upload_to_sftp(local_path, cloud_path, provider):
     import paramiko
     
     # Parsear credenciales y configuración
-    config = provider['config'] if isinstance(provider['config'], dict) else json.loads(provider['config'])
-    credentials = provider['credentials'] if isinstance(provider['credentials'], dict) else json.loads(provider['credentials'])
+    config = provider['configuracion'] if isinstance(provider['configuracion'], dict) else json.loads(provider['configuracion'])
+    credentials = provider['credenciales'] if isinstance(provider['credenciales'], dict) else json.loads(provider['credenciales'])
     
     logger.info(f"Credenciales SFTP: {credentials}")
     
