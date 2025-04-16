@@ -640,6 +640,10 @@ async function downloadFile(client, remotePath, localPath) {
     secret_key: credentials.secret_key ? '***' : undefined
   }, null, 2));
   
+  console.log(`[S3] RUTA ORIGINAL: ${remotePath}`);
+  console.log(`[S3] RUTA NORMALIZADA FINAL: ${normalizedRemotePath}`);
+  console.log(`[S3] URL DE DESCARGA: https://s3.${credentials.region || 'us-east-1'}.amazonaws.com/${bucket}/${normalizedRemotePath}`);
+  
   try {
     if (!bucket) {
       throw new Error('Bucket no especificado en la configuración');

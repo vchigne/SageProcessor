@@ -247,8 +247,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           console.error('Error parseando configuración del proveedor:', parseError);
         }
         
-        // Ruta completa al archivo en la nube
-        const remoteFilePath = cloudPath + relativePath;
+        // Extraer correctamente la ruta del archivo en la nube 
+        // La ruta completa está en formato cloud://proveedor/ruta/al/archivo
+        const cloudParts = execDir.substring(8).split('/');
+        // Quitar el nombre del proveedor para obtener la ruta real
+        const actualBasePath = cloudParts.slice(1).join('/');
+        
+        console.log(`ANÁLISIS DE RUTA:
+          - URI original: ${execDir}
+          - Proveedor: ${cloudParts[0]} (${providerName})
+          - Ruta base: ${actualBasePath}
+          - Archivo solicitado: ${relativePath}
+        `);
+        
+        // Combinar la ruta base con el nombre del archivo
+        let remoteFilePath;
+        if (actualBasePath.endsWith('/')) {
+          remoteFilePath = `${actualBasePath}${relativePath}`;
+        } else {
+          remoteFilePath = `${actualBasePath}/${relativePath}`;
+        }
+        
+        console.log(`RUTA REMOTA FINAL: ${remoteFilePath}`);
         
         // Descargar el archivo de la nube usando el adaptador adecuado
         console.log(`Descargando ${relativePath} desde ${cloudPath} a ${tempFilePath}`);
