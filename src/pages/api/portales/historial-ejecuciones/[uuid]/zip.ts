@@ -5,7 +5,7 @@ import path from 'path';
 import * as yazl from 'yazl';
 import * as os from 'os';
 import { v4 as uuidv4 } from 'uuid';
-import * as fileAccessor from '@/utils/cloud/file-accessor';
+import { getCloudFileAccessor, listFiles } from '@/utils/cloud/file-accessor';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -86,8 +86,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           console.error('Error parseando configuración del proveedor:', parseError);
         }
         
+        // Obtener el adaptador para el tipo de proveedor
+        const fileAccessor = getCloudFileAccessor(provider.tipo);
+        
+        if (!fileAccessor) {
+          return res.status(500).json({
+            message: `Adaptador no disponible para tipo ${provider.tipo}`,
+            error: `No hay adaptador configurado para el tipo de proveedor ${provider.tipo}.`,
+            tipo: 'adaptador_no_encontrado',
+            proveedor: providerName
+          });
+        }
+        
         // Listar archivos en la nube
-        const cloudFiles = await fileAccessor.listFiles(provider, cloudPath);
+        const cloudFiles = await fileAccessor.listContents(provider.credenciales, provider.configuracion, cloudPath);
         
         if (!cloudFiles || cloudFiles.length === 0) {
           return res.status(404).json({
@@ -108,12 +120,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         
         // Descargar cada archivo y agregarlo al ZIP
         for (const file of cloudFiles) {
-          const fileName = path.basename(file);
+          const fileName = file.name;
           const tempFilePath = path.join(tempDir, fileName);
           
           try {
-            // Descargar el archivo de la nube
-            await fileAccessor.downloadFile(provider, cloudPath, fileName, tempFilePath);
+            // Descargar el archivo de la nube usando el adaptador
+            await fileAccessor.downloadFile(provider.credenciales, provider.configuracion, file.path, tempFilePath);
             
             if (fs.existsSync(tempFilePath)) {
               // Agregar al ZIP
