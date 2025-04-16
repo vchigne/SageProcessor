@@ -436,8 +436,10 @@ class JanitorDaemon:
         # La lógica de subida dependerá del tipo de proveedor
         provider_type = provider['tipo'].lower()
         
-        if provider_type == 's3' or provider_type == 'minio':
+        if provider_type == 's3':
             self._upload_to_s3(local_path, cloud_path, provider)
+        elif provider_type == 'minio':
+            self._upload_to_minio(local_path, cloud_path, provider)
         elif provider_type == 'azure':
             self._upload_to_azure(local_path, cloud_path, provider)
         elif provider_type == 'gcp':
@@ -448,7 +450,7 @@ class JanitorDaemon:
             raise ValueError(f"Tipo de proveedor no soportado: {provider_type}")
     
     def _upload_to_s3(self, local_path, cloud_path, provider):
-        """Subir archivos a S3 o MinIO"""
+        """Subir archivos a Amazon S3"""
         import boto3
         from botocore.exceptions import ClientError
         
@@ -487,6 +489,81 @@ class JanitorDaemon:
                     logger.debug(f"Archivo {local_file_path} subido a s3://{bucket}/{s3_key}")
                 except ClientError as e:
                     logger.error(f"Error subiendo archivo a S3: {e}")
+                    raise
+    
+    def _upload_to_minio(self, local_path, cloud_path, provider):
+        """Subir archivos a MinIO Storage"""
+        import boto3
+        from botocore.exceptions import ClientError
+        
+        # Parsear credenciales y configuración
+        config = provider['configuracion'] if isinstance(provider['configuracion'], dict) else json.loads(provider['configuracion']) if 'configuracion' in provider else {}
+        credentials = provider['credenciales'] if isinstance(provider['credenciales'], dict) else json.loads(provider['credenciales']) if 'credenciales' in provider else {}
+        
+        # Logs para depuración
+        logger.info(f"Credenciales MinIO: {list(credentials.keys()) if credentials else 'No hay credenciales'}")
+        logger.info(f"Configuración MinIO: {list(config.keys()) if config else 'No hay configuración'}")
+        
+        # Determinar si el endpoint incluye el protocolo
+        endpoint = credentials.get('endpoint') or config.get('endpoint')
+        if not endpoint:
+            raise ValueError("No se configuró correctamente el endpoint para MinIO")
+            
+        # Agregar el protocolo según si secure es false en config
+        if not endpoint.startswith('http://') and not endpoint.startswith('https://'):
+            secure = True
+            if 'secure' in config and config['secure'] is False:
+                secure = False
+            protocol = 'https://' if secure else 'http://'
+            endpoint = protocol + endpoint
+            
+        # Logs específicos para MinIO
+        logger.info(f"Usando endpoint MinIO: {endpoint} (secure: {secure})")
+        
+        # Crear cliente MinIO usando boto3
+        minio_client = boto3.client(
+            's3',
+            endpoint_url=endpoint,
+            aws_access_key_id=credentials.get('access_key'),
+            aws_secret_access_key=credentials.get('secret_key'),
+            # No usar region_name para MinIO - puede causar problemas
+            # Forzar que no verifique el certificado SSL si estamos en http
+            verify=secure
+        )
+        
+        # Bucket debe estar en credenciales
+        bucket = credentials.get('bucket')
+        if not bucket:
+            raise ValueError("No se configuró correctamente el bucket para MinIO")
+        
+        # Intentar verificar si el bucket existe
+        try:
+            minio_client.head_bucket(Bucket=bucket)
+            logger.info(f"Bucket {bucket} existe y es accesible")
+        except ClientError as e:
+            error_code = e.response.get('Error', {}).get('Code')
+            if error_code == '404':
+                raise ValueError(f"El bucket {bucket} no existe en MinIO")
+            elif error_code == '403':
+                raise ValueError(f"No tiene permisos para acceder al bucket {bucket} en MinIO")
+            else:
+                raise ValueError(f"Error verificando bucket de MinIO: {e}")
+        
+        # Subir todos los archivos en el directorio
+        for root, dirs, files in os.walk(local_path):
+            for file in files:
+                local_file_path = os.path.join(root, file)
+                
+                # Calcular la ruta relativa para el objeto MinIO
+                rel_path = os.path.relpath(local_file_path, local_path)
+                minio_key = f"{cloud_path}/{rel_path}".replace('\\', '/')  # Asegurar uso de forward slashes
+                
+                # Subir el archivo
+                try:
+                    minio_client.upload_file(local_file_path, bucket, minio_key)
+                    logger.debug(f"Archivo {local_file_path} subido a minio://{bucket}/{minio_key}")
+                except ClientError as e:
+                    logger.error(f"Error subiendo archivo a MinIO: {e}")
                     raise
     
     def _upload_to_azure(self, local_path, cloud_path, provider):

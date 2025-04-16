@@ -209,12 +209,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       zipfile.outputStream.pipe(res);
     }
 
-    // Configurar los headers de la respuesta
-    res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', `attachment; filename="ejecucion-${uuid}.zip"`);
 
-    // Enviar el ZIP como respuesta
-    zipfile.outputStream.pipe(res);
   } catch (error) {
     console.error('Error al crear archivo ZIP:', error);
     return res.status(500).json({ 
