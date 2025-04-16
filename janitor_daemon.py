@@ -92,6 +92,10 @@ class JanitorDaemon:
             columns = [desc[0] for desc in cursor.description]
             config_dict = dict(zip(columns, config))
             
+            # Verificar que nubes_alternativas sea una lista
+            if config_dict.get('nubes_alternativas') is None:
+                config_dict['nubes_alternativas'] = []
+            
             return config_dict
     
     def _load_cloud_providers(self):
@@ -162,7 +166,7 @@ class JanitorDaemon:
         # Obtener ejecuciones antiguas no migradas
         with self.db_connection.cursor() as cursor:
             cursor.execute("""
-                SELECT id, nombre_yaml, ruta_directorio, fecha_ejecucion, id_casilla
+                SELECT id, nombre_yaml, ruta_directorio, fecha_ejecucion, casilla_id
                 FROM ejecuciones_yaml
                 WHERE fecha_ejecucion < %s
                 AND (migrado_a_nube = FALSE OR migrado_a_nube IS NULL)
@@ -213,8 +217,11 @@ class JanitorDaemon:
         # Formatear la fecha para la ruta
         fecha_str = fecha_ejecucion.strftime('%Y/%m/%d')
         
+        # Manejar el caso donde id_casilla puede ser NULL
+        casilla_path = f"casilla{id_casilla}" if id_casilla else "sin_casilla"
+        
         # Construir un nombre único para la carpeta en la nube
-        carpeta_nube = f"{prefijo}casilla{id_casilla}/{fecha_str}/{nombre_yaml}_{ejecucion_id}"
+        carpeta_nube = f"{prefijo}{casilla_path}/{fecha_str}/{nombre_yaml}_{ejecucion_id}"
         
         # Proveedor primario
         nube_primaria_id = self.config['nube_primaria_id']
