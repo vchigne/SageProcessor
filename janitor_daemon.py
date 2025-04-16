@@ -185,19 +185,24 @@ class JanitorDaemon:
         
         # Obtener ejecuciones antiguas no migradas
         with self.db_connection.cursor() as cursor:
-            # Usar una lista en lugar de una tupla para los parámetros SQL
-            query_params = [fecha_limite]
-            logger.info(f"Ejecutando consulta con parámetros: {query_params}")
-            
             try:
-                cursor.execute("""
+                # Usar una cadena de texto para la fecha en lugar de un objeto datetime
+                fecha_limite_str = fecha_limite.strftime('%Y-%m-%d %H:%M:%S')
+                logger.info(f"Fecha límite formateada: {fecha_limite_str}")
+                
+                # La clave es usar %s como marcador de posición para un único parámetro
+                sql_query = """
                     SELECT id, nombre_yaml, ruta_directorio, fecha_ejecucion, casilla_id
                     FROM ejecuciones_yaml
                     WHERE fecha_ejecucion < %s
                     AND (migrado_a_nube = FALSE OR migrado_a_nube IS NULL)
                     AND ruta_directorio IS NOT NULL
-                    AND ruta_directorio NOT LIKE 'cloud://%'
-                """, query_params)
+                    AND ruta_directorio NOT LIKE 'cloud://%%'
+                """
+                logger.debug(f"Ejecutando SQL: {sql_query}")
+                logger.debug(f"Parámetros: {fecha_limite_str}")
+                
+                cursor.execute(sql_query, (fecha_limite_str,))
                 
                 ejecuciones = cursor.fetchall()
                 
@@ -291,6 +296,20 @@ class JanitorDaemon:
                     logger.error(f"Error migrando a nube alternativa {nube_alt_id}: {e}")
         
         # Actualizar el registro en la base de datos
+        # Convertir las listas a formato adecuado para PostgreSQL (TEXT[] o JSON)
+        nubes_alt = None
+        rutas_alt = None
+        
+        if self.config['nubes_alternativas']:
+            # Convertir lista a string para PostgreSQL array
+            nubes_alt = '{' + ','.join(str(id) for id in self.config['nubes_alternativas']) + '}'
+            logger.debug(f"nubes_alternativas formateado para PostgreSQL: {nubes_alt}")
+        
+        if rutas_alternativas:
+            # Convertir lista a string para PostgreSQL array
+            rutas_alt = '{' + ','.join(f'"{ruta}"' for ruta in rutas_alternativas) + '}'
+            logger.debug(f"rutas_alternativas formateado para PostgreSQL: {rutas_alt}")
+        
         cursor.execute("""
             UPDATE ejecuciones_yaml
             SET nube_primaria_id = %s,
@@ -302,8 +321,8 @@ class JanitorDaemon:
         """, (
             nube_primaria_id,
             ruta_nube_primaria,
-            self.config['nubes_alternativas'],
-            rutas_alternativas,
+            nubes_alt,
+            rutas_alt,
             ejecucion_id
         ))
         
