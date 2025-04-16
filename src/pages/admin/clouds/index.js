@@ -895,10 +895,50 @@ function CloudProviders() {
                             <li>Comprueba si hay errores de tipeo en el ID de clave de acceso</li>
                           </>
                         )}
-                        {!explorerData.errorMessage.includes('SignatureDoesNotMatch') && 
+                        {/* Errores específicos de SFTP */}
+                        {explorerProvider && explorerProvider.tipo === 'sftp' && (
+                          <>
+                            <li>Verifica la conexión a internet</li>
+                            <li>Asegúrate que el servidor SFTP esté activo y accesible</li>
+                            <li>Comprueba el nombre de usuario y contraseña para SFTP</li>
+                            <li>Verifica que tengas permisos para acceder a esta ruta</li>
+                          </>
+                        )}
+                        
+                        {/* Errores específicos de Azure Storage */}
+                        {explorerProvider && explorerProvider.tipo === 'azure' && (
+                          <>
+                            <li>Verifica la conexión a internet</li>
+                            <li>Comprueba si Azure Storage está accesible</li>
+                            <li>Revisa la cadena de conexión o las credenciales de Azure</li>
+                          </>
+                        )}
+                        
+                        {/* Errores específicos de Google Cloud Storage */}
+                        {explorerProvider && explorerProvider.tipo === 'gcp' && (
+                          <>
+                            <li>Verifica la conexión a internet</li>
+                            <li>Comprueba si Google Cloud Storage está accesible</li>
+                            <li>Revisa el archivo de clave JSON y permisos</li>
+                          </>
+                        )}
+                        
+                        {/* Errores específicos de MinIO */}
+                        {explorerProvider && explorerProvider.tipo === 'minio' && (
+                          <>
+                            <li>Verifica la conexión a internet</li>
+                            <li>Comprueba si el servidor MinIO está funcionando</li>
+                            <li>Revisa la configuración del endpoint y credenciales</li>
+                          </>
+                        )}
+                        
+                        {/* Errores generales de AWS o errores por defecto */}
+                        {(!explorerProvider || 
+                          (explorerProvider.tipo === 's3' && 
+                          !explorerData.errorMessage.includes('SignatureDoesNotMatch') && 
                           !explorerData.errorMessage.includes('NoSuchBucket') && 
                           !explorerData.errorMessage.includes('AccessDenied') &&
-                          !explorerData.errorMessage.includes('InvalidAccessKeyId') && (
+                          !explorerData.errorMessage.includes('InvalidAccessKeyId'))) && (
                           <>
                             <li>Verifica la conexión a internet</li>
                             <li>Comprueba si el servicio AWS S3 está experimentando problemas</li>

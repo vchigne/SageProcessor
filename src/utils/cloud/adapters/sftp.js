@@ -363,10 +363,11 @@ export async function listContents(credentials, config = {}, path = '', limit = 
       // Esto permite mantener el patrón de listado de archivos sin simulación
       // compatible con los demás proveedores, pero delegando el trabajo real
       // al backend de Python que ya tiene las bibliotecas adecuadas
-      const apiBaseUrl = typeof window !== 'undefined' 
+      const baseUrl = typeof window !== 'undefined' 
         ? window.location.origin
-        : 'http://localhost:5000';
-      const proxyResponse = await fetch(`${apiBaseUrl}/api/sftp-proxy/list`, {
+        : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000');
+      const proxyUrl = new URL('/api/sftp-proxy/list', baseUrl);
+      const proxyResponse = await fetch(proxyUrl.toString(), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -421,11 +422,12 @@ export async function listContents(credentials, config = {}, path = '', limit = 
       
       // En un servidor real, haríamos la conexión SSH directa usando fetch a un servidor intermedio
       // Necesitamos una URL absoluta para evitar el error de parseo en el servidor
-      // En Node.js, no tenemos 'window', así que usamos una URL absoluta
-      const apiBaseUrl = typeof window !== 'undefined' 
+      // En Node.js, no tenemos 'window', así que usamos una URL absoluta con el nuevo objeto URL
+      const baseUrl = typeof window !== 'undefined' 
         ? window.location.origin
-        : 'http://localhost:5000';
-      const directResponse = await fetch(`${apiBaseUrl}/api/sftp/list-directory`, {
+        : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000');
+      const apiUrl = new URL('/api/sftp/list-directory', baseUrl);
+      const directResponse = await fetch(apiUrl.toString(), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
