@@ -472,14 +472,181 @@ async function listContents(credentials, config = {}, path = '') {
 }
 
 /**
- * Crea un cliente para MinIO (función simulada que devuelve credenciales para usar en otras operaciones)
+ * Crea un cliente para MinIO (función que devuelve credenciales y configuración con validaciones)
  * 
  * @param {object} credentials - Credenciales MinIO
  * @param {object} config - Configuración para MinIO
- * @returns {Promise<object>} - Cliente MinIO (en este caso, solo las credenciales y configuración)
+ * @returns {Promise<object>} - Cliente MinIO configurado
  */
 async function createClient(credentials, config = {}) {
-  return { credentials, config };
+  // Verificar credenciales mínimas requeridas
+  if (!credentials.access_key || !credentials.secret_key || !credentials.bucket) {
+    throw new Error('Faltan credenciales requeridas para MinIO (access_key, secret_key, bucket)');
+  }
+  
+  // Verificar si el endpoint está en credenciales en lugar de config
+  if (!config.endpoint) {
+    if (credentials.endpoint) {
+      // Mover el endpoint a la configuración
+      config.endpoint = credentials.endpoint;
+      console.log("[MinIO] createClient: Se encontró endpoint en credenciales, movido a config:", config.endpoint);
+    } else {
+      throw new Error('Falta la configuración del endpoint para MinIO');
+    }
+  }
+  
+  // Verificar y normalizar el endpoint
+  const endpoint = config.endpoint.startsWith('http') 
+    ? config.endpoint 
+    : `${config.secure !== false ? 'https' : 'http'}://${config.endpoint}`;
+  
+  // Crear cliente con la configuración normalizada
+  return { 
+    credentials, 
+    config: { 
+      ...config, 
+      endpoint,
+      // Asegurar que otras propiedades estén establecidas con valores por defecto
+      port: config.port || null,
+      secure: config.secure !== false
+    } 
+  };
+}
+
+/**
+ * Firma y prepara una petición a la API de MinIO
+ * @param {object} credentials - Credenciales MinIO
+ * @param {object} config - Configuración para MinIO
+ * @param {string} method - Método HTTP (GET, PUT, HEAD, DELETE)
+ * @param {string} path - Ruta dentro del bucket
+ * @param {object} queryParams - Parámetros de consulta
+ * @param {object} headers - Headers HTTP adicionales
+ * @returns {object} - Objeto con URL y headers para la petición
+ */
+async function prepareRequest(credentials, config, method, path, queryParams = {}, headers = {}) {
+  // Normalizar el endpoint
+  let endpoint = config.endpoint;
+  if (!endpoint.startsWith('http://') && !endpoint.startsWith('https://')) {
+    const protocol = config.secure !== false ? 'https://' : 'http://';
+    endpoint = protocol + endpoint;
+  }
+  
+  // Normalizar la ruta quitando / inicial si existe
+  if (path.startsWith('/')) {
+    path = path.substring(1);
+  }
+  
+  // Extraer el host sin el protocolo
+  const host = endpoint.replace(/^https?:\/\//, '').replace(/\/$/, '');
+  
+  // Utilizar la opción de puerto si está especificada
+  const port = config.port ? `:${config.port}` : '';
+  const baseUrl = `${endpoint}${port}`;
+  
+  // Construir URL completa con query params
+  const queryString = Object.keys(queryParams).length > 0
+    ? '?' + Object.entries(queryParams)
+        .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+        .join('&')
+    : '';
+  
+  const url = `${baseUrl}/${credentials.bucket}/${path}${queryString}`;
+  
+  // Fecha y timestamp para la firma
+  const amzDate = getAmzDate();
+  const dateStamp = getDateStamp();
+  
+  // Headers básicos
+  const requestHeaders = {
+    'host': host + port,
+    'x-amz-date': amzDate,
+    'x-amz-content-sha256': 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855', // hash de cadena vacía
+    ...headers
+  };
+  
+  // Construir la solicitud canónica
+  const canonicalUri = `/${credentials.bucket}/${path}`;
+  
+  // Construir query string canónico
+  const canonicalQueryString = Object.entries(queryParams)
+    .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+    .join('&');
+  
+  // Ordenar y formatear los headers canónicos
+  const sortedHeaderKeys = Object.keys(requestHeaders).sort();
+  const canonicalHeaders = sortedHeaderKeys
+    .map(key => `${key.toLowerCase()}:${requestHeaders[key]}\n`)
+    .join('');
+  const signedHeaders = sortedHeaderKeys.join(';').toLowerCase();
+  
+  // Hash del payload (cuerpo vacío)
+  const payloadHash = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+  
+  // Combinar todo en la solicitud canónica
+  const canonicalRequest = [
+    method,
+    canonicalUri,
+    canonicalQueryString,
+    canonicalHeaders,
+    signedHeaders,
+    payloadHash
+  ].join('\n');
+  
+  // Crear el string to sign
+  const algorithm = 'AWS4-HMAC-SHA256';
+  const region = 'us-east-1';  // MinIO suele usar us-east-1 por defecto
+  const service = 's3';
+  const scope = `${dateStamp}/${region}/${service}/aws4_request`;
+  const stringToSign = [
+    algorithm,
+    amzDate,
+    scope,
+    await sha256(canonicalRequest)
+  ].join('\n');
+  
+  // Función para firmar utilizando HMAC-SHA256
+  async function sign(key, msg) {
+    const msgBuffer = new TextEncoder().encode(msg);
+    const keyBuffer = await crypto.subtle.importKey(
+      'raw',
+      key,
+      { name: 'HMAC', hash: { name: 'SHA-256' } },
+      false,
+      ['sign']
+    );
+    const signBuffer = await crypto.subtle.sign(
+      { name: 'HMAC', hash: { name: 'SHA-256' } },
+      keyBuffer,
+      msgBuffer
+    );
+    return new Uint8Array(signBuffer);
+  }
+  
+  // Generar la clave de firma
+  const kSecret = new TextEncoder().encode(`AWS4${credentials.secret_key}`);
+  const kDate = await sign(kSecret, dateStamp);
+  const kRegion = await sign(kDate, region);
+  const kService = await sign(kRegion, service);
+  const kSigning = await sign(kService, 'aws4_request');
+  
+  // Generar la firma final
+  const signature = await sign(kSigning, stringToSign);
+  const signatureHex = Array.from(signature)
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+  
+  // Crear el header de autorización completo
+  const authorizationHeader = `${algorithm} Credential=${credentials.access_key}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signatureHex}`;
+  
+  // Devolver la URL y los headers firmados
+  return {
+    url,
+    headers: {
+      ...requestHeaders,
+      'Authorization': authorizationHeader
+    }
+  };
 }
 
 /**
@@ -491,8 +658,76 @@ async function createClient(credentials, config = {}) {
  * @returns {Promise<object>} - Resultado de la operación
  */
 async function uploadFile(client, localPath, remotePath) {
-  // Implementación de carga de archivos pendiente
-  throw new Error('La función de subida de archivos a MinIO aún no está implementada');
+  try {
+    // Extraer credenciales y configuración del cliente
+    const { credentials, config } = client;
+    
+    // Verificar argumentos
+    if (!localPath) throw new Error('La ruta local es requerida');
+    if (!remotePath) throw new Error('La ruta remota es requerida');
+    
+    console.log(`[MinIO] Iniciando subida de archivo: ${localPath} -> ${remotePath}`);
+    
+    // Leer el archivo como un array buffer
+    const fileContent = await fetch(`file://${localPath}`).then(r => r.arrayBuffer());
+    if (!fileContent) {
+      throw new Error(`No se pudo leer el archivo: ${localPath}`);
+    }
+    
+    // Calcular hash SHA-256 del contenido del archivo
+    const fileContentHash = await crypto.subtle.digest('SHA-256', fileContent);
+    const fileContentHashHex = Array.from(new Uint8Array(fileContentHash))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+    
+    // Preparar los headers específicos para subida
+    const uploadHeaders = {
+      'Content-Type': 'application/octet-stream',
+      'Content-Length': fileContent.byteLength.toString(),
+      'x-amz-content-sha256': fileContentHashHex
+    };
+    
+    // Preparar la petición con firma
+    const { url, headers } = await prepareRequest(
+      credentials,
+      config,
+      'PUT',
+      remotePath,
+      {},  // Sin query params
+      uploadHeaders
+    );
+    
+    console.log(`[MinIO] Realizando PUT a: ${url}`);
+    
+    // Realizar la petición PUT para subir el archivo
+    const response = await fetch(url, {
+      method: 'PUT',
+      headers,
+      body: fileContent
+    });
+    
+    // Verificar la respuesta
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[MinIO] Error al subir archivo: ${response.status} - ${response.statusText}`);
+      console.error(`[MinIO] Respuesta: ${errorText}`);
+      
+      throw new Error(`Error al subir archivo a MinIO: ${response.status} ${response.statusText}`);
+    }
+    
+    console.log(`[MinIO] Archivo subido exitosamente: ${remotePath}`);
+    
+    // Devolver resultado exitoso
+    return {
+      success: true,
+      path: remotePath,
+      size: fileContent.byteLength,
+      url: `${config.endpoint}/${credentials.bucket}/${remotePath}`
+    };
+  } catch (error) {
+    console.error(`[MinIO] Error al subir archivo: ${error.message}`, error);
+    throw new Error(`Error al subir archivo a MinIO: ${error.message}`);
+  }
 }
 
 /**
@@ -504,8 +739,81 @@ async function uploadFile(client, localPath, remotePath) {
  * @returns {Promise<object>} - Resultado de la operación
  */
 async function downloadFile(client, remotePath, localPath) {
-  // Implementación de descarga de archivos pendiente
-  throw new Error('La función de descarga de archivos de MinIO aún no está implementada');
+  try {
+    // Extraer credenciales y configuración del cliente
+    const { credentials, config } = client;
+    
+    // Verificar argumentos
+    if (!remotePath) throw new Error('La ruta remota es requerida');
+    if (!localPath) throw new Error('La ruta local es requerida');
+    
+    console.log(`[MinIO] Iniciando descarga de archivo: ${remotePath} -> ${localPath}`);
+    
+    // Preparar la petición con firma
+    const { url, headers } = await prepareRequest(
+      credentials,
+      config,
+      'GET',
+      remotePath,
+      {}, // Sin query params
+      {}  // Sin headers adicionales
+    );
+    
+    console.log(`[MinIO] Realizando GET a: ${url}`);
+    
+    // Realizar la petición GET para descargar el archivo
+    const response = await fetch(url, {
+      method: 'GET',
+      headers
+    });
+    
+    // Verificar la respuesta
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[MinIO] Error al descargar archivo: ${response.status} - ${response.statusText}`);
+      console.error(`[MinIO] Respuesta: ${errorText}`);
+      
+      // Analizar error XML si existe
+      let errorMessage = `Error HTTP ${response.status}: ${response.statusText}`;
+      const codeMatch = errorText.match(/<Code>(.*?)<\/Code>/);
+      const messageMatch = errorText.match(/<Message>(.*?)<\/Message>/);
+      
+      if (codeMatch && messageMatch) {
+        const errorCode = codeMatch[1];
+        const errorDetail = messageMatch[1];
+        
+        if (errorCode === 'NoSuchKey') {
+          throw new Error(`El archivo "${remotePath}" no existe en el bucket ${credentials.bucket}`);
+        } else {
+          throw new Error(`Error MinIO (${errorCode}): ${errorDetail}`);
+        }
+      }
+      
+      throw new Error(errorMessage);
+    }
+    
+    // Obtener el contenido del archivo como array buffer
+    const fileContent = await response.arrayBuffer();
+    
+    // Guardar el archivo localmente usando Node.js
+    await fetch(`file://${localPath}`, {
+      method: 'PUT',
+      body: new Uint8Array(fileContent)
+    });
+    
+    console.log(`[MinIO] Archivo descargado exitosamente: ${localPath}`);
+    
+    // Devolver resultado exitoso
+    return {
+      success: true,
+      path: localPath,
+      size: fileContent.byteLength,
+      sourceUrl: url
+    };
+  } catch (error) {
+    console.error(`[MinIO] Error al descargar archivo: ${error.message}`, error);
+    throw new Error(`Error al descargar archivo de MinIO: ${error.message}`);
+  }
 }
 
 /**
@@ -516,8 +824,75 @@ async function downloadFile(client, remotePath, localPath) {
  * @returns {Promise<object>} - Resultado de la operación
  */
 async function deleteFile(client, remotePath) {
-  // Implementación de eliminación de archivos pendiente
-  throw new Error('La función de eliminación de archivos de MinIO aún no está implementada');
+  try {
+    // Extraer credenciales y configuración del cliente
+    const { credentials, config } = client;
+    
+    // Verificar argumentos
+    if (!remotePath) throw new Error('La ruta remota es requerida');
+    
+    console.log(`[MinIO] Eliminando archivo: ${remotePath}`);
+    
+    // Preparar la petición con firma
+    const { url, headers } = await prepareRequest(
+      credentials,
+      config,
+      'DELETE',
+      remotePath,
+      {}, // Sin query params
+      {}  // Sin headers adicionales
+    );
+    
+    console.log(`[MinIO] Realizando DELETE a: ${url}`);
+    
+    // Realizar la petición DELETE
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers
+    });
+    
+    // Verificar la respuesta
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[MinIO] Error al eliminar archivo: ${response.status} - ${response.statusText}`);
+      console.error(`[MinIO] Respuesta: ${errorText}`);
+      
+      // Analizar error XML si existe
+      let errorMessage = `Error HTTP ${response.status}: ${response.statusText}`;
+      const codeMatch = errorText.match(/<Code>(.*?)<\/Code>/);
+      const messageMatch = errorText.match(/<Message>(.*?)<\/Message>/);
+      
+      if (codeMatch && messageMatch) {
+        const errorCode = codeMatch[1];
+        const errorDetail = messageMatch[1];
+        
+        if (errorCode === 'NoSuchKey') {
+          // No es error si el archivo no existe - considerarlo como eliminado
+          console.log(`[MinIO] El archivo ${remotePath} no existía para ser eliminado`);
+          return {
+            success: true,
+            path: remotePath,
+            message: 'El archivo no existía, se considera eliminado'
+          };
+        } else {
+          throw new Error(`Error MinIO (${errorCode}): ${errorDetail}`);
+        }
+      }
+      
+      throw new Error(errorMessage);
+    }
+    
+    console.log(`[MinIO] Archivo eliminado exitosamente: ${remotePath}`);
+    
+    // Devolver resultado exitoso
+    return {
+      success: true,
+      path: remotePath
+    };
+  } catch (error) {
+    console.error(`[MinIO] Error al eliminar archivo: ${error.message}`, error);
+    throw new Error(`Error al eliminar archivo de MinIO: ${error.message}`);
+  }
 }
 
 /**
@@ -528,8 +903,58 @@ async function deleteFile(client, remotePath) {
  * @returns {Promise<boolean>} - Verdadero si el archivo existe
  */
 async function fileExists(client, remotePath) {
-  // Implementación de verificación de existencia de archivos pendiente
-  throw new Error('La función de verificación de existencia de archivos en MinIO aún no está implementada');
+  try {
+    // Extraer credenciales y configuración del cliente
+    const { credentials, config } = client;
+    
+    // Verificar argumentos
+    if (!remotePath) throw new Error('La ruta remota es requerida');
+    
+    console.log(`[MinIO] Verificando existencia de archivo: ${remotePath}`);
+    
+    // Preparar la petición con firma
+    const { url, headers } = await prepareRequest(
+      credentials,
+      config,
+      'HEAD',
+      remotePath,
+      {}, // Sin query params
+      {}  // Sin headers adicionales
+    );
+    
+    console.log(`[MinIO] Realizando HEAD a: ${url}`);
+    
+    // Realizar la petición HEAD
+    const response = await fetch(url, {
+      method: 'HEAD',
+      headers
+    });
+    
+    // Si la respuesta es exitosa, el archivo existe
+    if (response.ok) {
+      console.log(`[MinIO] Archivo existe: ${remotePath}`);
+      return true;
+    }
+    
+    // Si el error es 404, el archivo no existe
+    if (response.status === 404) {
+      console.log(`[MinIO] Archivo no existe: ${remotePath}`);
+      return false;
+    }
+    
+    // Para otros errores, lanzar excepción
+    const errorMessage = `Error al verificar existencia del archivo: ${response.status} ${response.statusText}`;
+    console.error(`[MinIO] ${errorMessage}`);
+    throw new Error(errorMessage);
+  } catch (error) {
+    // Si la excepción indica que el archivo no existe, devolver false
+    if (error.message.includes('no existe') || error.message.includes('NoSuchKey')) {
+      return false;
+    }
+    
+    console.error(`[MinIO] Error al verificar existencia: ${error.message}`, error);
+    throw new Error(`Error al verificar existencia en MinIO: ${error.message}`);
+  }
 }
 
 // Exportar el adaptador para MinIO
