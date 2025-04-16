@@ -49,6 +49,12 @@ export default async function handler(req, res) {
       ? JSON.parse(provider.configuracion) 
       : provider.configuracion;
     
+    // Si es MinIO, imprimir la configuración para debug
+    if (provider.tipo === 'minio') {
+      console.log('Probando conexión MinIO con config:', JSON.stringify(config));
+      console.log('Y credenciales (bucket solo):', credentials.bucket);
+    }
+    
     // Probar la conexión usando el adaptador real
     const testResult = await adapter.testConnection(credentials, config);
     

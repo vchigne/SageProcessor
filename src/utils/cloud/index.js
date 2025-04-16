@@ -32,9 +32,13 @@ async function loadAdapter(type) {
   if (adapters[type]) return adapters[type];
   
   try {
-    // Para S3, usar la versión corregida del adaptador
+    // Para S3 o MinIO, cargar el adaptador específico
     if (type === 's3') {
       const module = await import(`./adapters/s3_fixed`);
+      adapters[type] = module.default;
+      return adapters[type];
+    } else if (type === 'minio') {
+      const module = await import(`./adapters/minio`);
       adapters[type] = module.default;
       return adapters[type];
     }
@@ -65,8 +69,8 @@ export function getAdapter(type) {
       if (type === 's3') {
         adapters[type] = require(`./adapters/s3_fixed`).default;
       } else if (type === 'minio') {
-        // MinIO usa el mismo adaptador que S3
-        adapters[type] = require(`./adapters/s3_fixed`).default;
+        // MinIO usa su propio adaptador específico
+        adapters[type] = require(`./adapters/minio`).default;
       } else {
         adapters[type] = require(`./adapters/${type}`).default;
       }
