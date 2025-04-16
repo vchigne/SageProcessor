@@ -71,23 +71,162 @@ export async function uploadFile(client, localPath, remotePath) {
  * @returns {Promise<Object>} Información sobre la descarga
  */
 export async function downloadFile(client, remotePath, localPath) {
-  console.log(`[S3] Simulando descarga de s3://${client.bucket}/${remotePath} a ${localPath}`);
+  console.log(`[S3] Descargando s3://${client.bucket}/${remotePath} a ${localPath}`);
   
-  // En implementación real:
-  // const command = new GetObjectCommand({
-  //   Bucket: client.bucket,
-  //   Key: remotePath
-  // });
-  // const response = await client.send(command);
-  // const writeStream = fs.createWriteStream(localPath);
-  // await pipelineAsync(response.Body, writeStream);
-  
-  // Simulamos respuesta exitosa
-  return {
-    success: true,
-    path: localPath,
-    size: 1024 // Tamaño simulado
-  };
+  try {
+    // Extraer el bucket y la clave del cliente
+    const bucket = client.bucket || client.config?.bucket;
+    if (!bucket) {
+      throw new Error('Bucket no especificado en la configuración');
+    }
+    
+    // Asegurarse de que tenemos todas las credenciales necesarias
+    if (!client.credentials?.access_key || !client.credentials?.secret_key) {
+      throw new Error('Credenciales incompletas para AWS S3');
+    }
+    
+    // Extraer la región o usar el valor por defecto
+    const region = client.region || client.config?.region || 'us-east-1';
+    
+    // Construir la URL para acceder al objeto
+    const objectUrl = `https://${bucket}.s3.${region}.amazonaws.com/${remotePath}`;
+    
+    // Calcular la fecha en formato AWS
+    const date = new Date();
+    const amzDate = date.toISOString().replace(/[:-]|\.\d{3}/g, '');
+    const dateStamp = amzDate.slice(0, 8);
+    
+    // Crear los encabezados necesarios para la autenticación
+    const headers = {
+      'host': `${bucket}.s3.${region}.amazonaws.com`,
+      'x-amz-date': amzDate,
+      'x-amz-content-sha256': 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855' // Hash para cuerpo vacío
+    };
+    
+    // Crear la cadena canónica
+    const canonicalUri = `/${remotePath}`;
+    const canonicalQueryString = '';
+    const canonicalHeaders = Object.keys(headers)
+      .sort()
+      .map(key => `${key.toLowerCase()}:${headers[key]}\n`)
+      .join('');
+    const signedHeaders = Object.keys(headers)
+      .sort()
+      .map(key => key.toLowerCase())
+      .join(';');
+    
+    const payloadHash = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+    const canonicalRequest = [
+      'GET',
+      canonicalUri,
+      canonicalQueryString,
+      canonicalHeaders,
+      signedHeaders,
+      payloadHash
+    ].join('\n');
+    
+    // Función para crear un hash SHA-256
+    async function sha256(message) {
+      const msgBuffer = new TextEncoder().encode(message);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+      return Array.from(new Uint8Array(hashBuffer))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+    }
+    
+    // Función para firmar
+    async function sign(key, msg) {
+      const msgBuffer = new TextEncoder().encode(msg);
+      const keyBuffer = await crypto.subtle.importKey(
+        'raw',
+        key,
+        { name: 'HMAC', hash: { name: 'SHA-256' } },
+        false,
+        ['sign']
+      );
+      const signBuffer = await crypto.subtle.sign(
+        { name: 'HMAC', hash: { name: 'SHA-256' } },
+        keyBuffer,
+        msgBuffer
+      );
+      return new Uint8Array(signBuffer);
+    }
+    
+    // Calcular la firma
+    const canonicalRequestHash = await sha256(canonicalRequest);
+    
+    const algorithm = 'AWS4-HMAC-SHA256';
+    const scope = `${dateStamp}/${region}/s3/aws4_request`;
+    
+    const stringToSign = [
+      algorithm,
+      amzDate,
+      scope,
+      canonicalRequestHash
+    ].join('\n');
+    
+    // Derivar la clave de firma
+    const kSecret = new TextEncoder().encode(`AWS4${client.credentials.secret_key}`);
+    const kDate = await sign(kSecret, dateStamp);
+    const kRegion = await sign(kDate, region);
+    const kService = await sign(kRegion, 's3');
+    const kSigning = await sign(kService, 'aws4_request');
+    
+    // Obtener la firma
+    const signature = await sign(kSigning, stringToSign);
+    const signatureHex = Array.from(signature)
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+    
+    // Crear el header de autorización
+    const authorizationHeader = `${algorithm} Credential=${client.credentials.access_key}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signatureHex}`;
+    
+    // Realizar la petición para descargar el objeto
+    const response = await fetch(objectUrl, {
+      method: 'GET',
+      headers: {
+        ...headers,
+        'Authorization': authorizationHeader
+      }
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[S3] Error descargando objeto:', errorText);
+      
+      // Intentar extraer el mensaje de error del XML
+      const codeMatch = errorText.match(/<Code>(.*?)<\/Code>/);
+      const messageMatch = errorText.match(/<Message>(.*?)<\/Message>/);
+      
+      let errorMessage = `Error HTTP ${response.status}: ${response.statusText}`;
+      if (codeMatch && messageMatch) {
+        errorMessage = `Error S3 (${codeMatch[1]}): ${messageMatch[1]}`;
+      }
+      
+      throw new Error(errorMessage);
+    }
+    
+    // Obtener el contenido del objeto
+    const fileBuffer = await response.arrayBuffer();
+    const fs = require('fs');
+    const path = require('path');
+    
+    // Asegurar que el directorio existe
+    const directory = path.dirname(localPath);
+    fs.mkdirSync(directory, { recursive: true });
+    
+    // Escribir el archivo en disco
+    fs.writeFileSync(localPath, Buffer.from(fileBuffer));
+    
+    return {
+      success: true,
+      path: localPath,
+      size: fileBuffer.byteLength
+    };
+  } catch (error) {
+    console.error(`[S3] Error descargando archivo desde S3:`, error);
+    throw new Error(`Error descargando archivo desde S3: ${error.message}`);
+  }
 }
 
 /**
