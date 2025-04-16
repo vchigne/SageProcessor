@@ -126,22 +126,58 @@ export async function testConnection(credentials, config = {}) {
     if (credentials.connection_string) {
       try {
         console.log('[Azure] Usando connection string para extraer credenciales');
-        const connectionParts = credentials.connection_string.split(';');
+        // Normalizar la cadena de conexión (eliminar espacios, tabs, etc.)
+        const normalizedConnString = credentials.connection_string.trim();
+        console.log('[Azure] Connection string normalizada (primeros 30 chars):', 
+          normalizedConnString.substring(0, 30) + '...');
+        
+        // Validar que tenga formato de ConnectionString (tiene múltiples partes con ;)
+        if (!normalizedConnString.includes(';')) {
+          throw new Error('El formato de la ConnectionString no es válido. Debe contener múltiples partes separadas por punto y coma (;)');
+        }
+
+        const connectionParts = normalizedConnString.split(';');
+        console.log('[Azure] Número de partes en connection string:', connectionParts.length);
+        
+        // Mostrar partes para debugging (primeros caracteres)
+        connectionParts.forEach((part, idx) => {
+          if (part.trim()) {  // Solo si no está vacío
+            console.log(`[Azure] Parte ${idx}: ${part.substring(0, Math.min(20, part.length))}...`);
+          }
+        });
+        
         for (const part of connectionParts) {
-          if (part.startsWith('AccountName=')) {
-            accountName = part.split('=')[1];
-          } else if (part.startsWith('AccountKey=')) {
-            accountKey = part.split('=')[1];
+          // Normalizar las claves a minúsculas para hacer la comparación insensible a mayúsculas/minúsculas
+          const normalizedPart = part.trim();
+          if (!normalizedPart) continue;  // Saltar partes vacías
+          
+          // Buscar AccountName= o accountname= (insensible a mayúsculas/minúsculas)
+          if (normalizedPart.toLowerCase().startsWith('accountname=')) {
+            const equalPos = normalizedPart.indexOf('=');
+            if (equalPos !== -1 && equalPos < normalizedPart.length - 1) {
+              accountName = normalizedPart.substring(equalPos + 1);
+              console.log('[Azure] AccountName extraído:', 
+                accountName.length > 5 ? accountName.substring(0, 5) + '...' : 'vacío o muy corto');
+            }
+          } 
+          // Buscar AccountKey= o accountkey= (insensible a mayúsculas/minúsculas)
+          else if (normalizedPart.toLowerCase().startsWith('accountkey=')) {
+            const equalPos = normalizedPart.indexOf('=');
+            if (equalPos !== -1 && equalPos < normalizedPart.length - 1) {
+              accountKey = normalizedPart.substring(equalPos + 1);
+              console.log('[Azure] AccountKey extraído (longitud):', accountKey ? accountKey.length : 0);
+            }
           }
         }
       } catch (error) {
         console.error('[Azure] Error al parsear connection string:', error);
-        throw new Error('Error al procesar connection string. Formato incorrecto.');
+        throw new Error(`Error al procesar connection string: ${error.message}. Por favor proporcione una connection string válida en el formato: DefaultEndpointsProtocol=https;AccountName=nombredelacuenta;AccountKey=clavedelacuenta;EndpointSuffix=core.windows.net`);
       }
     }
     
     if (!accountName || !accountKey) {
-      throw new Error('No se pudieron extraer las credenciales necesarias. Verifique la connection string o proporcione account_name y account_key directamente.');
+      console.error('[Azure] No se pudieron extraer credenciales. AccountName presente:', !!accountName, 'AccountKey presente:', !!accountKey);
+      throw new Error('No se pudieron extraer las credenciales necesarias. Asegúrese de que la connection string incluya AccountName= y AccountKey=, o proporcione account_name y account_key directamente. El formato correcto es: DefaultEndpointsProtocol=https;AccountName=nombredelacuenta;AccountKey=clavedelacuenta;EndpointSuffix=core.windows.net');
     }
 
     // Construir la URL para listar el contenedor
@@ -287,22 +323,58 @@ export async function listContents(credentials, config = {}, path = '', limit = 
     if (credentials.connection_string) {
       try {
         console.log('[Azure] Usando connection string para extraer credenciales');
-        const connectionParts = credentials.connection_string.split(';');
+        // Normalizar la cadena de conexión (eliminar espacios, tabs, etc.)
+        const normalizedConnString = credentials.connection_string.trim();
+        console.log('[Azure] Connection string normalizada (primeros 30 chars):', 
+          normalizedConnString.substring(0, 30) + '...');
+        
+        // Validar que tenga formato de ConnectionString (tiene múltiples partes con ;)
+        if (!normalizedConnString.includes(';')) {
+          throw new Error('El formato de la ConnectionString no es válido. Debe contener múltiples partes separadas por punto y coma (;)');
+        }
+
+        const connectionParts = normalizedConnString.split(';');
+        console.log('[Azure] Número de partes en connection string:', connectionParts.length);
+        
+        // Mostrar partes para debugging (primeros caracteres)
+        connectionParts.forEach((part, idx) => {
+          if (part.trim()) {  // Solo si no está vacío
+            console.log(`[Azure] Parte ${idx}: ${part.substring(0, Math.min(20, part.length))}...`);
+          }
+        });
+        
         for (const part of connectionParts) {
-          if (part.startsWith('AccountName=')) {
-            accountName = part.split('=')[1];
-          } else if (part.startsWith('AccountKey=')) {
-            accountKey = part.split('=')[1];
+          // Normalizar las claves a minúsculas para hacer la comparación insensible a mayúsculas/minúsculas
+          const normalizedPart = part.trim();
+          if (!normalizedPart) continue;  // Saltar partes vacías
+          
+          // Buscar AccountName= o accountname= (insensible a mayúsculas/minúsculas)
+          if (normalizedPart.toLowerCase().startsWith('accountname=')) {
+            const equalPos = normalizedPart.indexOf('=');
+            if (equalPos !== -1 && equalPos < normalizedPart.length - 1) {
+              accountName = normalizedPart.substring(equalPos + 1);
+              console.log('[Azure] AccountName extraído:', 
+                accountName.length > 5 ? accountName.substring(0, 5) + '...' : 'vacío o muy corto');
+            }
+          } 
+          // Buscar AccountKey= o accountkey= (insensible a mayúsculas/minúsculas)
+          else if (normalizedPart.toLowerCase().startsWith('accountkey=')) {
+            const equalPos = normalizedPart.indexOf('=');
+            if (equalPos !== -1 && equalPos < normalizedPart.length - 1) {
+              accountKey = normalizedPart.substring(equalPos + 1);
+              console.log('[Azure] AccountKey extraído (longitud):', accountKey ? accountKey.length : 0);
+            }
           }
         }
       } catch (error) {
         console.error('[Azure] Error al parsear connection string:', error);
-        throw new Error('Error al procesar connection string. Formato incorrecto.');
+        throw new Error(`Error al procesar connection string: ${error.message}. Por favor proporcione una connection string válida en el formato: DefaultEndpointsProtocol=https;AccountName=nombredelacuenta;AccountKey=clavedelacuenta;EndpointSuffix=core.windows.net`);
       }
     }
     
     if (!accountName || !accountKey) {
-      throw new Error('No se pudieron extraer las credenciales necesarias. Verifique la connection string o proporcione account_name y account_key directamente.');
+      console.error('[Azure] No se pudieron extraer credenciales. AccountName presente:', !!accountName, 'AccountKey presente:', !!accountKey);
+      throw new Error('No se pudieron extraer las credenciales necesarias. Asegúrese de que la connection string incluya AccountName= y AccountKey=, o proporcione account_name y account_key directamente. El formato correcto es: DefaultEndpointsProtocol=https;AccountName=nombredelacuenta;AccountKey=clavedelacuenta;EndpointSuffix=core.windows.net');
     }
 
     // Construir la URL para listar el contenedor
