@@ -311,11 +311,121 @@ export async function testConnection(credentials, config = {}) {
   }
 }
 
+/**
+ * Lista contenido de un directorio SFTP con más detalles
+ * @param {Object} credentials Credenciales
+ * @param {Object} config Configuración
+ * @param {string} path Ruta del directorio
+ * @param {number} limit Límite de elementos a devolver
+ * @returns {Promise<Object>} Estructura organizada del contenido
+ */
+export async function listContents(credentials, config = {}, path = '', limit = 50) {
+  try {
+    console.log(`[SFTP] Listando contenido en ${credentials.host}:${credentials.port || 22}${path ? '/' + path : ''}`);
+    
+    // Validación básica
+    if (!credentials.host) {
+      throw new Error('Se requiere un host para la conexión SFTP');
+    }
+    
+    if (!credentials.user) {
+      throw new Error('Se requiere un usuario para la conexión SFTP');
+    }
+    
+    if (!credentials.password && !credentials.key_path) {
+      throw new Error('Se requiere una contraseña o una clave SSH para la conexión SFTP');
+    }
+    
+    // En implementación real, estableceríamos conexión y listaríamos
+    // const connection = await connect(credentials);
+    // const targetPath = path || '/';
+    // 
+    // // Listar archivos
+    // const items = await new Promise((resolve, reject) => {
+    //   connection.sftp.readdir(targetPath, (err, list) => {
+    //     if (err) return reject(err);
+    //     resolve(list);
+    //   });
+    // });
+    // 
+    // closeConnection(connection);
+    
+    // Simulación de datos
+    const directoryPath = path || '/';
+    
+    // Dividimos los archivos y carpetas
+    const files = [
+      {
+        name: 'documento.txt',
+        path: directoryPath === '/' ? '/documento.txt' : `${directoryPath}/documento.txt`,
+        size: 1024,
+        lastModified: new Date(),
+        type: 'file'
+      },
+      {
+        name: 'reporte.csv',
+        path: directoryPath === '/' ? '/reporte.csv' : `${directoryPath}/reporte.csv`,
+        size: 2048,
+        lastModified: new Date(),
+        type: 'file'
+      }
+    ];
+    
+    const folders = [
+      {
+        name: 'uploads',
+        path: directoryPath === '/' ? '/uploads' : `${directoryPath}/uploads`,
+        type: 'folder'
+      },
+      {
+        name: 'backups',
+        path: directoryPath === '/' ? '/backups' : `${directoryPath}/backups`,
+        type: 'folder'
+      }
+    ];
+
+    // Si el directorio es '/uploads', mostrar contenido diferente
+    if (directoryPath === '/uploads' || directoryPath === 'uploads') {
+      return {
+        path: directoryPath,
+        files: [
+          {
+            name: 'imagen.jpg',
+            path: `${directoryPath}/imagen.jpg`,
+            size: 30720,
+            lastModified: new Date(),
+            type: 'file'
+          }
+        ],
+        folders: [],
+        service: 'sftp'
+      };
+    }
+    
+    return {
+      path: directoryPath,
+      files,
+      folders,
+      service: 'sftp'
+    };
+  } catch (error) {
+    console.error('[SFTP] Error al listar contenido:', error);
+    return {
+      error: true,
+      errorMessage: error.message,
+      path: path || '/',
+      files: [],
+      folders: []
+    };
+  }
+}
+
 export default {
   createClient,
   uploadFile,
   downloadFile,
   listFiles,
   getSignedUrl,
-  testConnection
+  testConnection,
+  listContents
 };
