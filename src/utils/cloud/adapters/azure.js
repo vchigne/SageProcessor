@@ -590,20 +590,27 @@ export async function listContents(credentials, config = {}, path = '', limit = 
       const xmlResponse = await response.text();
       console.log('[Azure SAS] Respuesta XML recibida (primeros 150 caracteres):', xmlResponse.substring(0, 150) + '...');
       
-      // Parsear el XML para extraer archivos y directorios (prefijos comunes)
-      const parser = new DOMParser();
-      const xmlDoc = parser.parseFromString(xmlResponse, "text/xml");
-      
+      // Parsear XML manualmente para evitar problemas con DOMParser en Node.js
       const files = [];
       const folders = [];
       
-      // Procesar los blobs (archivos)
-      const blobs = xmlDoc.getElementsByTagName('Blob');
-      for (let i = 0; i < blobs.length; i++) {
-        const name = blobs[i].getElementsByTagName('Name')[0].textContent;
-        const properties = blobs[i].getElementsByTagName('Properties')[0];
-        const size = parseInt(properties.getElementsByTagName('Content-Length')[0].textContent, 10);
-        const lastModified = new Date(properties.getElementsByTagName('Last-Modified')[0].textContent);
+      // Función para extraer el valor de una etiqueta
+      function extractTagValue(xml, tag) {
+        const regex = new RegExp(`<${tag}>(.*?)<\/${tag}>`, 's');
+        const match = regex.exec(xml);
+        return match ? match[1] : '';
+      }
+      
+      // Extraer blobs (archivos)
+      const blobsRegex = /<Blob>([\s\S]*?)<\/Blob>/g;
+      let blobMatch;
+      while ((blobMatch = blobsRegex.exec(xmlResponse)) !== null) {
+        const blobContent = blobMatch[1];
+        const name = extractTagValue(blobContent, 'Name');
+        const propertiesContent = blobContent.match(/<Properties>([\s\S]*?)<\/Properties>/)?.[1] || '';
+        const size = parseInt(extractTagValue(propertiesContent, 'Content-Length'), 10) || 0;
+        const lastModifiedStr = extractTagValue(propertiesContent, 'Last-Modified');
+        const lastModified = lastModifiedStr ? new Date(lastModifiedStr) : new Date();
         
         // Extraer solo el nombre del archivo sin la ruta
         const fileName = name.startsWith(prefix) ? name.substring(prefix.length) : name;
@@ -617,10 +624,12 @@ export async function listContents(credentials, config = {}, path = '', limit = 
         });
       }
       
-      // Procesar los prefijos (carpetas)
-      const blobPrefixes = xmlDoc.getElementsByTagName('BlobPrefix');
-      for (let i = 0; i < blobPrefixes.length; i++) {
-        const prefixPath = blobPrefixes[i].getElementsByTagName('Name')[0].textContent;
+      // Extraer prefijos (carpetas)
+      const prefixesRegex = /<BlobPrefix>([\s\S]*?)<\/BlobPrefix>/g;
+      let prefixMatch;
+      while ((prefixMatch = prefixesRegex.exec(xmlResponse)) !== null) {
+        const prefixContent = prefixMatch[1];
+        const prefixPath = extractTagValue(prefixContent, 'Name');
         
         // Extraer solo el nombre de la carpeta
         const folderName = prefixPath.startsWith(prefix) 
@@ -752,20 +761,27 @@ export async function listContents(credentials, config = {}, path = '', limit = 
       const xmlResponse = await response.text();
       console.log('[Azure] Respuesta XML completa (primeros 150 caracteres):', xmlResponse.substring(0, 150) + '...');
       
-      // Parsear el XML para extraer archivos y directorios (prefijos comunes)
-      const parser = new DOMParser();
-      const xmlDoc = parser.parseFromString(xmlResponse, "text/xml");
-      
+      // Parsear XML manualmente para evitar problemas con DOMParser en Node.js
       const files = [];
       const folders = [];
       
-      // Procesar los blobs (archivos)
-      const blobs = xmlDoc.getElementsByTagName('Blob');
-      for (let i = 0; i < blobs.length; i++) {
-        const name = blobs[i].getElementsByTagName('Name')[0].textContent;
-        const properties = blobs[i].getElementsByTagName('Properties')[0];
-        const size = parseInt(properties.getElementsByTagName('Content-Length')[0].textContent, 10);
-        const lastModified = new Date(properties.getElementsByTagName('Last-Modified')[0].textContent);
+      // Función para extraer el valor de una etiqueta
+      function extractTagValue(xml, tag) {
+        const regex = new RegExp(`<${tag}>(.*?)<\/${tag}>`, 's');
+        const match = regex.exec(xml);
+        return match ? match[1] : '';
+      }
+      
+      // Extraer blobs (archivos)
+      const blobsRegex = /<Blob>([\s\S]*?)<\/Blob>/g;
+      let blobMatch;
+      while ((blobMatch = blobsRegex.exec(xmlResponse)) !== null) {
+        const blobContent = blobMatch[1];
+        const name = extractTagValue(blobContent, 'Name');
+        const propertiesContent = blobContent.match(/<Properties>([\s\S]*?)<\/Properties>/)?.[1] || '';
+        const size = parseInt(extractTagValue(propertiesContent, 'Content-Length'), 10) || 0;
+        const lastModifiedStr = extractTagValue(propertiesContent, 'Last-Modified');
+        const lastModified = lastModifiedStr ? new Date(lastModifiedStr) : new Date();
         
         // Extraer solo el nombre del archivo sin la ruta
         const fileName = name.startsWith(prefix) ? name.substring(prefix.length) : name;
@@ -779,10 +795,12 @@ export async function listContents(credentials, config = {}, path = '', limit = 
         });
       }
       
-      // Procesar los prefijos (carpetas)
-      const blobPrefixes = xmlDoc.getElementsByTagName('BlobPrefix');
-      for (let i = 0; i < blobPrefixes.length; i++) {
-        const prefixPath = blobPrefixes[i].getElementsByTagName('Name')[0].textContent;
+      // Extraer prefijos (carpetas)
+      const prefixesRegex = /<BlobPrefix>([\s\S]*?)<\/BlobPrefix>/g;
+      let prefixMatch;
+      while ((prefixMatch = prefixesRegex.exec(xmlResponse)) !== null) {
+        const prefixContent = prefixMatch[1];
+        const prefixPath = extractTagValue(prefixContent, 'Name');
         
         // Extraer solo el nombre de la carpeta
         const folderName = prefixPath.startsWith(prefix) 
