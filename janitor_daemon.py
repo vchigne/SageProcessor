@@ -131,8 +131,27 @@ class JanitorDaemon:
             
             # Convertir a diccionarios
             columns = [desc[0] for desc in cursor.description]
+            logger.info(f"Columnas de proveedores en la BD: {columns}")
+            
             for provider in providers:
                 provider_dict = dict(zip(columns, provider))
+                
+                # Log para depuración - Mostrar estructura de cada proveedor
+                logger.info(f"Estructura del proveedor {provider_dict.get('id')} - {provider_dict.get('nombre')}: {provider_dict.keys()}")
+                
+                # Si credenciales o configuración son strings JSON, convertirlos a dict
+                if 'credenciales' in provider_dict and isinstance(provider_dict['credenciales'], str):
+                    try:
+                        provider_dict['credenciales'] = json.loads(provider_dict['credenciales'])
+                    except:
+                        logger.warning(f"No se pudo parsear las credenciales del proveedor {provider_dict.get('nombre')}")
+                        
+                if 'configuracion' in provider_dict and isinstance(provider_dict['configuracion'], str):
+                    try:
+                        provider_dict['configuracion'] = json.loads(provider_dict['configuracion'])
+                    except:
+                        logger.warning(f"No se pudo parsear la configuración del proveedor {provider_dict.get('nombre')}")
+                
                 self.cloud_providers[provider_dict['id']] = provider_dict
                 
             logger.info(f"Proveedores cargados: {list(self.cloud_providers.keys())}")
@@ -419,16 +438,21 @@ class JanitorDaemon:
         config = provider['configuracion'] if isinstance(provider['configuracion'], dict) else json.loads(provider['configuracion']) if 'configuracion' in provider else {}
         credentials = provider['credenciales'] if isinstance(provider['credenciales'], dict) else json.loads(provider['credenciales']) if 'credenciales' in provider else {}
         
-        # Crear cliente S3
+        # Logs para depuración
+        logger.info(f"Credenciales S3: {list(credentials.keys()) if credentials else 'No hay credenciales'}")
+        logger.info(f"Configuración S3: {list(config.keys()) if config else 'No hay configuración'}")
+        
+        # Crear cliente S3 - Ajustado para coincidir con la implementación JS
         s3_client = boto3.client(
             's3',
             endpoint_url=credentials.get('endpoint'),
             aws_access_key_id=credentials.get('access_key'),
             aws_secret_access_key=credentials.get('secret_key'),
-            region_name=credentials.get('region')
+            region_name=credentials.get('region', 'us-east-1')  # Valor predeterminado como en el JavaScript
         )
         
-        bucket = credentials.get('bucket')
+        # Bucket puede estar en credenciales o en configuración
+        bucket = credentials.get('bucket') or config.get('bucket')
         
         # Subir todos los archivos en el directorio
         for root, dirs, files in os.walk(local_path):
@@ -455,11 +479,14 @@ class JanitorDaemon:
         config = provider['configuracion'] if isinstance(provider['configuracion'], dict) else json.loads(provider['configuracion']) if 'configuracion' in provider else {}
         credentials = provider['credenciales'] if isinstance(provider['credenciales'], dict) else json.loads(provider['credenciales']) if 'credenciales' in provider else {}
         
-        logger.info(f"Credenciales Azure: {credentials}")
+        # Logs para depuración
+        logger.info(f"Credenciales Azure: {list(credentials.keys()) if credentials else 'No hay credenciales'}")
+        logger.info(f"Configuración Azure: {list(config.keys()) if config else 'No hay configuración'}")
         
         # Obtener string de conexión y nombre del contenedor
-        connection_string = credentials.get('connection_string')
-        container_name = credentials.get('container_name')
+        # El string de conexión puede estar en credenciales o configuración
+        connection_string = credentials.get('connection_string') or config.get('connection_string')
+        container_name = credentials.get('container_name') or config.get('container_name')
         
         if not connection_string:
             raise ValueError("No se configuró correctamente la cadena de conexión para Azure")
@@ -500,14 +527,19 @@ class JanitorDaemon:
         config = provider['configuracion'] if isinstance(provider['configuracion'], dict) else json.loads(provider['configuracion']) if 'configuracion' in provider else {}
         credentials = provider['credenciales'] if isinstance(provider['credenciales'], dict) else json.loads(provider['credenciales']) if 'credenciales' in provider else {}
         
-        logger.info(f"Credenciales GCP: {credentials.keys()}")
+        # Logs para depuración
+        logger.info(f"Credenciales GCP: {list(credentials.keys()) if credentials else 'No hay credenciales'}")
+        logger.info(f"Configuración GCP: {list(config.keys()) if config else 'No hay configuración'}")
         
-        # Obtener el archivo de clave y el nombre del bucket
-        key_data = credentials.get('key_file')
-        bucket_name = credentials.get('bucket_name')
+        # Obtener el archivo de clave y el nombre del bucket (puede estar en credenciales o configuración)
+        key_data = credentials.get('key_file') or config.get('key_file')
+        bucket_name = credentials.get('bucket_name') or config.get('bucket_name')
         
-        if not key_data or not bucket_name:
-            raise ValueError("Faltan credenciales necesarias para GCP (key_file o bucket_name)")
+        if not key_data:
+            raise ValueError("No se encontró el archivo de clave (key_file) para GCP")
+            
+        if not bucket_name:
+            raise ValueError("No se encontró el nombre del bucket para GCP")
         
         # Crear archivo temporal para las credenciales
         fd, path = tempfile.mkstemp()
@@ -552,12 +584,24 @@ class JanitorDaemon:
         config = provider['configuracion'] if isinstance(provider['configuracion'], dict) else json.loads(provider['configuracion']) if 'configuracion' in provider else {}
         credentials = provider['credenciales'] if isinstance(provider['credenciales'], dict) else json.loads(provider['credenciales']) if 'credenciales' in provider else {}
         
-        logger.info(f"Credenciales SFTP: {credentials}")
+        # Logs para depuración
+        logger.info(f"Credenciales SFTP: {list(credentials.keys()) if credentials else 'No hay credenciales'}")
+        logger.info(f"Configuración SFTP: {list(config.keys()) if config else 'No hay configuración'}")
         
-        host = credentials.get('host')
-        port = int(credentials.get('port', 22))
-        user = credentials.get('user')
-        password = credentials.get('password')
+        # Los parámetros pueden estar en credenciales o en configuración
+        host = credentials.get('host') or config.get('host')
+        port = int(credentials.get('port', 22) or config.get('port', 22))
+        user = credentials.get('user') or config.get('user')
+        password = credentials.get('password') or config.get('password')
+        
+        if not host:
+            raise ValueError("No se configuró correctamente el host para SFTP")
+            
+        if not user:
+            raise ValueError("No se configuró correctamente el usuario para SFTP")
+            
+        if not password:
+            raise ValueError("No se configuró correctamente la contraseña para SFTP")
         
         # Crear cliente SFTP
         ssh_client = paramiko.SSHClient()
