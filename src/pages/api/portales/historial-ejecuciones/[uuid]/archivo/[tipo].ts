@@ -4,7 +4,11 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { v4 as uuidv4 } from 'uuid';
-import { getCloudFileAccessor } from '@/utils/cloud/file-accessor';
+import * as s3Adapter from '@/utils/cloud/adapters/s3_fixed';
+import * as azureAdapter from '@/utils/cloud/adapters/azure';
+import * as gcpAdapter from '@/utils/cloud/adapters/gcp';
+import * as sftpAdapter from '@/utils/cloud/adapters/sftp';
+import * as minioAdapter from '@/utils/cloud/adapters/minio';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -125,12 +129,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
     
     if (estaEnNube) {
+      // Definir las variables a nivel del bloque try/catch para tenerlas disponibles en caso de error
+      let cloudPath = '';
+      let providerName = '';
+      let provider = null;
+
       try {
-        // Determinar la ruta y el proveedor de nube a utilizar
-        let cloudPath;
-        let providerName;
-        let provider;
-        
         // Si estamos usando ruta_directorio con formato cloud://
         if (ejecucion.ruta_directorio && ejecucion.ruta_directorio.startsWith('cloud://') && (!ejecucion.ruta_nube || !ejecucion.nube_primaria_id)) {
           // Extraer el nombre del proveedor de la URI en formato cloud://proveedor/ruta
@@ -149,7 +153,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           );
           
           if (providerResult.rows.length === 0) {
-            return res.status(500).json({ message: `Proveedor de nube no encontrado: ${providerName}` });
+            return res.status(500).json({ 
+              message: `Proveedor de nube no encontrado: ${providerName}`,
+              error: `No se pudo encontrar el proveedor de nube "${providerName}" en la configuración.`,
+              tipo: 'proveedor_no_encontrado',
+              nombreProveedor: providerName
+            });
           }
           
           provider = providerResult.rows[0];
@@ -162,10 +171,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           );
           
           if (providerResult.rows.length === 0) {
-            return res.status(500).json({ message: 'Proveedor de nube no encontrado' });
+            return res.status(500).json({ 
+              message: 'Proveedor de nube no encontrado',
+              error: `No se pudo encontrar el proveedor de nube con ID ${ejecucion.nube_primaria_id} en la configuración.`,
+              tipo: 'proveedor_no_encontrado',
+              idProveedor: ejecucion.nube_primaria_id
+            });
           }
           
           provider = providerResult.rows[0];
+          providerName = provider.nombre;
           cloudPath = ejecucion.ruta_nube;
         }
         
@@ -195,12 +210,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             break;
         }
         
-        // Obtener el acceso al archivo en la nube
-        const fileAccessor = getCloudFileAccessor(provider.tipo);
-        if (!fileAccessor) {
-          return res.status(500).json({ message: `Tipo de nube no soportado: ${provider.tipo}` });
-        }
-        
         // Generar ruta temporal local para almacenar el archivo descargado
         const tempFilePath = path.join(tempDir, path.basename(relativePath));
         
@@ -217,12 +226,42 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           console.error('Error parseando configuración del proveedor:', parseError);
         }
         
-        // Descargar el archivo de la nube
+        // Ruta completa al archivo en la nube
+        const remoteFilePath = cloudPath + relativePath;
+        
+        // Descargar el archivo de la nube usando el adaptador adecuado
         console.log(`Descargando ${relativePath} desde ${cloudPath} a ${tempFilePath}`);
         console.log('Tipo de proveedor:', provider.tipo);
-        console.log('Configuración del proveedor:', JSON.stringify(provider.configuracion, null, 2));
         
-        await fileAccessor.downloadFile(provider, cloudPath, relativePath, tempFilePath);
+        // Seleccionar el adaptador según el tipo de proveedor
+        const tipo = provider.tipo.toLowerCase();
+        
+        try {
+          if (tipo === 's3') {
+            await s3Adapter.downloadFile(provider.credenciales, provider.configuracion, remoteFilePath, tempFilePath);
+          } else if (tipo === 'azure') {
+            await azureAdapter.downloadFile(provider.credenciales, provider.configuracion, remoteFilePath, tempFilePath);
+          } else if (tipo === 'gcp') {
+            await gcpAdapter.downloadFile(provider.credenciales, provider.configuracion, remoteFilePath, tempFilePath);
+          } else if (tipo === 'sftp') {
+            await sftpAdapter.downloadFile(provider.credenciales, provider.configuracion, remoteFilePath, tempFilePath);
+          } else if (tipo === 'minio') {
+            await minioAdapter.downloadFile(provider.credenciales, provider.configuracion, remoteFilePath, tempFilePath);
+          } else {
+            throw new Error(`Tipo de proveedor no soportado: ${tipo}`);
+          }
+        } catch (downloadError) {
+          console.error(`Error descargando archivo desde ${tipo}:`, downloadError);
+          return res.status(500).json({
+            message: `Error descargando archivo desde ${tipo}`,
+            error: `No se pudo descargar el archivo "${tipo}" desde el proveedor ${provider.nombre}.`,
+            detallesTecnicos: downloadError.message,
+            tipo: 'error_descarga_archivo',
+            proveedor: provider.nombre,
+            rutaRemota: remoteFilePath,
+            rutaLocal: tempFilePath
+          });
+        }
         
         if (!fs.existsSync(tempFilePath)) {
           return res.status(404).json({
@@ -250,8 +289,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         fileStream.pipe(res);
       } catch (cloudError) {
         console.error('Error accediendo a archivo en la nube:', cloudError);
-        // Asegurarnos de que provider esté definido para evitar errores
-        const providerName = (typeof provider !== 'undefined' && provider && provider.nombre) ? provider.nombre : 'desconocido';
+        // Ya no necesitamos definir el nombre nuevamente, usamos el que ya declaramos antes
         return res.status(500).json({ 
           message: 'Error al acceder al proveedor de nube', 
           error: 'No se pudo acceder al archivo en el almacenamiento en nube.',
