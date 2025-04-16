@@ -174,8 +174,8 @@ class JanitorDaemon:
             logger.info(f"Configuración cargada: {self.config}")
             logger.info(f"Proveedores de nube cargados: {list(self.cloud_providers.keys())}")
             
-            # Migrar ejecuciones antiguas a la nube
-            self._migrate_old_executions()
+            # Migrar ejecuciones antiguas a la nube (temporalmente 3 minutos para pruebas)
+            self._migrate_old_executions(max_age_hours=0.05)  # 3 minutos para prueba
             
             # Limpiar archivos temporales
             self._clean_temp_files()
@@ -192,17 +192,26 @@ class JanitorDaemon:
             if self.db_connection:
                 self.db_connection.close()
     
-    def _migrate_old_executions(self, only_existing_directories=True):
+    def _migrate_old_executions(self, only_existing_directories=True, max_age_hours=None):
         """
         Migrar ejecuciones antiguas a la nube
         
         Args:
             only_existing_directories (bool): Si es True, solo procesa directorios que existen físicamente
+            max_age_hours (float, optional): Edad máxima en horas para migrar (sobreescribe configuración)
         """
         logger.info(f"Iniciando migración de ejecuciones antiguas a la nube (solo existentes: {only_existing_directories})")
         
         # Calcular la fecha límite para migración
-        horas_retencion = self.config['tiempo_retencion_local']
+        if max_age_hours is not None:
+            # Usar el valor proporcionado para pruebas
+            horas_retencion = max_age_hours
+            logger.info(f"Usando tiempo de retención personalizado: {max_age_hours} horas")
+        else:
+            # Usar la configuración normal
+            horas_retencion = self.config['tiempo_retencion_local']
+            logger.info(f"Usando tiempo de retención configurado: {horas_retencion} horas")
+            
         fecha_limite = datetime.now() - timedelta(hours=horas_retencion)
         
         logger.info(f"Fecha límite para migración: {fecha_limite}")
