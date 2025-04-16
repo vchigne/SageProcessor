@@ -215,11 +215,16 @@ class JanitorDaemon:
                 logger.info(f"Fecha límite formateada: {fecha_limite_str}")
                 
                 # En esta versión, incluimos la fecha directamente en la consulta SQL
+                # También incluimos ejecuciones que están marcadas como migradas pero sin ruta_nube
                 sql_query = f"""
                     SELECT id, nombre_yaml, ruta_directorio, fecha_ejecucion, casilla_id
                     FROM ejecuciones_yaml
                     WHERE fecha_ejecucion < '{fecha_limite_str}'
-                    AND (migrado_a_nube = FALSE OR migrado_a_nube IS NULL)
+                    AND (
+                        (migrado_a_nube = FALSE OR migrado_a_nube IS NULL)
+                        OR
+                        (migrado_a_nube = TRUE AND (ruta_nube IS NULL OR ruta_nube = ''))
+                    )
                     AND ruta_directorio IS NOT NULL
                     AND ruta_directorio NOT LIKE 'cloud://%'
                 """
