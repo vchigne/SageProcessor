@@ -256,6 +256,10 @@ export async function getSignedUrl(client, remotePath, options = {}) {
 
 /**
  * Prueba la conexión a un servidor SFTP
+ * 
+ * Al igual que listContents, esta función funciona de manera diferente 
+ * dependiendo del contexto (cliente o servidor).
+ * 
  * @param {Object} credentials Credenciales completas
  * @param {Object} config Configuración adicional
  * @returns {Promise<Object>} Resultado de la prueba
@@ -277,24 +281,23 @@ export async function testConnection(credentials, config = {}) {
       throw new Error('Se requiere una contraseña o una clave SSH para la conexión SFTP');
     }
     
-    // Intentamos listar el directorio raíz como test de conexión
-    // Limitamos a 1 elemento para que sea más rápido
-    const result = await listContents(credentials, config, '/', 1);
-    
-    // Si hay error en el resultado, lo propagamos
-    if (result.error) {
-      throw new Error(result.errorMessage);
-    }
-    
-    return {
-      success: true,
-      message: 'Conexión a servidor SFTP exitosa',
-      details: {
-        host: credentials.host,
-        port: credentials.port || 22,
-        path: credentials.path || '/'
+    // Si estamos en el servidor, usamos el cliente del servidor
+    if (typeof window === 'undefined') {
+      // Importar dinámicamente el cliente SFTP del servidor
+      // Esto solo funcionará en el contexto de API Routes de Next.js
+      try {
+        const sftpClient = require('../../../server/sftp/client');
+        return await sftpClient.testConnection(credentials);
+      } catch (clientError) {
+        console.error('[SFTP] Error con el cliente SFTP del servidor:', clientError);
+        throw new Error(`Error del cliente SFTP: ${clientError.message}`);
       }
-    };
+    } else {
+      // ESTO NUNCA DEBERÍA EJECUTARSE EN NAVEGADOR
+      // El test de conexión SFTP solo debe ser llamado desde una API
+      console.error('[SFTP] Error: Intento de conectar a SFTP directamente desde el navegador');
+      throw new Error('La conexión SFTP debe ser manejada por el servidor');
+    }
   } catch (error) {
     console.error('[SFTP] Error al probar conexión:', error);
     // Mejoramos el mensaje de error para que sea más claro
@@ -321,6 +324,11 @@ export async function testConnection(credentials, config = {}) {
 
 /**
  * Lista contenido de un directorio SFTP con más detalles
+ * 
+ * Este método funciona de manera diferente dependiendo del contexto:
+ * - En el lado del cliente: Hace una solicitud HTTP al endpoint inspect
+ * - En el API del servidor: Delega al cliente SFTP del servidor
+ * 
  * @param {Object} credentials Credenciales
  * @param {Object} config Configuración
  * @param {string} path Ruta del directorio
@@ -340,49 +348,29 @@ export async function listContents(credentials, config = {}, path = '', limit = 
   };
   
   try {
-    // Preparar credenciales para el API
-    const authData = {};
-    if (credentials.password) {
-      authData.password = credentials.password;
-    } else if (credentials.key_path) {
-      authData.privateKey = credentials.key_path;
+    // ENFOQUE DIFERENTE PARA CLIENTE VS SERVIDOR
+    // En el contexto del navegador, no tenemos acceso directo a Python/paramiko,
+    // así que este código nunca se ejecutará en el cliente.
+    // En el API de servidor, será manejado directamente por el endpoint.
+    // Esta función solo debe ser llamada desde páginas de API, no desde el cliente.
+    
+    // Si estamos en un contexto de Node.js (server-side), usamos el cliente SFTP del servidor
+    if (typeof window === 'undefined') {
+      // Importar dinámicamente el cliente SFTP del servidor
+      // Esto solo funcionará en el contexto de API Routes de Next.js
+      try {
+        const sftpClient = require('../../../server/sftp/client');
+        return await sftpClient.listDirectory(credentials, path);
+      } catch (clientError) {
+        console.error('[SFTP] Error con el cliente SFTP del servidor:', clientError);
+        throw new Error(`Error del cliente SFTP: ${clientError.message}`);
+      }
     } else {
-      throw new Error('Se requiere contraseña o clave SSH para conectar con SFTP');
+      // ESTO NUNCA DEBERÍA EJECUTARSE EN NAVEGADOR
+      // El listado SFTP solo debe ser llamado desde una API
+      console.error('[SFTP] Error: Intento de conectar a SFTP directamente desde el navegador');
+      throw new Error('La conexión SFTP debe ser manejada por el servidor');
     }
-    
-    // Llamar al endpoint API que usa paramiko
-    const response = await fetch('/api/sftp/list-directory', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        host: credentials.host,
-        port: credentials.port || 22,
-        username: credentials.user,
-        auth: authData,
-        path: path || '/'
-      }),
-    });
-    
-    // Verificar si hubo error HTTP
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || 'Error al listar directorio SFTP');
-    }
-    
-    // Procesar la respuesta
-    const data = await response.json();
-    
-    // Convertir al formato esperado por la interfaz
-    return {
-      error: false,
-      path: data.path || path || '/',
-      parentPath: data.parentPath || '/',
-      files: data.files || [],
-      folders: data.folders || [],
-      service: 'sftp'
-    };
   } catch (error) {
     console.error('[SFTP] Error al listar contenido:', error);
     return {
