@@ -54,10 +54,11 @@ async function listDirectory(credentials, directory = '/') {
       return reject(new Error('Se requiere contraseña o clave SSH para la conexión SFTP'));
     }
     
-    // Agregar el directorio a listar
-    args.push(directory);
+    // Agregar el directorio a listar (asegurarse de que sea '/' si está vacío)
+    args.push(directory && directory !== '' ? directory : '/');
     
-    console.log(`[SFTP Server] Ejecutando script Python para listar directorio ${directory} en ${credentials.host}`);
+    // Mejorar el mensaje de log con más detalles
+    console.log(`[SFTP Server] Ejecutando script Python para listar directorio '${directory || "/"}' en ${credentials.host}:${port}`);
     
     // Ejecutar el script
     const pythonProcess = spawn('python', args);
@@ -95,6 +96,7 @@ async function listDirectory(credentials, directory = '/') {
           parentPath: result.parentPath,
           files: result.files || [],
           folders: result.folders || [],
+          message: result.message || '',
           service: 'sftp'
         });
       } catch (parseError) {

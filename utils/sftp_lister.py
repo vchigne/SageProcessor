@@ -61,15 +61,47 @@ def list_sftp_directory(host, port, username, password=None, key_path=None, dire
                 "error": True,
                 "message": "Error: No se pudo establecer conexión SFTP"
             }
+        
+        # Asegurarse de que el directorio sea una cadena válida
+        if directory is None or directory == '':
+            directory = '/'
+        
+        # Normalizar la ruta para que siempre comience con /
+        if not directory.startswith('/'):
+            directory = f'/{directory}'
+            
+        logger.info(f"Intentando listar directorio: '{directory}'")
             
         try:
             items = sftp.listdir_attr(directory)
         except Exception as e:
-            logger.error(f"Error al listar directorio {directory}: {str(e)}")
-            return {
-                "error": True,
-                "message": f"Error al listar directorio: {str(e)}"
-            }
+            error_str = str(e).lower()
+            
+            # Detectar diferentes tipos de errores relacionados con directorios inexistentes
+            if "no such file" in error_str or "not found" in error_str or isinstance(e, FileNotFoundError):
+                logger.warning(f"Directorio no encontrado {directory}: {str(e)}")
+                # Si el directorio no existe, devolvemos una lista vacía en lugar de error
+                # para que sea más fácil navegar por la interfaz
+                return {
+                    "error": False,
+                    "path": directory,
+                    "parentPath": '/' if directory == '/' else '/'.join(directory.rstrip('/').split('/')[:-1]) or '/',
+                    "files": [],
+                    "folders": [],
+                    "message": f"La ubicación '{directory}' no existe o está vacía"
+                }
+            elif "permission denied" in error_str or "access denied" in error_str:
+                logger.error(f"Permiso denegado al listar {directory}: {str(e)}")
+                return {
+                    "error": True,
+                    "message": f"No tiene permisos para acceder a '{directory}'"
+                }
+            else:
+                logger.error(f"Error al listar directorio {directory}: {str(e)}")
+                return {
+                    "error": True,
+                    "message": f"Error al listar directorio: {str(e)}"
+                }
         
         # Procesamos los resultados
         files = []
