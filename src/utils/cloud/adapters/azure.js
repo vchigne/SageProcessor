@@ -840,6 +840,7 @@ export async function listContents(credentials, config = {}, path = '', limit = 
   }
 }
 
+// Exportar funciones del adaptador
 export default {
   createClient,
   uploadFile,
