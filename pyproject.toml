@@ -4,7 +4,10 @@ version = "1.0.0"
 description = "Sistema de Análisis y Gestión de Errores para validación de archivos"
 requires-python = ">=3.11"
 dependencies = [
+    "azure-storage-blob>=12.25.1",
+    "boto3>=1.37.34",
     "dnspython>=2.7.0",
+    "google-cloud-storage>=3.1.0",
     "hatchling>=1.27.0",
     "numpy>=2.2.3",
     "openai>=1.66.3",

@@ -49,6 +49,37 @@ async function loadAdapter(type) {
 }
 
 /**
+ * Obtiene el adaptador para un tipo de proveedor específico (versión síncrona)
+ * @param {string} type Tipo de proveedor (s3, azure, etc.)
+ * @returns {Object} Adaptador para el tipo de proveedor
+ */
+export function getAdapter(type) {
+  // Solo usar esta función del lado del servidor
+  if (typeof window !== 'undefined') {
+    throw new Error('Esta función solo puede usarse en el servidor');
+  }
+  
+  try {
+    // Carga síncrona de adaptadores
+    if (!adapters[type]) {
+      if (type === 's3') {
+        adapters[type] = require(`./adapters/s3_fixed`).default;
+      } else if (type === 'minio') {
+        // MinIO usa el mismo adaptador que S3
+        adapters[type] = require(`./adapters/s3_fixed`).default;
+      } else {
+        adapters[type] = require(`./adapters/${type}`).default;
+      }
+    }
+    
+    return adapters[type];
+  } catch (error) {
+    console.error(`Error al obtener adaptador para ${type}:`, error);
+    throw new Error(`Adaptador no disponible para ${type}`);
+  }
+}
+
+/**
  * Obtiene un proveedor de nube por su ID
  * @param {number} id ID del proveedor
  * @returns {Promise<Object>} Información del proveedor
