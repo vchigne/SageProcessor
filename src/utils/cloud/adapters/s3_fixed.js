@@ -595,6 +595,11 @@ async function uploadFile(client, localPath, remotePath) {
  * @returns {string} Ruta sin barra al principio
  */
 function removeLeadingSlash(path) {
+  // Verificar que path sea un string
+  if (typeof path !== 'string') {
+    console.warn('removeLeadingSlash: path no es un string:', path);
+    return path;
+  }
   if (path.startsWith('/')) {
     return path.slice(1);
   }

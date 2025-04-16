@@ -16,6 +16,11 @@ const pool = new Pool({
 });
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  // Configurar encabezados para descargas binarias
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  
   if (req.method !== 'GET') {
     return res.status(405).json({ message: 'Method not allowed' });
   }
