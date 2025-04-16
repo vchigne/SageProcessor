@@ -149,6 +149,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           const tempFilePath = path.join(tempDir, fileName);
           
           try {
+            console.log(`Descargando archivo para ZIP desde proveedor ${tipo}: ${file.path}`);
+            
+            // Intentar parsear la configuración y credenciales si son strings
+            if (typeof provider.configuracion === 'string') {
+              provider.configuracion = JSON.parse(provider.configuracion);
+            }
+            
+            if (typeof provider.credenciales === 'string') {
+              provider.credenciales = JSON.parse(provider.credenciales);
+            }
+            
             // Descargar el archivo de la nube usando el adaptador correcto según el tipo
             if (tipo === 's3') {
               await s3Adapter.downloadFile(provider.credenciales, provider.configuracion, file.path, tempFilePath);
@@ -272,6 +283,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       details: 'Ocurrió un error al procesar su solicitud. Por favor intente nuevamente más tarde.',
       tipo: 'error_crear_zip',
       errorTecnico: error.message,
+      errorStack: error.stack,
       uuid: uuid
     });
   }

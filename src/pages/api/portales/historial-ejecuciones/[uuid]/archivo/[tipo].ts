@@ -234,28 +234,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         console.log('Tipo de proveedor:', provider.tipo);
         
         // Seleccionar el adaptador según el tipo de proveedor
-        const tipo = provider.tipo.toLowerCase();
+        const providerTipo = provider.tipo ? provider.tipo.toLowerCase() : '';
         
         try {
+          console.log(`Iniciando descarga desde proveedor tipo: ${providerTipo}`);
+          console.log(`Ruta remota: ${remoteFilePath}`);
+          console.log(`Ruta local: ${tempFilePath}`);
+          
           // Cada adaptador es un objeto exportado por defecto con varias funciones
-          if (tipo === 's3') {
+          if (providerTipo === 's3') {
             await s3Adapter.downloadFile(provider.credenciales, provider.configuracion, remoteFilePath, tempFilePath);
-          } else if (tipo === 'azure') {
+          } else if (providerTipo === 'azure') {
             await azureAdapter.downloadFile(provider.credenciales, provider.configuracion, remoteFilePath, tempFilePath);
-          } else if (tipo === 'gcp') {
+          } else if (providerTipo === 'gcp') {
             await gcpAdapter.downloadFile(provider.credenciales, provider.configuracion, remoteFilePath, tempFilePath);
-          } else if (tipo === 'sftp') {
+          } else if (providerTipo === 'sftp') {
             await sftpAdapter.downloadFile(provider.credenciales, provider.configuracion, remoteFilePath, tempFilePath);
-          } else if (tipo === 'minio') {
+          } else if (providerTipo === 'minio') {
             await minioAdapter.downloadFile(provider.credenciales, provider.configuracion, remoteFilePath, tempFilePath);
           } else {
-            throw new Error(`Tipo de proveedor no soportado: ${tipo}`);
+            throw new Error(`Tipo de proveedor no soportado: ${providerTipo}`);
           }
         } catch (downloadError) {
-          console.error(`Error descargando archivo desde ${tipo}:`, downloadError);
+          console.error(`Error descargando archivo desde ${providerTipo}:`, downloadError);
           return res.status(500).json({
-            message: `Error descargando archivo desde ${tipo}`,
-            error: `No se pudo descargar el archivo "${tipo}" desde el proveedor ${provider.nombre}.`,
+            message: `Error descargando archivo desde ${providerTipo}`,
+            error: `No se pudo descargar el archivo "${String(tipo)}" desde el proveedor ${provider.nombre}.`,
             detallesTecnicos: downloadError.message,
             tipo: 'error_descarga_archivo',
             proveedor: provider.nombre,
@@ -266,12 +270,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         
         if (!fs.existsSync(tempFilePath)) {
           return res.status(404).json({
-            message: `No se pudo descargar el archivo ${tipo} desde la nube`,
-            error: `El archivo "${tipo}" no se encontró en el almacenamiento en la nube.`,
+            message: `No se pudo descargar el archivo ${String(tipo)} desde la nube`,
+            error: `El archivo "${String(tipo)}" no se encontró en el almacenamiento en la nube.`,
             details: 'Esto puede deberse a que el archivo fue eliminado o a problemas de conexión con el proveedor de nube.',
             tipo: 'archivo_nube_no_encontrado',
-            archivoSolicitado: tipo,
-            proveedor: provider.nombre
+            archivoSolicitado: String(tipo),
+            proveedor: provider.nombre,
+            rutaRemota: remoteFilePath
           });
         }
         
@@ -297,19 +302,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           details: cloudError.message,
           tipo: 'error_acceso_nube',
           proveedor: providerName,
-          archivoSolicitado: tipo,
-          errorTecnico: cloudError.message
+          archivoSolicitado: String(tipo),
+          errorTecnico: cloudError.message,
+          errorStack: cloudError.stack
         });
       }
     } else {
       // Verificamos si el archivo existe localmente
       if (!fs.existsSync(filePath)) {
         return res.status(404).json({
-          message: `Archivo ${tipo} no encontrado`,
-          error: `No se encontró el archivo "${tipo}" para esta ejecución.`,
+          message: `Archivo ${String(tipo)} no encontrado`,
+          error: `No se encontró el archivo "${String(tipo)}" para esta ejecución.`,
           details: 'El archivo podría haber sido eliminado o nunca existió.',
           tipo: 'archivo_no_encontrado',
-          archivoSolicitado: tipo,
+          archivoSolicitado: String(tipo),
           rutaArchivo: filePath
         });
       }
@@ -325,7 +331,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       error: 'Ocurrió un error al procesar su solicitud. Por favor intente nuevamente más tarde.',
       details: 'Si el problema persiste, contacte al administrador del sistema.',
       tipo: 'error_interno',
-      errorTecnico: error.message
+      errorTecnico: error.message,
+      errorStack: error.stack,
+      archivoSolicitado: String(tipo)
     });
   }
 }
