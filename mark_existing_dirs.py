@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """
-Script para marcar las ejecuciones con directorios existentes como migradas a la nube.
+Script para migrar las ejecuciones con directorios existentes a la nube.
+
+Este script:
+1. Busca las ejecuciones almacenadas localmente no migradas a la nube
+2. Sube los archivos asociados a las nubes configuradas
+3. Actualiza los registros en la base de datos
+4. Elimina los archivos locales después de una migración exitosa
 """
 
 import os
@@ -10,12 +16,15 @@ import logging
 import psycopg2
 from datetime import datetime, timedelta
 import shutil
+import tempfile
+import traceback
 
 # Configurar logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
+        logging.FileHandler("mark_existing_dirs.log"),
         logging.StreamHandler()
     ]
 )
@@ -92,8 +101,243 @@ def get_execution_config(conn):
         logger.error(f"Error obteniendo configuración de ejecuciones: {e}")
         return None
 
-def mark_existing_executions(conn, cloud_providers, config):
-    """Marcar las ejecuciones con directorios existentes como migradas"""
+def upload_directory_to_cloud(local_path, cloud_path, provider):
+    """Subir un directorio a la nube usando el proveedor adecuado"""
+    logger.info(f"Subiendo {local_path} a {provider['nombre']}/{cloud_path}")
+    
+    # La lógica de subida dependerá del tipo de proveedor
+    provider_type = provider['tipo'].lower()
+    
+    if provider_type == 's3' or provider_type == 'minio':
+        upload_to_s3(local_path, cloud_path, provider)
+    elif provider_type == 'azure':
+        upload_to_azure(local_path, cloud_path, provider)
+    elif provider_type == 'gcp':
+        upload_to_gcp(local_path, cloud_path, provider)
+    elif provider_type == 'sftp':
+        upload_to_sftp(local_path, cloud_path, provider)
+    else:
+        raise ValueError(f"Tipo de proveedor no soportado: {provider_type}")
+
+def upload_to_s3(local_path, cloud_path, provider):
+    """Subir archivos a S3 o MinIO"""
+    import boto3
+    from botocore.exceptions import ClientError
+    
+    # Parsear credenciales y configuración
+    config = json.loads(provider['config'])
+    credentials = json.loads(provider['credentials'])
+    
+    # Crear cliente S3
+    s3_client = boto3.client(
+        's3',
+        endpoint_url=config.get('endpoint'),
+        aws_access_key_id=credentials.get('accessKeyId'),
+        aws_secret_access_key=credentials.get('secretAccessKey'),
+        region_name=config.get('region')
+    )
+    
+    bucket = config.get('bucket')
+    
+    # Subir todos los archivos en el directorio
+    for root, dirs, files in os.walk(local_path):
+        for file in files:
+            local_file_path = os.path.join(root, file)
+            
+            # Calcular la ruta relativa para el objeto S3
+            rel_path = os.path.relpath(local_file_path, local_path)
+            s3_key = f"{cloud_path}/{rel_path}"
+            
+            # Subir el archivo
+            try:
+                with open(local_file_path, 'rb') as data:
+                    s3_client.put_object(Bucket=bucket, Key=s3_key, Body=data)
+                logger.debug(f"Archivo {local_file_path} subido a s3://{bucket}/{s3_key}")
+            except Exception as e:
+                logger.error(f"Error subiendo archivo a S3: {e}")
+                raise
+
+def upload_to_azure(local_path, cloud_path, provider):
+    """Subir archivos a Azure Blob Storage"""
+    from azure.storage.blob import BlobServiceClient
+    
+    # Parsear credenciales y configuración
+    config = json.loads(provider['config'])
+    credentials = json.loads(provider['credentials'])
+    
+    # Obtener string de conexión o SAS token
+    connection_string = credentials.get('connectionString')
+    sas_token = credentials.get('sasToken')
+    account_name = config.get('accountName')
+    account_key = credentials.get('accountKey')
+    
+    # Crear cliente de servicio
+    if connection_string:
+        # Usar connection string completo
+        blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+    elif sas_token and account_name:
+        # Usar SAS token
+        account_url = f"https://{account_name}.blob.core.windows.net"
+        blob_service_client = BlobServiceClient(account_url=account_url, credential=sas_token)
+    elif account_name and account_key:
+        # Usar nombre y clave de cuenta
+        account_url = f"https://{account_name}.blob.core.windows.net"
+        blob_service_client = BlobServiceClient(account_url=account_url, credential=account_key)
+    else:
+        raise ValueError("No se configuraron credenciales válidas para Azure")
+    
+    # Obtener cliente de contenedor
+    container = config.get('container')
+    container_client = blob_service_client.get_container_client(container)
+    
+    # Subir todos los archivos en el directorio
+    for root, dirs, files in os.walk(local_path):
+        for file in files:
+            local_file_path = os.path.join(root, file)
+            
+            # Calcular la ruta relativa para el blob
+            rel_path = os.path.relpath(local_file_path, local_path)
+            blob_name = f"{cloud_path}/{rel_path}"
+            
+            # Subir el archivo
+            try:
+                with open(local_file_path, "rb") as data:
+                    container_client.upload_blob(name=blob_name, data=data, overwrite=True)
+                logger.debug(f"Archivo {local_file_path} subido a azure://{container}/{blob_name}")
+            except Exception as e:
+                logger.error(f"Error subiendo archivo a Azure: {e}")
+                raise
+
+def upload_to_gcp(local_path, cloud_path, provider):
+    """Subir archivos a Google Cloud Storage"""
+    from google.cloud import storage
+    import tempfile
+    
+    # Parsear credenciales y configuración
+    config = json.loads(provider['config'])
+    credentials = json.loads(provider['credentials'])
+    
+    # Crear archivo temporal para las credenciales
+    fd, path = tempfile.mkstemp()
+    try:
+        with os.fdopen(fd, 'w') as tmp:
+            # Guardar credenciales en archivo JSON
+            json.dump(credentials, tmp)
+        
+        # Crear cliente de almacenamiento
+        os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = path
+        storage_client = storage.Client()
+        
+        bucket_name = config.get('bucket')
+        bucket = storage_client.bucket(bucket_name)
+        
+        # Subir todos los archivos en el directorio
+        for root, dirs, files in os.walk(local_path):
+            for file in files:
+                local_file_path = os.path.join(root, file)
+                
+                # Calcular la ruta relativa para el objeto GCS
+                rel_path = os.path.relpath(local_file_path, local_path)
+                blob_name = f"{cloud_path}/{rel_path}"
+                
+                # Subir el archivo
+                try:
+                    blob = bucket.blob(blob_name)
+                    blob.upload_from_filename(local_file_path)
+                    logger.debug(f"Archivo {local_file_path} subido a gs://{bucket_name}/{blob_name}")
+                except Exception as e:
+                    logger.error(f"Error subiendo archivo a GCS: {e}")
+                    raise
+                    
+    finally:
+        # Eliminar archivo temporal de credenciales
+        os.unlink(path)
+
+def upload_to_sftp(local_path, cloud_path, provider):
+    """Subir archivos a servidor SFTP"""
+    import paramiko
+    
+    # Parsear credenciales y configuración
+    config = json.loads(provider['config'])
+    credentials = json.loads(provider['credentials'])
+    
+    # Crear cliente SFTP
+    host = config.get('host')
+    port = int(config.get('port', 22))
+    username = credentials.get('username')
+    password = credentials.get('password')
+    key_path = credentials.get('keyPath')
+    
+    # Inicializar cliente SSH
+    ssh = paramiko.SSHClient()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    
+    try:
+        # Conectar con contraseña o clave privada
+        if key_path and os.path.exists(key_path):
+            # Conectar con clave privada
+            private_key = paramiko.RSAKey.from_private_key_file(key_path)
+            ssh.connect(host, port=port, username=username, pkey=private_key)
+        else:
+            # Conectar con contraseña
+            ssh.connect(host, port=port, username=username, password=password)
+        
+        # Abrir cliente SFTP
+        sftp = ssh.open_sftp()
+        
+        # Crear directorio remoto si no existe
+        sftp_mkdir_p(sftp, cloud_path)
+        
+        # Subir todos los archivos en el directorio
+        for root, dirs, files in os.walk(local_path):
+            for file in files:
+                local_file_path = os.path.join(root, file)
+                
+                # Calcular la ruta relativa para el archivo SFTP
+                rel_path = os.path.relpath(local_file_path, local_path)
+                remote_path = f"{cloud_path}/{rel_path}"
+                
+                # Crear directorio remoto si es necesario
+                remote_dir = os.path.dirname(remote_path)
+                sftp_mkdir_p(sftp, remote_dir)
+                
+                # Subir el archivo
+                try:
+                    sftp.put(local_file_path, remote_path)
+                    logger.debug(f"Archivo {local_file_path} subido a sftp://{host}:{port}/{remote_path}")
+                except Exception as e:
+                    logger.error(f"Error subiendo archivo a SFTP: {e}")
+                    raise
+        
+        # Cerrar conexiones
+        sftp.close()
+        ssh.close()
+    except Exception as e:
+        logger.error(f"Error en conexión SFTP a {host}:{port}: {e}")
+        raise
+
+def sftp_mkdir_p(sftp, remote_directory):
+    """Crear directorio remoto recursivamente (mkdir -p)"""
+    if remote_directory == '/':
+        # La raíz siempre existe
+        return
+    if remote_directory == '':
+        # Directorio vacío, no hacer nada
+        return
+    if remote_directory == '.':
+        # Directorio actual, no hacer nada
+        return
+    
+    try:
+        sftp.stat(remote_directory)
+    except IOError:
+        dirname = os.path.dirname(remote_directory)
+        if dirname != remote_directory:
+            sftp_mkdir_p(sftp, dirname)
+        sftp.mkdir(remote_directory)
+
+def migrate_existing_executions(conn, cloud_providers, config):
+    """Migrar las ejecuciones con directorios existentes a la nube"""
     if not os.path.exists(EXECUTIONS_DIR):
         logger.error(f"No se encontró el directorio {EXECUTIONS_DIR}")
         return
@@ -171,7 +415,18 @@ def mark_existing_executions(conn, cloud_providers, config):
                     # Lista de rutas alternativas
                     rutas_alternativas = []
                     
-                    # Nubes alternativas
+                    # PASO 1: Subir los archivos a la nube primaria
+                    try:
+                        logger.info(f"Subiendo ejecución {ejecucion_id} a nube primaria {proveedor_primario['nombre']}")
+                        upload_directory_to_cloud(dir_path, carpeta_nube, proveedor_primario)
+                        logger.info(f"Archivos subidos correctamente a {proveedor_primario['nombre']}")
+                    except Exception as e:
+                        logger.error(f"Error subiendo a nube primaria {proveedor_primario['nombre']}: {e}")
+                        logger.error(traceback.format_exc())
+                        # En caso de error, no continuar con esta ejecución
+                        continue
+                    
+                    # PASO 2: Subir a nubes alternativas si están configuradas
                     nubes_alt_formateado = None
                     if nubes_alternativas:
                         nubes_alt_formateado = '{' + ','.join(str(id) for id in nubes_alternativas) + '}'
@@ -179,16 +434,25 @@ def mark_existing_executions(conn, cloud_providers, config):
                         for nube_alt_id in nubes_alternativas:
                             proveedor_alt = cloud_providers.get(nube_alt_id)
                             if proveedor_alt:
-                                # Construir la ruta URI para la nube alternativa
-                                ruta_alt = f"cloud://{proveedor_alt['nombre']}/{carpeta_nube}"
-                                rutas_alternativas.append(ruta_alt)
+                                try:
+                                    logger.info(f"Subiendo ejecución {ejecucion_id} a nube alternativa {proveedor_alt['nombre']}")
+                                    upload_directory_to_cloud(dir_path, carpeta_nube, proveedor_alt)
+                                    
+                                    # Construir la ruta URI para la nube alternativa
+                                    ruta_alt = f"cloud://{proveedor_alt['nombre']}/{carpeta_nube}"
+                                    rutas_alternativas.append(ruta_alt)
+                                    logger.info(f"Archivos subidos correctamente a {proveedor_alt['nombre']}")
+                                except Exception as e:
+                                    logger.error(f"Error subiendo a nube alternativa {proveedor_alt['nombre']}: {e}")
+                                    logger.error(traceback.format_exc())
+                                    # Continuar con las otras nubes alternativas
                     
                     # Rutas alternativas formateadas
                     rutas_alt_formateado = None
                     if rutas_alternativas:
                         rutas_alt_formateado = '{' + ','.join(f'"{ruta}"' for ruta in rutas_alternativas) + '}'
                     
-                    # Marcar como migrada
+                    # PASO 3: Marcar como migrada en la base de datos
                     cursor.execute("""
                         UPDATE ejecuciones_yaml
                         SET nube_primaria_id = %s,
@@ -208,9 +472,9 @@ def mark_existing_executions(conn, cloud_providers, config):
                     # Confirmar la transacción
                     conn.commit()
                     
-                    logger.info(f"Ejecución {ejecucion_id} marcada como migrada a {ruta_nube_primaria}")
+                    logger.info(f"Ejecución {ejecucion_id} migrada correctamente a {ruta_nube_primaria}")
                     
-                    # Eliminar el directorio local
+                    # PASO 4: Eliminar el directorio local si todo fue exitoso
                     try:
                         shutil.rmtree(dir_path)
                         logger.info(f"Directorio {dir_path} eliminado correctamente")
@@ -220,6 +484,7 @@ def mark_existing_executions(conn, cloud_providers, config):
                     processed_dirs += 1
         except Exception as e:
             logger.error(f"Error procesando directorio {dir_name}: {e}")
+            logger.error(traceback.format_exc())
             # Revertir la transacción en caso de error
             conn.rollback()
     
@@ -227,7 +492,7 @@ def mark_existing_executions(conn, cloud_providers, config):
 
 def main():
     """Función principal"""
-    logger.info("Iniciando proceso de marcado de ejecuciones")
+    logger.info("Iniciando proceso de migración de ejecuciones a la nube")
     
     conn = get_database_connection()
     if not conn:
@@ -246,10 +511,11 @@ def main():
             logger.error("No se encontró configuración de ejecuciones")
             return
             
-        # Marcar las ejecuciones con directorios existentes
-        mark_existing_executions(conn, cloud_providers, config)
+        # Migrar las ejecuciones con directorios existentes
+        migrate_existing_executions(conn, cloud_providers, config)
     except Exception as e:
         logger.error(f"Error en el proceso: {e}")
+        logger.error(traceback.format_exc())
     finally:
         conn.close()
         logger.info("Proceso finalizado")
