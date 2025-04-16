@@ -14,6 +14,97 @@ import { getAdapter } from './index';
 const readFileAsync = promisify(fs.readFile);
 
 /**
+ * Obtiene un adaptador de acceso a archivos en la nube con métodos adicionales
+ * @param {string} providerType - Tipo de proveedor (s3, azure, gcp, sftp, minio)
+ * @returns {Object} - Adaptador para el proveedor especificado con interfaz estandarizada
+ */
+export function getCloudFileAccessor(providerType) {
+  try {
+    // Verificar que el tipo de proveedor es válido
+    if (!providerType || typeof providerType !== 'string') {
+      throw new Error('Tipo de proveedor no válido');
+    }
+    
+    // Normalizar tipo de proveedor
+    const type = providerType.toLowerCase();
+    
+    // Obtener el adaptador base
+    let adapter;
+    
+    // Asignar minio a adaptador de s3
+    if (type === 'minio') {
+      adapter = getAdapter('s3');
+    } else {
+      adapter = getAdapter(type);
+    }
+    
+    if (!adapter) {
+      throw new Error(`Adaptador no encontrado para tipo ${type}`);
+    }
+    
+    // Extender el adaptador con funciones adicionales
+    return {
+      ...adapter,
+      
+      /**
+       * Descarga un archivo desde la nube a una ubicación local
+       * @param {Object} provider - Información del proveedor desde la base de datos
+       * @param {string} cloudPath - Ruta base en la nube
+       * @param {string} relativePath - Ruta relativa dentro de cloudPath
+       * @param {string} localPath - Ruta local donde guardar el archivo
+       * @returns {Promise<boolean>} - true si la descarga fue exitosa
+       */
+      downloadFile: async (provider, cloudPath, relativePath, localPath) => {
+        try {
+          console.log(`Downloading: ${cloudPath}/${relativePath} to ${localPath}`);
+          
+          // Extraer las credenciales y configuración del proveedor
+          let providerConfig = provider.configuracion;
+          let providerCredentials = provider.credenciales;
+          
+          // Asegurarse de que son objetos y no strings
+          if (typeof providerConfig === 'string') {
+            providerConfig = JSON.parse(providerConfig);
+          }
+          
+          if (typeof providerCredentials === 'string') {
+            providerCredentials = JSON.parse(providerCredentials);
+          }
+          
+          // Crear cliente para acceder al proveedor
+          const client = await adapter.createClient(providerCredentials, providerConfig);
+          
+          // Asegurar que el directorio destino existe
+          const localDir = path.dirname(localPath);
+          if (!fs.existsSync(localDir)) {
+            fs.mkdirSync(localDir, { recursive: true });
+          }
+          
+          // Combinar cloudPath con relativePath para obtener la ruta completa
+          const remotePath = path.posix.join(cloudPath, relativePath);
+          
+          // Llamar al método de descarga específico del adaptador
+          if (adapter.downloadFile) {
+            await adapter.downloadFile(client, remotePath, localPath);
+          } else {
+            // Implementación genérica para adaptadores que no tienen downloadFile específico
+            throw new Error(`El adaptador para ${type} no implementa downloadFile`);
+          }
+          
+          return true;
+        } catch (error) {
+          console.error(`Error descargando archivo desde ${type}:`, error);
+          throw new Error(`Error al descargar archivo: ${error.message}`);
+        }
+      }
+    };
+  } catch (error) {
+    console.error(`Error al obtener adaptador para ${providerType}:`, error);
+    return null;
+  }
+}
+
+/**
  * Analiza una URI de nube en sus componentes
  * 
  * @param {string} uri - URI en formato cloud://proveedor/ruta/al/archivo

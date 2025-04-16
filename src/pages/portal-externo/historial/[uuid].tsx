@@ -32,6 +32,11 @@ type Ejecucion = {
   tieneLog: boolean;
   tieneYaml: boolean;
   tieneDatos: boolean;
+  // Información sobre almacenamiento
+  migrado_a_nube: boolean;
+  ruta_nube: string | null;
+  nube_primaria_id: number | null;
+  nube_primaria_nombre: string | null;
 };
 
 // Tipo para la información del YAML
@@ -553,6 +558,9 @@ export default function HistorialPage() {
                     <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
                       Advertencias
                     </th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                      Almacenamiento
+                    </th>
                     <th scope="col" className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">
                       Acciones
                     </th>
@@ -577,6 +585,17 @@ export default function HistorialPage() {
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-yellow-600 font-medium">
                         {ejecucion.warnings_detectados || 0}
+                      </td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm">
+                        {ejecucion.migrado_a_nube ? (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-blue-50 text-blue-800">
+                            {ejecucion.nube_primaria_nombre || 'Nube'}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-gray-50 text-gray-800">
+                            Local
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500 text-center">
                         <div className="flex justify-center space-x-2">

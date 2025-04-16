@@ -2,6 +2,9 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import { Pool } from 'pg';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
+import { v4 as uuidv4 } from 'uuid';
+import { getCloudFileAccessor } from '@/utils/cloud/file-accessor';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -25,7 +28,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Obtenemos información de la ejecución desde la base de datos
     const result = await pool.query(
-      'SELECT uuid, nombre_yaml, archivo_datos, ruta_directorio FROM ejecuciones_yaml WHERE uuid = $1',
+      'SELECT uuid, nombre_yaml, archivo_datos, ruta_directorio, migrado_a_nube, ruta_nube, nube_primaria_id FROM ejecuciones_yaml WHERE uuid = $1',
       [uuid]
     );
 
@@ -35,19 +38,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const ejecucion = result.rows[0];
     
-    // Usar el directorio almacenado en la base de datos si existe, sino construir la ruta por defecto
+    // Determinar si el archivo está en la nube o local
+    const estaEnNube = ejecucion.migrado_a_nube && ejecucion.ruta_nube;
     let execDir;
-    if (ejecucion.ruta_directorio) {
-      execDir = ejecucion.ruta_directorio;
+    
+    if (estaEnNube) {
+      console.log('Ejecución migrada a la nube:', ejecucion.ruta_nube);
+      // No necesitamos verificar si el directorio existe, porque accederemos a través del adaptador de nube
+      execDir = ejecucion.ruta_nube;
     } else {
-      execDir = path.join(process.cwd(), 'executions', String(uuid));
-    }
-    
-    console.log('Directorio de ejecución para archivo:', execDir);
-    
-    // Si el directorio no existe, retornamos un error
-    if (!fs.existsSync(execDir)) {
-      return res.status(404).json({ message: 'Archivos de ejecución no encontrados' });
+      // Usar el directorio almacenado en la base de datos si existe, sino construir la ruta por defecto
+      if (ejecucion.ruta_directorio) {
+        execDir = ejecucion.ruta_directorio;
+      } else {
+        execDir = path.join(process.cwd(), 'executions', String(uuid));
+      }
+      
+      console.log('Directorio de ejecución para archivo (local):', execDir);
+      
+      // Si el directorio no existe localmente, retornamos un error
+      if (!fs.existsSync(execDir)) {
+        return res.status(404).json({ message: 'Archivos de ejecución no encontrados' });
+      }
     }
 
     let filePath: string;
@@ -91,18 +103,92 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(400).json({ message: 'Tipo de archivo no válido' });
     }
 
-    // Verificamos si el archivo existe
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ message: `Archivo ${tipo} no encontrado` });
-    }
-
     // Configuramos la respuesta para servir el archivo
     res.setHeader('Content-Type', contentType);
     res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
     
-    // Leemos y enviamos el archivo
-    const fileStream = fs.createReadStream(filePath);
-    fileStream.pipe(res);
+    if (estaEnNube) {
+      try {
+        // Obtener información del proveedor de la nube
+        const providerResult = await pool.query(
+          'SELECT id, nombre, tipo, descripcion, configuracion, credenciales FROM cloud_providers WHERE id = $1',
+          [ejecucion.nube_primaria_id]
+        );
+        
+        if (providerResult.rows.length === 0) {
+          return res.status(500).json({ message: 'Proveedor de nube no encontrado' });
+        }
+        
+        const provider = providerResult.rows[0];
+        console.log(`Obteniendo archivo desde nube ${provider.nombre} (${provider.tipo})`);
+        
+        // Crear un directorio temporal para el archivo
+        const tempDir = path.join(os.tmpdir(), 'sage-cloud-downloads', uuidv4());
+        fs.mkdirSync(tempDir, { recursive: true });
+        
+        // Determinar la ruta del archivo en la nube
+        let cloudPath = ejecucion.ruta_nube;
+        let relativePath;
+        
+        switch (String(tipo)) {
+          case 'log':
+            relativePath = 'output.log';
+            break;
+          case 'yaml':
+            relativePath = ejecucion.nombre_yaml || 'input.yaml';
+            break;
+          case 'datos':
+            relativePath = ejecucion.archivo_datos || '';
+            break;
+        }
+        
+        // Obtener el acceso al archivo en la nube
+        const fileAccessor = getCloudFileAccessor(provider.tipo);
+        if (!fileAccessor) {
+          return res.status(500).json({ message: `Tipo de nube no soportado: ${provider.tipo}` });
+        }
+        
+        // Generar ruta temporal local para almacenar el archivo descargado
+        const tempFilePath = path.join(tempDir, path.basename(relativePath));
+        
+        // Descargar el archivo de la nube
+        console.log(`Descargando ${relativePath} desde ${cloudPath} a ${tempFilePath}`);
+        await fileAccessor.downloadFile(provider, cloudPath, relativePath, tempFilePath);
+        
+        if (!fs.existsSync(tempFilePath)) {
+          return res.status(404).json({ message: `No se pudo descargar el archivo ${tipo} desde la nube` });
+        }
+        
+        // Enviar el archivo y configurar limpieza al finalizar
+        const fileStream = fs.createReadStream(tempFilePath);
+        fileStream.on('end', () => {
+          // Limpiar archivos temporales después de enviarlos
+          try {
+            fs.unlinkSync(tempFilePath);
+            fs.rmdirSync(tempDir, { recursive: true });
+          } catch (cleanupError) {
+            console.error('Error limpiando archivos temporales:', cleanupError);
+          }
+        });
+        
+        fileStream.pipe(res);
+      } catch (cloudError) {
+        console.error('Error accediendo a archivo en la nube:', cloudError);
+        return res.status(500).json({ 
+          message: 'Error al obtener archivo desde la nube', 
+          error: cloudError.message 
+        });
+      }
+    } else {
+      // Verificamos si el archivo existe localmente
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ message: `Archivo ${tipo} no encontrado` });
+      }
+      
+      // Leemos y enviamos el archivo local
+      const fileStream = fs.createReadStream(filePath);
+      fileStream.pipe(res);
+    }
   } catch (error) {
     console.error('Error al obtener archivo de ejecución:', error);
     return res.status(500).json({ message: 'Error al obtener archivo de ejecución', error: error.message });
