@@ -867,34 +867,34 @@ function CloudProviders() {
                     <div>
                       <h3 className="text-lg font-medium text-red-800">Error de conexión</h3>
                       <p className="mt-2 text-sm text-gray-600 max-w-2xl mx-auto">
-                        {explorerData.errorMessage}
+                        {explorerData.errorMessage || "Error desconocido al acceder al almacenamiento"}
                       </p>
                     </div>
                     <div className="mt-4 px-4 py-3 bg-red-50 border border-red-100 rounded-md text-left">
                       <h4 className="text-sm font-medium text-red-800 mb-1">Sugerencias:</h4>
                       <ul className="text-xs text-gray-700 space-y-1 list-disc pl-5">
-                        {explorerData.errorMessage.includes('SignatureDoesNotMatch') && (
+                        {explorerData.errorMessage && typeof explorerData.errorMessage === 'string' && explorerData.errorMessage.includes('SignatureDoesNotMatch') && (
                           <>
                             <li>Verifica que la <b>clave de acceso</b> y <b>clave secreta</b> sean correctas</li>
                             <li>Comprueba que la <b>región</b> configurada sea la correcta</li>
                             <li>Asegúrate de que las credenciales sigan activas en AWS</li>
                           </>
                         )}
-                        {explorerData.errorMessage.includes('NoSuchBucket') && (
+                        {explorerData.errorMessage && typeof explorerData.errorMessage === 'string' && explorerData.errorMessage.includes('NoSuchBucket') && (
                           <>
                             <li>Verifica que el nombre del <b>bucket '{explorerData.bucket}'</b> sea correcto</li>
                             <li>Comprueba que el bucket exista en la región <b>{explorerData.region}</b></li>
                             <li>Asegúrate de tener permisos para acceder a este bucket</li>
                           </>
                         )}
-                        {explorerData.errorMessage.includes('AccessDenied') && (
+                        {explorerData.errorMessage && typeof explorerData.errorMessage === 'string' && explorerData.errorMessage.includes('AccessDenied') && (
                           <>
                             <li>Las credenciales no tienen <b>permisos suficientes</b> para acceder al bucket</li>
                             <li>Verifica la política de permisos en la consola de AWS IAM</li>
                             <li>El usuario debe tener al menos permisos <b>s3:ListBucket</b></li>
                           </>
                         )}
-                        {explorerData.errorMessage.includes('InvalidAccessKeyId') && (
+                        {explorerData.errorMessage && typeof explorerData.errorMessage === 'string' && explorerData.errorMessage.includes('InvalidAccessKeyId') && (
                           <>
                             <li>La <b>clave de acceso</b> proporcionada no existe en AWS</li>
                             <li>Verifica que la clave no haya sido eliminada o desactivada</li>
@@ -941,6 +941,7 @@ function CloudProviders() {
                         {/* Errores generales de AWS o errores por defecto */}
                         {(!explorerProvider || 
                           (explorerProvider.tipo === 's3' && 
+                          explorerData.errorMessage && typeof explorerData.errorMessage === 'string' &&
                           !explorerData.errorMessage.includes('SignatureDoesNotMatch') && 
                           !explorerData.errorMessage.includes('NoSuchBucket') && 
                           !explorerData.errorMessage.includes('AccessDenied') &&
