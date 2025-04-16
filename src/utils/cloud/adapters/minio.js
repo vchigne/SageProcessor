@@ -1,83 +1,228 @@
 /**
  * Adaptador para MinIO
  * 
- * Este adaptador implementa las operaciones necesarias para trabajar
- * con el almacenamiento en MinIO, permitiendo operaciones como
- * subir, descargar y listar archivos.
+ * Implementa las operaciones básicas para interactuar con servidores MinIO
+ * implementando las funciones necesarias directamente sin depender de otros adaptadores.
  */
-
-// En una implementación real, usaríamos MinIO SDK
-// import * as Minio from 'minio';
 
 /**
- * Crea un cliente para interactuar con MinIO
- * @param {Object} credentials Credenciales (endpoint, access_key, secret_key, bucket)
- * @param {Object} config Configuración adicional
- * @returns {Object} Cliente configurado para MinIO
+ * Calcula el hash SHA-256 de una cadena
+ * @param {string} message - El mensaje a hashear
+ * @returns {Promise<string>} - El hash en formato hexadecimal
  */
-export function createClient(credentials, config = {}) {
-  // En una implementación real, crearíamos un cliente MinIO real
-  // const client = new Minio.Client({
-  //   endPoint: credentials.endpoint.replace(/^https?:\/\//, ''),
-  //   port: credentials.endpoint.startsWith('https') ? 443 : 80,
-  //   useSSL: credentials.secure === undefined ? true : credentials.secure,
-  //   accessKey: credentials.access_key,
-  //   secretKey: credentials.secret_key
-  // });
-  
-  // Por ahora, devolvemos un objeto simulado para desarrollo
-  return {
-    endpoint: credentials.endpoint,
-    bucket: credentials.bucket,
-    client: {
-      type: 'minio',
-      secure: credentials.secure === undefined ? true : credentials.secure,
-      config
-    }
-  };
+async function sha256(message) {
+  const msgBuffer = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 /**
- * Prueba la conexión con MinIO
- * @param {Object} credentials Credenciales (endpoint, access_key, secret_key, bucket)
- * @param {Object} config Configuración adicional
- * @returns {Promise<Object>} Resultado de la prueba
+ * Devuelve la fecha actual en formato ISO 8601 para el encabezado x-amz-date
+ * @returns {string} Fecha en formato yyyyMMddTHHmmssZ
  */
-export async function testConnection(credentials, config = {}) {
+function getAmzDate() {
+  const date = new Date();
+  return date.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+}
+
+/**
+ * Devuelve la fecha actual en formato yyyyMMdd para el ámbito de credenciales
+ * @returns {string} Fecha en formato yyyyMMdd
+ */
+function getDateStamp() {
+  const date = new Date();
+  return date.toISOString().split('T')[0].replace(/-/g, '');
+}
+
+/**
+ * Prueba la conexión a MinIO verificando si se puede acceder a un bucket
+ * 
+ * @param {object} credentials - Credenciales MinIO (access_key, secret_key, bucket, etc.)
+ * @param {object} config - Configuración para el bucket (endpoint, secure, etc.)
+ * @returns {Promise<object>} - Resultado de la prueba con estado y mensaje
+ */
+async function testConnection(credentials, config = {}) {
+  // Validar credenciales mínimas requeridas
+  if (!credentials.access_key || !credentials.secret_key || !credentials.bucket) {
+    return {
+      success: false,
+      message: 'Faltan credenciales requeridas (access_key, secret_key, bucket)'
+    };
+  }
+  
+  if (!config.endpoint) {
+    return {
+      success: false,
+      message: 'Falta la configuración del endpoint para MinIO'
+    };
+  }
+  
   try {
-    // Validar credenciales básicas
-    if (!credentials.endpoint) {
-      throw new Error('No se proporcionó el endpoint');
+    console.log('Configuración recibida en MinIO adapter:', JSON.stringify(config, null, 2));
+    
+    // Determinar si el endpoint incluye el protocolo
+    let endpoint = config.endpoint;
+    if (!endpoint.startsWith('http://') && !endpoint.startsWith('https://')) {
+      // Agregar el protocolo según la configuración de secure
+      const protocol = config.secure !== false ? 'https://' : 'http://';
+      endpoint = protocol + endpoint;
     }
     
-    if (!credentials.access_key) {
-      throw new Error('No se proporcionó la clave de acceso');
+    // Extraer el host sin el protocolo
+    const host = endpoint.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    
+    // Utilizar la opción de puerto si está especificada
+    const port = config.port ? `:${config.port}` : '';
+    const baseUrl = `${endpoint}${port}`;
+    
+    // Construir URL del bucket 
+    const url = `${baseUrl}/${credentials.bucket}?max-keys=1`;
+    
+    // Fecha y timestamp para la firma
+    const amzDate = getAmzDate();
+    const dateStamp = getDateStamp();
+    
+    // Headers a firmar
+    const headers = {
+      'host': host + port,
+      'x-amz-date': amzDate,
+      'x-amz-content-sha256': 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855' // hash de cadena vacía
+    };
+    
+    // Paso 1: Crear solicitud canónica
+    const canonicalUri = `/${credentials.bucket}`;
+    const canonicalQueryString = 'max-keys=1';
+    
+    // Construir los headers canónicos
+    const sortedHeaders = Object.keys(headers).sort();
+    const canonicalHeaders = sortedHeaders.map(key => `${key}:${headers[key]}\n`).join('');
+    const signedHeaders = sortedHeaders.join(';');
+    
+    const payloadHash = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'; // hash de cuerpo vacío
+    
+    const canonicalRequest = [
+      'GET',
+      canonicalUri,
+      canonicalQueryString,
+      canonicalHeaders,
+      signedHeaders,
+      payloadHash
+    ].join('\n');
+    
+    // Paso 2: Crear el string to sign
+    const algorithm = 'AWS4-HMAC-SHA256';
+    const region = 'us-east-1'; // MinIO suele usar esto como valor predeterminado
+    const scope = `${dateStamp}/${region}/s3/aws4_request`;
+    const stringToSign = [
+      algorithm,
+      amzDate,
+      scope,
+      await sha256(canonicalRequest)
+    ].join('\n');
+    
+    // Paso 3: Calcular la firma
+    async function sign(key, msg) {
+      const msgBuffer = new TextEncoder().encode(msg);
+      const keyBuffer = await crypto.subtle.importKey(
+        'raw',
+        key,
+        { name: 'HMAC', hash: { name: 'SHA-256' } },
+        false,
+        ['sign']
+      );
+      const signBuffer = await crypto.subtle.sign(
+        { name: 'HMAC', hash: { name: 'SHA-256' } },
+        keyBuffer,
+        msgBuffer
+      );
+      return new Uint8Array(signBuffer);
     }
     
-    if (!credentials.secret_key) {
-      throw new Error('No se proporcionó la clave secreta');
+    const kSecret = new TextEncoder().encode(`AWS4${credentials.secret_key}`);
+    const kDate = await sign(kSecret, dateStamp);
+    const kRegion = await sign(kDate, region);
+    const kService = await sign(kRegion, 's3');
+    const kSigning = await sign(kService, 'aws4_request');
+    
+    const signature = await sign(kSigning, stringToSign);
+    const signatureHex = Array.from(signature)
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+    
+    // Paso 4: Crear el header de autorización
+    const authorizationHeader = `${algorithm} Credential=${credentials.access_key}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signatureHex}`;
+    
+    // Hacer la solicitud
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        ...headers,
+        'Authorization': authorizationHeader
+      }
+    });
+    
+    // Verificar respuesta
+    if (!response.ok) {
+      // Extraer mensaje de error para más detalles
+      const errorText = await response.text();
+      
+      // Intentar extraer el mensaje de error del XML
+      let errorMessage = `Error HTTP ${response.status}: ${response.statusText}`;
+      
+      // Buscar el mensaje de error en la respuesta XML
+      const codeMatch = errorText.match(/<Code>(.*?)<\/Code>/);
+      const messageMatch = errorText.match(/<Message>(.*?)<\/Message>/);
+      
+      if (codeMatch && messageMatch) {
+        const errorCode = codeMatch[1];
+        const errorDetail = messageMatch[1];
+        
+        if (errorCode === 'AccessDenied') {
+          return {
+            success: false,
+            message: `Las credenciales no tienen permisos para acceder al bucket "${credentials.bucket}". Verifica los permisos.`
+          };
+        } else if (errorCode === 'NoSuchBucket') {
+          return {
+            success: false,
+            message: `El bucket "${credentials.bucket}" no existe o no es accesible.`
+          };
+        } else if (errorCode === 'InvalidAccessKeyId') {
+          return {
+            success: false,
+            message: `La clave de acceso proporcionada no existe. Verifica que la clave sea correcta.`
+          };
+        } else if (errorCode === 'SignatureDoesNotMatch') {
+          return {
+            success: false,
+            message: `Error de autenticación: La firma generada no coincide. Verifica que la clave secreta sea correcta.`
+          };
+        } else {
+          return {
+            success: false,
+            message: `Error MinIO (${errorCode}): ${errorDetail}`
+          };
+        }
+      }
+      
+      return {
+        success: false,
+        message: errorMessage
+      };
     }
     
-    if (!credentials.bucket) {
-      throw new Error('No se proporcionó el nombre del bucket');
-    }
-    
-    // Simulamos una conexión exitosa para desarrollo
-    // En una implementación real, haríamos una prueba real
-    // const client = new Minio.Client({
-    //   endPoint: credentials.endpoint.replace(/^https?:\/\//, ''),
-    //   port: credentials.endpoint.startsWith('https') ? 443 : 80,
-    //   useSSL: credentials.secure === undefined ? true : credentials.secure,
-    //   accessKey: credentials.access_key,
-    //   secretKey: credentials.secret_key
-    // });
-    // await client.bucketExists(credentials.bucket);
-    
+    // En caso de éxito
     return {
       success: true,
-      message: 'Conexión exitosa con MinIO'
+      message: `Conexión exitosa al bucket ${credentials.bucket}`,
+      details: {
+        bucketName: credentials.bucket,
+        endpoint: endpoint
+      }
     };
   } catch (error) {
+    console.error('Error al probar conexión con MinIO:', error);
     return {
       success: false,
       message: `Error al conectar con MinIO: ${error.message}`
@@ -86,131 +231,300 @@ export async function testConnection(credentials, config = {}) {
 }
 
 /**
- * Lista archivos en un directorio de MinIO
- * @param {Object} client Cliente configurado
- * @param {string} remotePath Ruta remota a listar
- * @returns {Promise<Array<Object>>} Lista de archivos
+ * Lista el contenido de un bucket o carpeta dentro de un bucket
+ * 
+ * @param {object} credentials - Credenciales MinIO (access_key, secret_key, bucket, etc.)
+ * @param {object} config - Configuración para el bucket (endpoint, secure, etc.)
+ * @param {string} path - Ruta dentro del bucket (prefijo)
+ * @returns {Promise<object>} - Resultado con carpetas y archivos
  */
-export async function listFiles(client, remotePath) {
+async function listContents(credentials, config = {}, path = '') {
   try {
-    // En una implementación real, listaríamos los archivos
-    // const stream = client.client.listObjects(client.bucket, remotePath, true);
-    // const files = [];
+    // Validar credenciales
+    if (!credentials.access_key || !credentials.secret_key || !credentials.bucket) {
+      throw new Error('Faltan credenciales requeridas para MinIO');
+    }
+
+    if (!config.endpoint) {
+      throw new Error('Falta la configuración del endpoint para MinIO');
+    }
+
+    // Determinar si el endpoint incluye el protocolo
+    let endpoint = config.endpoint;
+    if (!endpoint.startsWith('http://') && !endpoint.startsWith('https://')) {
+      // Agregar el protocolo según la configuración de secure
+      const protocol = config.secure !== false ? 'https://' : 'http://';
+      endpoint = protocol + endpoint;
+    }
+
+    // Si path tiene barra al inicio, la quitamos
+    if (path.startsWith('/')) {
+      path = path.substring(1);
+    }
+
+    // Extraer el host sin el protocolo
+    const host = endpoint.replace(/^https?:\/\//, '').replace(/\/$/, '');
     
-    // await new Promise((resolve, reject) => {
-    //   stream.on('data', (obj) => {
-    //     files.push({
-    //       name: obj.name,
-    //       size: obj.size,
-    //       lastModified: obj.lastModified,
-    //       isDirectory: false
-    //     });
-    //   });
-    //   stream.on('error', reject);
-    //   stream.on('end', resolve);
-    // });
+    // Utilizar la opción de puerto si está especificada
+    const port = config.port ? `:${config.port}` : '';
+    const baseUrl = `${endpoint}${port}`;
     
-    // Por ahora, devolvemos una lista simulada
-    return [
-      {
-        name: `${remotePath}/ejemplo1.txt`,
-        size: 1024,
-        lastModified: new Date(),
-        isDirectory: false
-      },
-      {
-        name: `${remotePath}/ejemplo2.jpg`,
-        size: 2048,
-        lastModified: new Date(),
-        isDirectory: false
+    const bucket = credentials.bucket;
+    const prefix = path ? encodeURIComponent(path + (path.endsWith('/') ? '' : '/')) : '';
+    const url = `${baseUrl}/${bucket}?delimiter=%2F&list-type=2&max-keys=100&prefix=${prefix}`;
+    
+    // Fecha y timestamp para la firma
+    const amzDate = getAmzDate();
+    const dateStamp = getDateStamp();
+    
+    // Headers a firmar
+    const headers = {
+      'host': host + port,
+      'x-amz-date': amzDate,
+      'x-amz-content-sha256': 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855' // hash de cadena vacía
+    };
+    
+    // Construir la solicitud canónica
+    const canonicalUri = `/${bucket}`;
+    const canonicalQueryString = `delimiter=%2F&list-type=2&max-keys=100&prefix=${prefix}`;
+    
+    const sortedHeaders = Object.keys(headers).sort();
+    const canonicalHeaders = sortedHeaders.map(key => `${key}:${headers[key]}\n`).join('');
+    const signedHeaders = sortedHeaders.join(';');
+    
+    const payloadHash = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'; // hash de cuerpo vacío
+    
+    const canonicalRequest = [
+      'GET',
+      canonicalUri,
+      canonicalQueryString,
+      canonicalHeaders,
+      signedHeaders,
+      payloadHash
+    ].join('\n');
+    
+    console.log('[MinIO] Listando bucket:', bucket, 'con endpoint:', endpoint);
+    
+    // Calcular la firma
+    const canonicalRequestHash = await sha256(canonicalRequest);
+    
+    const algorithm = 'AWS4-HMAC-SHA256';
+    const region = 'us-east-1';
+    const scope = `${dateStamp}/${region}/s3/aws4_request`;
+    
+    const stringToSign = [
+      algorithm,
+      amzDate,
+      scope,
+      canonicalRequestHash
+    ].join('\n');
+    
+    // Función para firmar
+    async function sign(key, msg) {
+      const msgBuffer = new TextEncoder().encode(msg);
+      const keyBuffer = await crypto.subtle.importKey(
+        'raw',
+        key,
+        { name: 'HMAC', hash: { name: 'SHA-256' } },
+        false,
+        ['sign']
+      );
+      const signBuffer = await crypto.subtle.sign(
+        { name: 'HMAC', hash: { name: 'SHA-256' } },
+        keyBuffer,
+        msgBuffer
+      );
+      return new Uint8Array(signBuffer);
+    }
+    
+    // Derivar la clave de firma
+    const kSecret = new TextEncoder().encode(`AWS4${credentials.secret_key}`);
+    const kDate = await sign(kSecret, dateStamp);
+    const kRegion = await sign(kDate, region);
+    const kService = await sign(kRegion, 's3');
+    const kSigning = await sign(kService, 'aws4_request');
+    
+    // Obtener la firma
+    const signature = await sign(kSigning, stringToSign);
+    const signatureHex = Array.from(signature)
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+    
+    // Crear el header de autorización
+    const authorizationHeader = `${algorithm} Credential=${credentials.access_key}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signatureHex}`;
+    
+    // Realizar la petición
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        ...headers,
+        'Authorization': authorizationHeader
       }
-    ];
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.log('[MinIO] Error en respuesta del bucket:', errorText);
+      
+      // Intentar extraer el mensaje de error del XML
+      let errorMessage = `Error HTTP ${response.status}: ${response.statusText}`;
+      
+      // Buscar el mensaje de error en la respuesta XML
+      const codeMatch = errorText.match(/<Code>(.*?)<\/Code>/);
+      const messageMatch = errorText.match(/<Message>(.*?)<\/Message>/);
+      
+      if (codeMatch && messageMatch) {
+        const errorCode = codeMatch[1];
+        const errorDetail = messageMatch[1];
+        errorMessage = `Error MinIO (${errorCode}): ${errorDetail}`;
+      }
+      
+      throw new Error(errorMessage);
+    }
+    
+    // Procesar la respuesta para extraer carpetas y archivos
+    const responseText = await response.text();
+    console.log('[MinIO] Respuesta:', responseText.substring(0, 150) + '...');
+    
+    // Extraer información de carpetas
+    const commonPrefixes = Array.from(responseText.matchAll(/<CommonPrefix><Prefix>(.*?)<\/Prefix><\/CommonPrefix>/g))
+      .map(match => {
+        const fullPath = match[1];
+        // Eliminar el prefijo actual y la barra final para obtener solo el nombre
+        const name = fullPath.replace(path ? path + '/' : '', '').replace(/\/$/, '');
+        return {
+          name,
+          path: fullPath.replace(/\/$/, ''),
+          type: 'folder'
+        };
+      });
+    
+    // Extraer información de archivos
+    const contents = Array.from(responseText.matchAll(/<Contents>(.*?)<\/Contents>/gs))
+      .filter(match => {
+        // Filtrar el Content que represente el directorio actual
+        const keyMatch = match[1].match(/<Key>(.*?)<\/Key>/);
+        if (!keyMatch) return false;
+        const key = keyMatch[1];
+        // Excluir el directorio actual (que tiene el mismo nombre que el prefijo) y directorios
+        return path !== key && !key.endsWith('/');
+      })
+      .map(match => {
+        const keyMatch = match[1].match(/<Key>(.*?)<\/Key>/);
+        const sizeMatch = match[1].match(/<Size>(.*?)<\/Size>/);
+        const lastModifiedMatch = match[1].match(/<LastModified>(.*?)<\/LastModified>/);
+        
+        // Extraer nombre desde la ruta completa eliminando el prefijo
+        const fullPath = keyMatch ? keyMatch[1] : 'unknown';
+        const name = fullPath.replace(path ? path + '/' : '', '');
+        
+        const size = sizeMatch ? parseInt(sizeMatch[1], 10) : 0;
+        const lastModified = lastModifiedMatch ? new Date(lastModifiedMatch[1]) : new Date();
+        
+        // Extraer la extensión del archivo
+        const extension = name.includes('.') ? name.split('.').pop().toLowerCase() : '';
+        
+        return {
+          name,
+          path: fullPath,
+          size,
+          lastModified,
+          extension,
+          type: 'file'
+        };
+      });
+    
+    // Devolver el resultado en el formato esperado por la interfaz
+    return {
+      path: path || '/',
+      bucket: bucket,
+      endpoint: endpoint,
+      parentPath: path.includes('/') ? path.split('/').slice(0, -1).join('/') : '',
+      folders: commonPrefixes,
+      files: contents
+    };
   } catch (error) {
-    console.error('Error al listar archivos en MinIO:', error);
-    throw error;
+    console.error('Error al listar contenido de MinIO:', error);
+    // En caso de error, devolver un objeto con el error para mostrar en la interfaz
+    return {
+      error: true,
+      errorMessage: error.message || 'Error desconocido al listar contenido',
+      path: path || '/',
+      bucket: credentials.bucket || 'unknown',
+      folders: [],
+      files: []
+    };
   }
+}
+
+/**
+ * Crea un cliente para MinIO (función simulada que devuelve credenciales para usar en otras operaciones)
+ * 
+ * @param {object} credentials - Credenciales MinIO
+ * @param {object} config - Configuración para MinIO
+ * @returns {Promise<object>} - Cliente MinIO (en este caso, solo las credenciales y configuración)
+ */
+async function createClient(credentials, config = {}) {
+  return { credentials, config };
 }
 
 /**
  * Sube un archivo a MinIO
- * @param {Object} client Cliente configurado
- * @param {string} localPath Ruta local del archivo
- * @param {string} remotePath Ruta remota donde guardar el archivo
- * @returns {Promise<Object>} Información sobre la subida
+ * 
+ * @param {object} client - Cliente MinIO
+ * @param {string} localPath - Ruta local del archivo a subir
+ * @param {string} remotePath - Ruta en el bucket donde subir el archivo
+ * @returns {Promise<object>} - Resultado de la operación
  */
-export async function uploadFile(client, localPath, remotePath) {
-  try {
-    // En una implementación real, subiríamos el archivo
-    // await client.client.fPutObject(client.bucket, remotePath, localPath);
-    
-    // Por ahora, retornamos un resultado simulado
-    return {
-      success: true,
-      path: remotePath,
-      size: 1024, // Tamaño simulado
-      message: 'Archivo subido correctamente'
-    };
-  } catch (error) {
-    console.error('Error al subir archivo a MinIO:', error);
-    throw error;
-  }
+async function uploadFile(client, localPath, remotePath) {
+  // Implementación de carga de archivos pendiente
+  throw new Error('La función de subida de archivos a MinIO aún no está implementada');
 }
 
 /**
- * Descarga un archivo desde MinIO
- * @param {Object} client Cliente configurado
- * @param {string} remotePath Ruta remota del archivo
- * @param {string} localPath Ruta local donde guardar el archivo
- * @returns {Promise<Object>} Información sobre la descarga
+ * Descarga un archivo de MinIO
+ * 
+ * @param {object} client - Cliente MinIO
+ * @param {string} remotePath - Ruta del archivo en el bucket
+ * @param {string} localPath - Ruta local donde guardar el archivo
+ * @returns {Promise<object>} - Resultado de la operación
  */
-export async function downloadFile(client, remotePath, localPath) {
-  try {
-    // En una implementación real, descargaríamos el archivo
-    // await client.client.fGetObject(client.bucket, remotePath, localPath);
-    
-    // Por ahora, retornamos un resultado simulado
-    return {
-      success: true,
-      path: localPath,
-      size: 1024, // Tamaño simulado
-      message: 'Archivo descargado correctamente'
-    };
-  } catch (error) {
-    console.error('Error al descargar archivo de MinIO:', error);
-    throw error;
-  }
+async function downloadFile(client, remotePath, localPath) {
+  // Implementación de descarga de archivos pendiente
+  throw new Error('La función de descarga de archivos de MinIO aún no está implementada');
 }
 
 /**
- * Genera una URL firmada para acceder a un archivo en MinIO
- * @param {Object} client Cliente configurado
- * @param {string} remotePath Ruta remota del archivo
- * @param {Object} options Opciones adicionales
- * @returns {Promise<string>} URL firmada
+ * Elimina un archivo de MinIO
+ * 
+ * @param {object} client - Cliente MinIO
+ * @param {string} remotePath - Ruta del archivo en el bucket
+ * @returns {Promise<object>} - Resultado de la operación
  */
-export async function getSignedUrl(client, remotePath, options = {}) {
-  try {
-    // En una implementación real, generaríamos una URL firmada
-    // const url = await client.client.presignedGetObject(
-    //   client.bucket, 
-    //   remotePath, 
-    //   options.expiresIn || 3600
-    // );
-    
-    // Por ahora, retornamos una URL simulada
-    const protocol = client.client.secure ? 'https' : 'http';
-    return `${protocol}://${client.endpoint}/${client.bucket}/${remotePath}?token=simulated-signed-url-token`;
-  } catch (error) {
-    console.error('Error al generar URL firmada en MinIO:', error);
-    throw error;
-  }
+async function deleteFile(client, remotePath) {
+  // Implementación de eliminación de archivos pendiente
+  throw new Error('La función de eliminación de archivos de MinIO aún no está implementada');
 }
 
+/**
+ * Verifica si un archivo existe en MinIO
+ * 
+ * @param {object} client - Cliente MinIO
+ * @param {string} remotePath - Ruta del archivo en el bucket
+ * @returns {Promise<boolean>} - Verdadero si el archivo existe
+ */
+async function fileExists(client, remotePath) {
+  // Implementación de verificación de existencia de archivos pendiente
+  throw new Error('La función de verificación de existencia de archivos en MinIO aún no está implementada');
+}
+
+// Exportar el adaptador para MinIO
 export default {
-  createClient,
   testConnection,
-  listFiles,
+  listContents,
   uploadFile,
   downloadFile,
-  getSignedUrl
+  deleteFile,
+  fileExists,
+  createClient
 };
