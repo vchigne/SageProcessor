@@ -291,9 +291,9 @@ class JanitorDaemon:
             raise ValueError(f"No se encontró el proveedor primario con ID {nube_primaria_id}")
             
         # Asegurar que tenemos la configuración como diccionario
-        if 'config' in proveedor_primario and not isinstance(proveedor_primario['config'], dict):
+        if 'configuracion' in proveedor_primario and not isinstance(proveedor_primario['configuracion'], dict):
             try:
-                proveedor_primario['config'] = json.loads(proveedor_primario['config'])
+                proveedor_primario['configuracion'] = json.loads(proveedor_primario['configuracion'])
             except:
                 logger.warning(f"No se pudo parsear la configuración del proveedor {proveedor_primario['nombre']}")
                 
@@ -327,9 +327,9 @@ class JanitorDaemon:
                     proveedor_alt = self.cloud_providers.get(nube_alt_id)
                     if proveedor_alt:
                         # Asegurar que tenemos la configuración como diccionario
-                        if 'config' in proveedor_alt and not isinstance(proveedor_alt['config'], dict):
+                        if 'configuracion' in proveedor_alt and not isinstance(proveedor_alt['configuracion'], dict):
                             try:
-                                proveedor_alt['config'] = json.loads(proveedor_alt['config'])
+                                proveedor_alt['configuracion'] = json.loads(proveedor_alt['configuracion'])
                             except:
                                 logger.warning(f"No se pudo parsear la configuración del proveedor alternativo {proveedor_alt['nombre']}")
                                 
