@@ -614,21 +614,39 @@ function removeLeadingSlash(path) {
  * @returns {Promise<Object>} Información sobre la descarga
  */
 async function downloadFile(client, remotePath, localPath) {
-  // Normalizar la ruta remota para eliminar barras iniciales
-  const normalizedRemotePath = removeLeadingSlash(remotePath);
+  // Normalizar la estructura del cliente para asegurar que las credenciales estén en el formato correcto
+  const credentials = client.credentials || client;
+
+  // Normalizar la ruta remota para eliminar barras iniciales y asegurar que es un string
+  let normalizedRemotePath;
+  if (typeof remotePath === 'string') {
+    normalizedRemotePath = removeLeadingSlash(remotePath);
+  } else if (remotePath && remotePath.prefix) {
+    // Manejar el caso donde remotePath es un objeto con propiedad prefix
+    normalizedRemotePath = removeLeadingSlash(remotePath.prefix);
+    console.log(`[S3] Formato de ruta remota corregido: ${normalizedRemotePath}`);
+  } else {
+    console.error(`[S3] Formato de ruta remota inválido:`, remotePath);
+    normalizedRemotePath = '';
+  }
   
-  console.log(`[S3] Descargando s3://${client.bucket}/${normalizedRemotePath} a ${localPath}`);
+  // Extraer el bucket y la clave del cliente o credenciales
+  const bucket = credentials.bucket || client.bucket || client.config?.bucket;
+  
+  console.log(`[S3] Descargando s3://${bucket}/${normalizedRemotePath} a ${localPath}`);
   console.log('Cliente S3:', JSON.stringify(client, null, 2));
+  console.log('Credenciales normalizadas:', JSON.stringify({
+    ...credentials,
+    secret_key: credentials.secret_key ? '***' : undefined
+  }, null, 2));
   
   try {
-    // Extraer el bucket y la clave del cliente
-    const bucket = client.bucket || client.config?.bucket || client.credentials?.bucket;
     if (!bucket) {
       throw new Error('Bucket no especificado en la configuración');
     }
     
     // Asegurarse de que tenemos todas las credenciales necesarias
-    if (!client.credentials?.access_key || !client.credentials?.secret_key) {
+    if (!credentials.access_key || !credentials.secret_key) {
       throw new Error('Credenciales incompletas para AWS S3');
     }
     
@@ -704,7 +722,7 @@ async function downloadFile(client, remotePath, localPath) {
       return new Uint8Array(signBuffer);
     }
     
-    const kSecret = new TextEncoder().encode(`AWS4${client.credentials.secret_key}`);
+    const kSecret = new TextEncoder().encode(`AWS4${credentials.secret_key}`);
     const kDate = await sign(kSecret, dateStamp);
     const kRegion = await sign(kDate, region);
     const kService = await sign(kRegion, 's3');
@@ -717,7 +735,7 @@ async function downloadFile(client, remotePath, localPath) {
       .join('');
     
     // Crear el header de autorización
-    const authorizationHeader = `${algorithm} Credential=${client.credentials.access_key}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signatureHex}`;
+    const authorizationHeader = `${algorithm} Credential=${credentials.access_key}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signatureHex}`;
     
     console.log('[S3] Enviando solicitud a AWS...');
     

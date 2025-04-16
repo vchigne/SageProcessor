@@ -254,6 +254,29 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         console.log(`Descargando ${relativePath} desde ${cloudPath} a ${tempFilePath}`);
         console.log('Tipo de proveedor:', provider.tipo);
         
+        // Normalizar las credenciales y la configuración
+        let credentials = provider.credenciales;
+        let config = provider.configuracion;
+        
+        // Asegurarse de que credentials y config sean objetos, no strings
+        if (typeof credentials === 'string') {
+          try {
+            credentials = JSON.parse(credentials);
+          } catch (e) {
+            console.error('Error al parsear credenciales:', e);
+            throw new Error('Formato de credenciales inválido');
+          }
+        }
+        
+        if (typeof config === 'string') {
+          try {
+            config = JSON.parse(config);
+          } catch (e) {
+            console.error('Error al parsear configuración:', e);
+            throw new Error('Formato de configuración inválido');
+          }
+        }
+        
         // Seleccionar el adaptador según el tipo de proveedor
         const providerTipo = provider.tipo ? provider.tipo.toLowerCase() : '';
         
@@ -261,18 +284,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           console.log(`Iniciando descarga desde proveedor tipo: ${providerTipo}`);
           console.log(`Ruta remota: ${remoteFilePath}`);
           console.log(`Ruta local: ${tempFilePath}`);
+          console.log('Credenciales:', JSON.stringify({...credentials, secret_key: credentials.secret_key ? '***' : undefined}, null, 2));
           
           // Cada adaptador es un objeto exportado por defecto con varias funciones
           if (providerTipo === 's3') {
-            await s3Adapter.downloadFile(provider.credenciales, provider.configuracion, remoteFilePath, tempFilePath);
+            await s3Adapter.downloadFile(credentials, config, remoteFilePath, tempFilePath);
           } else if (providerTipo === 'azure') {
-            await azureAdapter.downloadFile(provider.credenciales, provider.configuracion, remoteFilePath, tempFilePath);
+            await azureAdapter.downloadFile(credentials, config, remoteFilePath, tempFilePath);
           } else if (providerTipo === 'gcp') {
-            await gcpAdapter.downloadFile(provider.credenciales, provider.configuracion, remoteFilePath, tempFilePath);
+            await gcpAdapter.downloadFile(credentials, config, remoteFilePath, tempFilePath);
           } else if (providerTipo === 'sftp') {
-            await sftpAdapter.downloadFile(provider.credenciales, provider.configuracion, remoteFilePath, tempFilePath);
+            await sftpAdapter.downloadFile(credentials, config, remoteFilePath, tempFilePath);
           } else if (providerTipo === 'minio') {
-            await minioAdapter.downloadFile(provider.credenciales, provider.configuracion, remoteFilePath, tempFilePath);
+            await minioAdapter.downloadFile(credentials, config, remoteFilePath, tempFilePath);
           } else {
             throw new Error(`Tipo de proveedor no soportado: ${providerTipo}`);
           }

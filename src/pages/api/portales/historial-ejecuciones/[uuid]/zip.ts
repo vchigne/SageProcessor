@@ -203,26 +203,45 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           try {
             console.log(`Descargando archivo para ZIP desde proveedor ${tipo}: ${file.path}`);
             
+            // Normalizar las credenciales y la configuración
+            let credentials = provider.credenciales;
+            let config = provider.configuracion;
+            
             // Intentar parsear la configuración y credenciales si son strings
-            if (typeof provider.configuracion === 'string') {
-              provider.configuracion = JSON.parse(provider.configuracion);
+            if (typeof config === 'string') {
+              try {
+                config = JSON.parse(config);
+              } catch (e) {
+                console.error('Error al parsear configuración:', e);
+                throw new Error('Formato de configuración inválido');
+              }
             }
             
-            if (typeof provider.credenciales === 'string') {
-              provider.credenciales = JSON.parse(provider.credenciales);
+            if (typeof credentials === 'string') {
+              try {
+                credentials = JSON.parse(credentials);
+              } catch (e) {
+                console.error('Error al parsear credenciales:', e);
+                throw new Error('Formato de credenciales inválido');
+              }
             }
+            
+            console.log('Credenciales para ZIP:', JSON.stringify({
+              ...credentials, 
+              secret_key: credentials.secret_key ? '***' : undefined
+            }, null, 2));
             
             // Descargar el archivo de la nube usando el adaptador correcto según el tipo
             if (tipo === 's3') {
-              await s3Adapter.downloadFile(provider.credenciales, provider.configuracion, file.path, tempFilePath);
+              await s3Adapter.downloadFile(credentials, config, file.path, tempFilePath);
             } else if (tipo === 'azure') {
-              await azureAdapter.downloadFile(provider.credenciales, provider.configuracion, file.path, tempFilePath);
+              await azureAdapter.downloadFile(credentials, config, file.path, tempFilePath);
             } else if (tipo === 'gcp') {
-              await gcpAdapter.downloadFile(provider.credenciales, provider.configuracion, file.path, tempFilePath);
+              await gcpAdapter.downloadFile(credentials, config, file.path, tempFilePath);
             } else if (tipo === 'sftp') {
-              await sftpAdapter.downloadFile(provider.credenciales, provider.configuracion, file.path, tempFilePath);
+              await sftpAdapter.downloadFile(credentials, config, file.path, tempFilePath);
             } else if (tipo === 'minio') {
-              await minioAdapter.downloadFile(provider.credenciales, provider.configuracion, file.path, tempFilePath);
+              await minioAdapter.downloadFile(credentials, config, file.path, tempFilePath);
             }
             
             if (fs.existsSync(tempFilePath)) {
