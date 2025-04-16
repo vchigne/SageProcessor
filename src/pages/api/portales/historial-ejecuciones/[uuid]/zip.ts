@@ -43,7 +43,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Verificar si el directorio existe
     if (!fs.existsSync(execDir)) {
-      return res.status(404).json({ message: 'Directorio de ejecución no encontrado' });
+      return res.status(404).json({
+        message: 'Directorio de ejecución no encontrado',
+        error: 'No se pudo encontrar el directorio de archivos para esta ejecución.',
+        details: 'Es posible que los archivos hayan sido eliminados o movidos a un almacenamiento en la nube.',
+        tipo: 'directorio_no_encontrado',
+        solucion: 'Si la ejecución fue migrada a la nube, contacte al administrador para activar la descarga desde la nube.'
+      });
     }
 
     // Crear un nuevo archivo ZIP

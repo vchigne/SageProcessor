@@ -69,7 +69,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       
       // Si el directorio no existe localmente, retornamos un error
       if (!fs.existsSync(execDir)) {
-        return res.status(404).json({ message: 'Archivos de ejecución no encontrados' });
+        return res.status(404).json({ 
+          message: 'Archivos de ejecución no encontrados',
+          error: 'No se pudo encontrar el directorio de archivos para esta ejecución.',
+          details: 'Es posible que los archivos hayan sido eliminados o movidos.',
+          tipo: 'archivo_no_encontrado',
+          rutaDirectorio: execDir
+        });
       }
     }
 
@@ -219,7 +225,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         await fileAccessor.downloadFile(provider, cloudPath, relativePath, tempFilePath);
         
         if (!fs.existsSync(tempFilePath)) {
-          return res.status(404).json({ message: `No se pudo descargar el archivo ${tipo} desde la nube` });
+          return res.status(404).json({
+            message: `No se pudo descargar el archivo ${tipo} desde la nube`,
+            error: `El archivo "${tipo}" no se encontró en el almacenamiento en la nube.`,
+            details: 'Esto puede deberse a que el archivo fue eliminado o a problemas de conexión con el proveedor de nube.',
+            tipo: 'archivo_nube_no_encontrado',
+            archivoSolicitado: tipo,
+            proveedor: provider.nombre
+          });
         }
         
         // Enviar el archivo y configurar limpieza al finalizar
@@ -238,14 +251,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       } catch (cloudError) {
         console.error('Error accediendo a archivo en la nube:', cloudError);
         return res.status(500).json({ 
-          message: 'Error al obtener archivo desde la nube', 
-          error: cloudError.message 
+          message: 'Error al acceder al proveedor de nube', 
+          error: 'No se pudo acceder al archivo en el almacenamiento en nube.',
+          details: cloudError.message,
+          tipo: 'error_acceso_nube',
+          proveedor: provider.nombre,
+          archivoSolicitado: tipo,
+          errorTecnico: cloudError.message
         });
       }
     } else {
       // Verificamos si el archivo existe localmente
       if (!fs.existsSync(filePath)) {
-        return res.status(404).json({ message: `Archivo ${tipo} no encontrado` });
+        return res.status(404).json({
+          message: `Archivo ${tipo} no encontrado`,
+          error: `No se encontró el archivo "${tipo}" para esta ejecución.`,
+          details: 'El archivo podría haber sido eliminado o nunca existió.',
+          tipo: 'archivo_no_encontrado',
+          archivoSolicitado: tipo,
+          rutaArchivo: filePath
+        });
       }
       
       // Leemos y enviamos el archivo local
@@ -254,6 +279,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   } catch (error) {
     console.error('Error al obtener archivo de ejecución:', error);
-    return res.status(500).json({ message: 'Error al obtener archivo de ejecución', error: error.message });
+    return res.status(500).json({ 
+      message: 'Error al obtener archivo de ejecución',
+      error: 'Ocurrió un error al procesar su solicitud. Por favor intente nuevamente más tarde.',
+      details: 'Si el problema persiste, contacte al administrador del sistema.',
+      tipo: 'error_interno',
+      errorTecnico: error.message
+    });
   }
 }
