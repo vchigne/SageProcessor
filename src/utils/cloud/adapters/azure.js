@@ -520,9 +520,12 @@ export async function listContents(credentials, config = {}, path = '', limit = 
     const containerName = credentials.container_name;
     console.log(`[Azure] Listando contenido en contenedor ${containerName}${path ? '/' + path : ''}`);
     
-    // Extracción de credenciales de connection_string si está disponible
+    // Variables para almacenar los datos de conexión extraídos
     let accountName = credentials.account_name;
     let accountKey = credentials.account_key;
+    let sasToken = null;
+    let blobEndpoint = null;
+    let useSasToken = false;
     
     if (credentials.connection_string) {
       try {
@@ -547,13 +550,18 @@ export async function listContents(credentials, config = {}, path = '', limit = 
           }
         });
         
+        let hasBlobEndpoint = false;
+        let hasSharedAccessSignature = false;
+        
         for (const part of connectionParts) {
           // Normalizar las claves a minúsculas para hacer la comparación insensible a mayúsculas/minúsculas
           const normalizedPart = part.trim();
           if (!normalizedPart) continue;  // Saltar partes vacías
           
+          const normalizedPartLower = normalizedPart.toLowerCase();
+          
           // Buscar AccountName= o accountname= (insensible a mayúsculas/minúsculas)
-          if (normalizedPart.toLowerCase().startsWith('accountname=')) {
+          if (normalizedPartLower.startsWith('accountname=')) {
             const equalPos = normalizedPart.indexOf('=');
             if (equalPos !== -1 && equalPos < normalizedPart.length - 1) {
               accountName = normalizedPart.substring(equalPos + 1);
@@ -562,32 +570,184 @@ export async function listContents(credentials, config = {}, path = '', limit = 
             }
           } 
           // Buscar AccountKey= o accountkey= (insensible a mayúsculas/minúsculas)
-          else if (normalizedPart.toLowerCase().startsWith('accountkey=')) {
+          else if (normalizedPartLower.startsWith('accountkey=')) {
             const equalPos = normalizedPart.indexOf('=');
             if (equalPos !== -1 && equalPos < normalizedPart.length - 1) {
               accountKey = normalizedPart.substring(equalPos + 1);
               console.log('[Azure] AccountKey extraído (longitud):', accountKey ? accountKey.length : 0);
             }
           }
+          // Buscar SharedAccessSignature= (SAS Token)
+          else if (normalizedPartLower.startsWith('sharedaccesssignature=')) {
+            const equalPos = normalizedPart.indexOf('=');
+            if (equalPos !== -1 && equalPos < normalizedPart.length - 1) {
+              sasToken = normalizedPart.substring(equalPos + 1);
+              console.log('[Azure] SAS Token encontrado (longitud):', sasToken ? sasToken.length : 0);
+              hasSharedAccessSignature = true;
+            }
+          }
+          // Buscar BlobEndpoint= (para conexiones SAS principalmente)
+          else if (normalizedPartLower.startsWith('blobendpoint=')) {
+            const equalPos = normalizedPart.indexOf('=');
+            if (equalPos !== -1 && equalPos < normalizedPart.length - 1) {
+              blobEndpoint = normalizedPart.substring(equalPos + 1);
+              console.log('[Azure] BlobEndpoint extraído:', blobEndpoint);
+              hasBlobEndpoint = true;
+              
+              // Intentar extraer el nombre de cuenta del BlobEndpoint
+              try {
+                const url = new URL(blobEndpoint);
+                const hostParts = url.hostname.split('.');
+                if (hostParts[0] && !accountName) {
+                  accountName = hostParts[0];
+                  console.log('[Azure] AccountName extraído del BlobEndpoint:', accountName);
+                }
+              } catch (err) {
+                console.warn('[Azure] No se pudo extraer el nombre de cuenta del BlobEndpoint:', err);
+              }
+            }
+          }
+        }
+        // Determinar si estamos usando una SAS
+        if (hasBlobEndpoint && hasSharedAccessSignature) {
+          console.log('[Azure] Detectada connection string con SAS Token');
+          useSasToken = true;
         }
       } catch (error) {
         console.error('[Azure] Error al parsear connection string:', error);
-        throw new Error(`Error al procesar connection string: ${error.message}. Por favor proporcione una connection string válida en el formato: DefaultEndpointsProtocol=https;AccountName=nombredelacuenta;AccountKey=clavedelacuenta;EndpointSuffix=core.windows.net`);
+        throw new Error(`Error al procesar connection string: ${error.message}. Por favor proporcione una connection string válida. Formatos soportados: 
+        1. Conexión tradicional: DefaultEndpointsProtocol=https;AccountName=nombredelacuenta;AccountKey=clavedelacuenta;EndpointSuffix=core.windows.net
+        2. Conexión SAS: BlobEndpoint=https://cuenta.blob.core.windows.net;SharedAccessSignature=sastoken`);
       }
     }
     
-    if (!accountName || !accountKey) {
-      console.error('[Azure] No se pudieron extraer credenciales. AccountName presente:', !!accountName, 'AccountKey presente:', !!accountKey);
-      throw new Error('No se pudieron extraer las credenciales necesarias. Asegúrese de que la connection string incluya AccountName= y AccountKey=, o proporcione account_name y account_key directamente. El formato correcto es: DefaultEndpointsProtocol=https;AccountName=nombredelacuenta;AccountKey=clavedelacuenta;EndpointSuffix=core.windows.net');
-    }
-
-    // Construir la URL para listar el contenedor
     const prefix = path ? `${path}${path.endsWith('/') ? '' : '/'}` : '';
     const delimiter = '/';
-    const url = `https://${accountName}.blob.core.windows.net/${containerName}?restype=container&comp=list&delimiter=${delimiter}&prefix=${encodeURIComponent(prefix)}&maxresults=${limit}`;
     
-    // Obtener la fecha y hora actuales en formato RFC 7231
-    const date = new Date().toUTCString();
+    // Si usa SAS token, asegurarse de que tenemos lo necesario
+    if (useSasToken) {
+      // Validar que tenemos la información mínima necesaria para SAS
+      if (!accountName || !sasToken || !blobEndpoint) {
+        console.error('[Azure] Credenciales SAS incompletas. AccountName:', !!accountName, 'SAS Token:', !!sasToken, 'BlobEndpoint:', !!blobEndpoint);
+        throw new Error('Faltan parámetros para la conexión con SAS Token. Se requiere BlobEndpoint y SharedAccessSignature en la connection string.');
+      }
+      
+      console.log('[Azure] Listando contenedor usando SAS Token para la cuenta:', accountName);
+      
+      // Construir la URL con SAS token
+      let urlBase = '';
+      if (blobEndpoint) {
+        // Usar el BlobEndpoint proporcionado
+        urlBase = blobEndpoint.endsWith('/') ? blobEndpoint : `${blobEndpoint}/`;
+      } else {
+        // Construir el endpoint usando el nombre de cuenta
+        urlBase = `https://${accountName}.blob.core.windows.net/`;
+      }
+      
+      // Construir URL con SAS para listar contenedor con los parámetros de listado
+      const url = `${urlBase}${containerName}?restype=container&comp=list&delimiter=${delimiter}&prefix=${encodeURIComponent(prefix)}&maxresults=${limit}&${sasToken.startsWith('?') ? sasToken.substring(1) : sasToken}`;
+      console.log(`[Azure SAS] URL generada para listar contenido (trunc): ${url.substring(0, 60)}...`);
+      
+      // Realizar la solicitud con SAS
+      const response = await fetch(url, {
+        method: 'GET'
+        // No necesitamos encabezados adicionales con SAS, ya que toda la auth está en la URL
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[Azure SAS] Error en respuesta:', errorText);
+        
+        // Analizar el error XML para proporcionar información más útil
+        let errorMessage = `Error HTTP ${response.status}: ${response.statusText}`;
+        
+        if (errorText.includes('<Code>AuthenticationFailed</Code>')) {
+          errorMessage = 'Error de autenticación: El token SAS proporcionado no es válido o ha expirado.';
+        } else if (errorText.includes('<Code>ContainerNotFound</Code>')) {
+          errorMessage = `El contenedor '${containerName}' no existe en la cuenta de almacenamiento.`;
+        } else if (errorText.includes('<Code>ResourceNotFound</Code>')) {
+          errorMessage = `El recurso no existe. Verifique que el nombre del contenedor sea correcto.`;
+        } else if (errorText.includes('<Code>AccountNameInvalid</Code>')) {
+          errorMessage = `El nombre de la cuenta de almacenamiento '${accountName}' no es válido.`;
+        }
+        
+        throw new Error(errorMessage);
+      }
+      
+      // Procesamiento exitoso con SAS
+      const xmlResponse = await response.text();
+      console.log('[Azure SAS] Respuesta XML recibida (primeros 150 caracteres):', xmlResponse.substring(0, 150) + '...');
+      
+      // Parsear el XML para extraer archivos y directorios (prefijos comunes)
+      const parser = new DOMParser();
+      const xmlDoc = parser.parseFromString(xmlResponse, "text/xml");
+      
+      const files = [];
+      const folders = [];
+      
+      // Procesar los blobs (archivos)
+      const blobs = xmlDoc.getElementsByTagName('Blob');
+      for (let i = 0; i < blobs.length; i++) {
+        const name = blobs[i].getElementsByTagName('Name')[0].textContent;
+        const properties = blobs[i].getElementsByTagName('Properties')[0];
+        const size = parseInt(properties.getElementsByTagName('Content-Length')[0].textContent, 10);
+        const lastModified = new Date(properties.getElementsByTagName('Last-Modified')[0].textContent);
+        
+        // Extraer solo el nombre del archivo sin la ruta
+        const fileName = name.startsWith(prefix) ? name.substring(prefix.length) : name;
+        
+        files.push({
+          name: fileName,
+          path: name,
+          size,
+          lastModified,
+          type: 'file'
+        });
+      }
+      
+      // Procesar los prefijos (carpetas)
+      const blobPrefixes = xmlDoc.getElementsByTagName('BlobPrefix');
+      for (let i = 0; i < blobPrefixes.length; i++) {
+        const prefixPath = blobPrefixes[i].getElementsByTagName('Name')[0].textContent;
+        
+        // Extraer solo el nombre de la carpeta
+        const folderName = prefixPath.startsWith(prefix) 
+          ? prefixPath.substring(prefix.length) 
+          : prefixPath;
+        
+        const folderNameNoSlash = folderName.endsWith('/') 
+          ? folderName.substring(0, folderName.length - 1) 
+          : folderName;
+        
+        folders.push({
+          name: folderNameNoSlash,
+          path: prefixPath,
+          type: 'folder'
+        });
+      }
+      
+      return {
+        bucket: containerName,
+        path: path || '/',
+        files,
+        folders,
+        service: 'azure',
+        authMethod: 'SAS'
+      };
+    } else {
+      // Autenticación tradicional con Shared Key
+      if (!accountName || !accountKey) {
+        console.error('[Azure] No se pudieron extraer credenciales para Shared Key. AccountName presente:', !!accountName, 'AccountKey presente:', !!accountKey);
+        throw new Error('No se pudieron extraer las credenciales necesarias. Asegúrese de que la connection string incluya AccountName= y AccountKey=, o proporcione account_name y account_key directamente. El formato correcto es: DefaultEndpointsProtocol=https;AccountName=nombredelacuenta;AccountKey=clavedelacuenta;EndpointSuffix=core.windows.net');
+      }
+
+      console.log('[Azure] Listando contenedor usando Shared Key para la cuenta:', accountName);
+    
+      // Construir la URL para listar el contenedor con Shared Key
+      const url = `https://${accountName}.blob.core.windows.net/${containerName}?restype=container&comp=list&delimiter=${delimiter}&prefix=${encodeURIComponent(prefix)}&maxresults=${limit}`;
+      
+      // Obtener la fecha y hora actuales en formato RFC 7231
+      const date = new Date().toUTCString();
     
     // Crear la cadena a firmar para la autenticación SharedKey
     const stringToSign = [
