@@ -59,11 +59,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         e.casilla_id,
         e.emisor_id,
         e.metodo_envio,
+        e.migrado_a_nube,
+        e.ruta_nube,
+        e.nube_primaria_id,
         c.nombre_yaml AS casilla_nombre,
-        em.nombre AS emisor_nombre
+        em.nombre AS emisor_nombre,
+        cp.nombre AS nube_primaria_nombre
       FROM ejecuciones_yaml e
       LEFT JOIN casillas c ON e.casilla_id = c.id
       LEFT JOIN emisores em ON e.emisor_id = em.id
+      LEFT JOIN cloud_providers cp ON e.nube_primaria_id = cp.id
       WHERE e.fecha_ejecucion >= $1 AND e.fecha_ejecucion <= $2
     `;
 
@@ -168,11 +173,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Procesamos los resultados para agregar información sobre archivos
     const ejecuciones = ejecucionesResult.rows.map(ejecucion => {
-      // Verificamos si los archivos existen
-      const execDir = path.join(process.cwd(), 'executions', ejecucion.uuid);
-      const tieneLog = fs.existsSync(path.join(execDir, 'output.log'));
-      const tieneYaml = fs.existsSync(path.join(execDir, 'input.yaml'));
-      const tieneDatos = fs.existsSync(path.join(execDir, ejecucion.archivo_datos || ''));
+      // Verificamos si la ejecución está en la nube o local
+      const estaEnNube = ejecucion.migrado_a_nube && ejecucion.ruta_nube;
+      
+      let tieneLog = false;
+      let tieneYaml = false;
+      let tieneDatos = false;
+      
+      if (estaEnNube) {
+        // Si está en la nube, asumimos que los archivos están disponibles
+        // En una implementación completa, se podría verificar con el adaptador de nube
+        tieneLog = true;
+        tieneYaml = true;
+        tieneDatos = !!ejecucion.archivo_datos;
+      } else {
+        // Verificación de archivos locales
+        const execDir = path.join(process.cwd(), 'executions', ejecucion.uuid);
+        tieneLog = fs.existsSync(path.join(execDir, 'output.log'));
+        tieneYaml = fs.existsSync(path.join(execDir, 'input.yaml'));
+        tieneDatos = ejecucion.archivo_datos ? fs.existsSync(path.join(execDir, ejecucion.archivo_datos)) : false;
+      }
 
       return {
         ...ejecucion,
