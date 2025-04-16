@@ -336,78 +336,100 @@ export async function listContents(credentials, config = {}, path = '', limit = 
       throw new Error('Se requiere una contraseña o una clave SSH para la conexión SFTP');
     }
     
-    // En implementación real, estableceríamos conexión y listaríamos
-    // const connection = await connect(credentials);
-    // const targetPath = path || '/';
-    // 
-    // // Listar archivos
-    // const items = await new Promise((resolve, reject) => {
-    //   connection.sftp.readdir(targetPath, (err, list) => {
-    //     if (err) return reject(err);
-    //     resolve(list);
-    //   });
-    // });
-    // 
-    // closeConnection(connection);
+    // Preparamos el directorio a listar
+    const targetPath = path || '/';
     
-    // Simulación de datos
-    const directoryPath = path || '/';
-    
-    // Dividimos los archivos y carpetas
-    const files = [
-      {
-        name: 'documento.txt',
-        path: directoryPath === '/' ? '/documento.txt' : `${directoryPath}/documento.txt`,
-        size: 1024,
-        lastModified: new Date(),
-        type: 'file'
-      },
-      {
-        name: 'reporte.csv',
-        path: directoryPath === '/' ? '/reporte.csv' : `${directoryPath}/reporte.csv`,
-        size: 2048,
-        lastModified: new Date(),
-        type: 'file'
+    try {
+      // Usar SAGE Daemon 2 como proxy para SFTP
+      // Esto permite mantener el patrón de listado de archivos sin simulación
+      // compatible con los demás proveedores, pero delegando el trabajo real
+      // al backend de Python que ya tiene las bibliotecas adecuadas
+      const proxyResponse = await fetch('/api/sftp-proxy/list', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          host: credentials.host,
+          port: credentials.port || 22,
+          username: credentials.user,
+          password: credentials.password,
+          key_path: credentials.key_path,
+          path: targetPath
+        })
+      });
+      
+      if (!proxyResponse.ok) {
+        const errorData = await proxyResponse.json();
+        throw new Error(errorData.error || `Error al listar archivos: ${proxyResponse.status} ${proxyResponse.statusText}`);
       }
-    ];
-    
-    const folders = [
-      {
-        name: 'uploads',
-        path: directoryPath === '/' ? '/uploads' : `${directoryPath}/uploads`,
+      
+      // En producción, obtendríamos la respuesta real del API
+      const proxyData = await proxyResponse.json();
+      
+      // Formatear los resultados al formato esperado
+      const files = (proxyData.files || []).map(file => ({
+        name: file.name,
+        path: file.path,
+        size: file.size,
+        lastModified: new Date(file.lastModified),
+        type: 'file'
+      }));
+      
+      const folders = (proxyData.folders || []).map(folder => ({
+        name: folder.name,
+        path: folder.path,
         type: 'folder'
-      },
-      {
-        name: 'backups',
-        path: directoryPath === '/' ? '/backups' : `${directoryPath}/backups`,
-        type: 'folder'
-      }
-    ];
-
-    // Si el directorio es '/uploads', mostrar contenido diferente
-    if (directoryPath === '/uploads' || directoryPath === 'uploads') {
+      }));
+      
       return {
-        path: directoryPath,
-        files: [
-          {
-            name: 'imagen.jpg',
-            path: `${directoryPath}/imagen.jpg`,
-            size: 30720,
-            lastModified: new Date(),
-            type: 'file'
-          }
-        ],
-        folders: [],
+        path: targetPath,
+        files,
+        folders,
+        service: 'sftp'
+      };
+    } catch (proxyError) {
+      // Si el endpoint de proxy no existe o hay otro error, implementamos una conexión directa
+      console.log('[SFTP] No se pudo usar el proxy, intentando conexión directa');
+      
+      // Autenticación con contraseña o llave
+      const auth = credentials.password 
+        ? { password: credentials.password } 
+        : { privateKey: credentials.key_path };
+      
+      // En un servidor real, haríamos la conexión SSH directa usando fetch a un servidor intermedio
+      const directResponse = await fetch('/api/sftp/list-directory', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          host: credentials.host,
+          port: credentials.port || 22,
+          username: credentials.user,
+          auth,
+          path: targetPath
+        })
+      });
+      
+      if (!directResponse.ok) {
+        const errorText = await directResponse.text();
+        throw new Error(`Error en conexión SFTP directa: ${errorText}`);
+      }
+      
+      const responseData = await directResponse.json();
+      
+      if (responseData.error) {
+        throw new Error(responseData.error);
+      }
+      
+      return {
+        path: targetPath,
+        files: responseData.files || [],
+        folders: responseData.folders || [],
         service: 'sftp'
       };
     }
-    
-    return {
-      path: directoryPath,
-      files,
-      folders,
-      service: 'sftp'
-    };
   } catch (error) {
     console.error('[SFTP] Error al listar contenido:', error);
     return {
