@@ -237,6 +237,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const tipo = provider.tipo.toLowerCase();
         
         try {
+          // Los adaptadores exportan un objeto que contiene la función downloadFile
           if (tipo === 's3') {
             await s3Adapter.downloadFile(provider.credenciales, provider.configuracion, remoteFilePath, tempFilePath);
           } else if (tipo === 'azure') {
