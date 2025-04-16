@@ -125,8 +125,8 @@ def upload_to_s3(local_path, cloud_path, provider):
     from botocore.exceptions import ClientError
     
     # Parsear credenciales y configuración
-    config = json.loads(provider['config'])
-    credentials = json.loads(provider['credentials'])
+    config = provider['config'] if isinstance(provider['config'], dict) else json.loads(provider['config'])
+    credentials = provider['credentials'] if isinstance(provider['credentials'], dict) else json.loads(provider['credentials'])
     
     logger.info(f"Credenciales S3: {credentials}")
     
@@ -164,8 +164,8 @@ def upload_to_azure(local_path, cloud_path, provider):
     from azure.storage.blob import BlobServiceClient
     
     # Parsear credenciales y configuración
-    config = json.loads(provider['config'])
-    credentials = json.loads(provider['credentials'])
+    config = provider['config'] if isinstance(provider['config'], dict) else json.loads(provider['config'])
+    credentials = provider['credentials'] if isinstance(provider['credentials'], dict) else json.loads(provider['credentials'])
     
     logger.info(f"Credenciales Azure: {credentials}")
     
@@ -206,8 +206,8 @@ def upload_to_gcp(local_path, cloud_path, provider):
     import tempfile
     
     # Parsear credenciales y configuración
-    config = json.loads(provider['config'])
-    credentials = json.loads(provider['credentials'])
+    config = provider['config'] if isinstance(provider['config'], dict) else json.loads(provider['config'])
+    credentials = provider['credentials'] if isinstance(provider['credentials'], dict) else json.loads(provider['credentials'])
     
     logger.info(f"Credenciales GCP: {credentials.keys()}")
     
@@ -258,8 +258,8 @@ def upload_to_sftp(local_path, cloud_path, provider):
     import paramiko
     
     # Parsear credenciales y configuración
-    config = json.loads(provider['config'])
-    credentials = json.loads(provider['credentials'])
+    config = provider['config'] if isinstance(provider['config'], dict) else json.loads(provider['config'])
+    credentials = provider['credentials'] if isinstance(provider['credentials'], dict) else json.loads(provider['credentials'])
     
     logger.info(f"Credenciales SFTP: {credentials}")
     

@@ -382,8 +382,8 @@ class JanitorDaemon:
         from botocore.exceptions import ClientError
         
         # Parsear credenciales y configuración
-        config = json.loads(provider['config'])
-        credentials = json.loads(provider['credentials'])
+        config = provider['config'] if isinstance(provider['config'], dict) else json.loads(provider['config'])
+        credentials = provider['credentials'] if isinstance(provider['credentials'], dict) else json.loads(provider['credentials'])
         
         # Crear cliente S3
         s3_client = boto3.client(
@@ -418,8 +418,8 @@ class JanitorDaemon:
         from azure.storage.blob import BlobServiceClient
         
         # Parsear credenciales y configuración
-        config = json.loads(provider['config'])
-        credentials = json.loads(provider['credentials'])
+        config = provider['config'] if isinstance(provider['config'], dict) else json.loads(provider['config'])
+        credentials = provider['credentials'] if isinstance(provider['credentials'], dict) else json.loads(provider['credentials'])
         
         logger.info(f"Credenciales Azure: {credentials}")
         
@@ -463,8 +463,8 @@ class JanitorDaemon:
         import tempfile
         
         # Parsear credenciales y configuración
-        config = json.loads(provider['config'])
-        credentials = json.loads(provider['credentials'])
+        config = provider['config'] if isinstance(provider['config'], dict) else json.loads(provider['config'])
+        credentials = provider['credentials'] if isinstance(provider['credentials'], dict) else json.loads(provider['credentials'])
         
         logger.info(f"Credenciales GCP: {credentials.keys()}")
         
@@ -534,7 +534,7 @@ class JanitorDaemon:
             ssh_client.connect(
                 hostname=host,
                 port=port,
-                username=username,
+                username=user,
                 password=password
             )
             
