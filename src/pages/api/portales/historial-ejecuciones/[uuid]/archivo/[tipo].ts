@@ -324,7 +324,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           console.error(`Error descargando archivo desde ${providerTipo}:`, downloadError);
           return res.status(500).json({
             message: `Error descargando archivo desde ${providerTipo}`,
-            error: `No se pudo descargar el archivo "${String(tipo)}" desde el proveedor ${provider.nombre}.`,
+            error: `No se pudo descargar el archivo "${String(tipo)}" desde el proveedor ${provider.nombre}.
+\nRuta completa: ${execDir}/${relativePath}
+\nBucket: ${credentials.bucket || 'No especificado'}, 
+\nRegión: ${credentials.region || config.region || 'No especificado'}
+\nRuta en nube: ${remoteFilePath}`,
             detallesTecnicos: downloadError.message,
             tipo: 'error_descarga_archivo',
             proveedor: provider.nombre,
