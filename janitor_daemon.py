@@ -515,8 +515,8 @@ class JanitorDaemon:
         import paramiko
         
         # Parsear credenciales y configuración
-        config = json.loads(provider['config'])
-        credentials = json.loads(provider['credentials'])
+        config = provider['config'] if isinstance(provider['config'], dict) else json.loads(provider['config'])
+        credentials = provider['credentials'] if isinstance(provider['credentials'], dict) else json.loads(provider['credentials'])
         
         logger.info(f"Credenciales SFTP: {credentials}")
         
