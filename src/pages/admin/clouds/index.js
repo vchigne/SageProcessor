@@ -266,13 +266,13 @@ function CloudProviders() {
       
       if (data.error) {
         // Es un objeto de error del adaptador
-        console.error('Error al inspeccionar proveedor:', data.errorMessage);
+        console.error('Error al inspeccionar proveedor:', data.errorMessage || data.message || data.error);
         
         // Mensaje más amigable para errores comunes
-        let errorMessage = data.errorMessage;
+        let errorMessage = data.errorMessage || data.message || (typeof data.error === 'string' ? data.error : 'Error desconocido');
         
         // Para errores de firma AWS
-        if (errorMessage.includes('SignatureDoesNotMatch')) {
+        if (errorMessage && errorMessage.includes && errorMessage.includes('SignatureDoesNotMatch')) {
           toast.error(
             'Error de autenticación con AWS: La firma generada no coincide. Verifica que la clave de acceso y la clave secreta sean correctas, así como la región configurada.',
             { autoClose: 8000 } // Más tiempo para leer el mensaje
