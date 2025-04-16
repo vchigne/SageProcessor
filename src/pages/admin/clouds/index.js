@@ -289,6 +289,18 @@ function CloudProviders() {
             { autoClose: 8000 }
           );
         }
+        // Para errores específicos de Azure
+        else if (errorMessage.includes('AccountName=') && errorMessage.includes('AccountKey=')) {
+          // Error de connection string de Azure
+          toast.error(
+            'Error en la cadena de conexión de Azure. Asegúrate de usar el formato correcto que incluya AccountName y AccountKey. ' +
+            'Ejemplo: DefaultEndpointsProtocol=https;AccountName=micuenta;AccountKey=miClave;EndpointSuffix=core.windows.net',
+            { autoClose: 10000 }
+          );
+        }
+        else if (errorMessage.includes('connection string') || errorMessage.includes('Azure')) {
+          toast.error(`Error de Azure: ${errorMessage}`, { autoClose: 8000 });
+        }
         // Para otros errores AWS
         else if (errorMessage.includes('AWS S3')) {
           toast.error(errorMessage, { autoClose: 8000 });
@@ -364,6 +376,18 @@ function CloudProviders() {
             { autoClose: 8000 }
           );
         } 
+        // Para errores específicos de Azure
+        else if (errorMessage.includes('AccountName=') && errorMessage.includes('AccountKey=')) {
+          // Error de connection string de Azure
+          toast.error(
+            'Error en la cadena de conexión de Azure. Asegúrate de usar el formato correcto que incluya AccountName y AccountKey. ' +
+            'Ejemplo: DefaultEndpointsProtocol=https;AccountName=micuenta;AccountKey=miClave;EndpointSuffix=core.windows.net',
+            { autoClose: 10000 }
+          );
+        }
+        else if (errorMessage.includes('connection string') || errorMessage.includes('Azure')) {
+          toast.error(`Error de Azure: ${errorMessage}`, { autoClose: 8000 });
+        }
         // Para otros errores AWS
         else if (errorMessage.includes('AWS S3')) {
           toast.error(errorMessage, { autoClose: 8000 });
