@@ -98,7 +98,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           });
         }
         
-        // Listar archivos en la nube
+        // Listar archivos en la nube usando el adaptador
         const cloudFiles = await fileAccessor.listContents(provider.credenciales, provider.configuracion, cloudPath);
         
         if (!cloudFiles || cloudFiles.length === 0) {
