@@ -6,7 +6,8 @@ import {
   Cog6ToothIcon,
   CodeBracketIcon,
   DocumentTextIcon,
-  CloudIcon
+  CloudIcon,
+  CloudArrowUpIcon
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 
@@ -51,6 +52,12 @@ export default function ConfigMenu() {
       href: '/admin/clouds', 
       icon: CloudIcon, 
       description: 'Gestionar proveedores de almacenamiento en la nube' 
+    },
+    { 
+      name: 'Parámetros de ejecuciones', 
+      href: '/admin/ejecuciones-config', 
+      icon: CloudArrowUpIcon, 
+      description: 'Configurar almacenamiento en la nube para ejecuciones' 
     }
   ];
 
