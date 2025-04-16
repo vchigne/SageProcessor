@@ -173,9 +173,14 @@ class JanitorDaemon:
             if self.db_connection:
                 self.db_connection.close()
     
-    def _migrate_old_executions(self):
-        """Migrar ejecuciones antiguas a la nube"""
-        logger.info("Iniciando migración de ejecuciones antiguas a la nube")
+    def _migrate_old_executions(self, only_existing_directories=True):
+        """
+        Migrar ejecuciones antiguas a la nube
+        
+        Args:
+            only_existing_directories (bool): Si es True, solo procesa directorios que existen físicamente
+        """
+        logger.info(f"Iniciando migración de ejecuciones antiguas a la nube (solo existentes: {only_existing_directories})")
         
         # Calcular la fecha límite para migración
         horas_retencion = self.config['tiempo_retencion_local']
@@ -210,6 +215,29 @@ class JanitorDaemon:
                     return
                 
                 logger.info(f"Se encontraron {len(ejecuciones)} ejecuciones para migrar.")
+                
+                # Filtrar ejecuciones si solo_existing_directories es True
+                if only_existing_directories:
+                    ejecuciones_filtradas = []
+                    for ejecucion in ejecuciones:
+                        ruta_directorio = ejecucion[2]  # Índice 2 es ruta_directorio
+                        
+                        # Solo incluir ejecuciones donde el directorio existe
+                        if os.path.exists(ruta_directorio):
+                            ejecuciones_filtradas.append(ejecucion)
+                        else:
+                            # Marcar como migrada sin migrar archivos
+                            logger.warning(f"La ruta local {ruta_directorio} no existe. Marcando ejecución {ejecucion[0]} como migrada sin migrar archivos.")
+                            cursor.execute("""
+                                UPDATE ejecuciones_yaml
+                                SET migrado_a_nube = TRUE
+                                WHERE id = %s
+                            """, (ejecucion[0],))
+                            # Confirmar la transacción inmediatamente
+                            self.db_connection.commit()
+                    
+                    logger.info(f"Después de filtrar, quedan {len(ejecuciones_filtradas)} ejecuciones con directorios existentes para migrar.")
+                    ejecuciones = ejecuciones_filtradas
                 
                 # Migrar cada ejecución
                 for ejecucion in ejecuciones:
