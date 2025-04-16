@@ -250,7 +250,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         fileStream.pipe(res);
       } catch (cloudError) {
         console.error('Error accediendo a archivo en la nube:', cloudError);
-        const providerName = provider ? provider.nombre : 'desconocido';
+        // Asegurarnos de que provider esté definido para evitar errores
+        const providerName = (typeof provider !== 'undefined' && provider && provider.nombre) ? provider.nombre : 'desconocido';
         return res.status(500).json({ 
           message: 'Error al acceder al proveedor de nube', 
           error: 'No se pudo acceder al archivo en el almacenamiento en nube.',

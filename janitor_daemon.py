@@ -174,8 +174,8 @@ class JanitorDaemon:
             logger.info(f"Configuración cargada: {self.config}")
             logger.info(f"Proveedores de nube cargados: {list(self.cloud_providers.keys())}")
             
-            # Migrar ejecuciones antiguas a la nube (temporalmente 3 minutos para pruebas)
-            self._migrate_old_executions(max_age_hours=0.05)  # 3 minutos para prueba
+            # Migrar ejecuciones antiguas a la nube 
+            self._migrate_old_executions()
             
             # Limpiar archivos temporales
             self._clean_temp_files()
