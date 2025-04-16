@@ -363,11 +363,15 @@ export async function listContents(credentials, config = {}, path = '', limit = 
       // Esto permite mantener el patrón de listado de archivos sin simulación
       // compatible con los demás proveedores, pero delegando el trabajo real
       // al backend de Python que ya tiene las bibliotecas adecuadas
-      const baseUrl = typeof window !== 'undefined' 
-        ? window.location.origin
-        : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000');
-      const proxyUrl = new URL('/api/sftp-proxy/list', baseUrl);
-      const proxyResponse = await fetch(proxyUrl.toString(), {
+      let proxyUrl;
+      if (typeof window !== 'undefined') {
+        // En el navegador, podemos usar window.location.origin
+        proxyUrl = new URL('/api/sftp-proxy/list', window.location.origin);
+      } else {
+        // En el servidor, usamos una URL absoluta hardcodeada - las URLs relativas no funcionan en servidor
+        proxyUrl = 'http://localhost:5000/api/sftp-proxy/list';
+      }
+      const proxyResponse = await fetch(typeof proxyUrl === 'string' ? proxyUrl : proxyUrl.toString(), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -422,12 +426,16 @@ export async function listContents(credentials, config = {}, path = '', limit = 
       
       // En un servidor real, haríamos la conexión SSH directa usando fetch a un servidor intermedio
       // Necesitamos una URL absoluta para evitar el error de parseo en el servidor
-      // En Node.js, no tenemos 'window', así que usamos una URL absoluta con el nuevo objeto URL
-      const baseUrl = typeof window !== 'undefined' 
-        ? window.location.origin
-        : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000');
-      const apiUrl = new URL('/api/sftp/list-directory', baseUrl);
-      const directResponse = await fetch(apiUrl.toString(), {
+      // En el servidor y en el cliente, necesitamos URLs absolutas
+      let apiUrl;
+      if (typeof window !== 'undefined') {
+        // En el navegador, podemos usar window.location.origin
+        apiUrl = new URL('/api/sftp/list-directory', window.location.origin);
+      } else {
+        // En el servidor, usamos una URL absoluta hardcodeada - las URLs relativas no funcionan en servidor
+        apiUrl = 'http://localhost:5000/api/sftp/list-directory';
+      }
+      const directResponse = await fetch(typeof apiUrl === 'string' ? apiUrl : apiUrl.toString(), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
