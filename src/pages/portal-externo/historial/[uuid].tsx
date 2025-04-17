@@ -329,6 +329,24 @@ export default function HistorialPage() {
   // Manejador de errores para archivos y ZIP
   const manejarErrorArchivo = async (response: Response) => {
     try {
+      // Verificar el tipo de contenido antes de intentar parsearlo
+      const contentType = response.headers.get('content-type') || '';
+      
+      // Si la respuesta no es JSON, simplemente mostrar un error genérico
+      if (!contentType.includes('application/json')) {
+        console.log('Contenido no JSON recibido:', contentType);
+        setErrorModal({
+          isOpen: true,
+          title: 'Error al acceder al archivo',
+          message: 'No se pudo acceder al archivo solicitado.',
+          details: 'La respuesta del servidor no tiene el formato esperado.',
+          technicalDetails: `Tipo de contenido: ${contentType}`,
+          errorType: 'error_formato_respuesta',
+        });
+        return false;
+      }
+      
+      // Solo parsear como JSON si el tipo de contenido es application/json
       const data = await response.json();
       
       // Construir detalles técnicos detallados
