@@ -105,42 +105,23 @@ def get_cloud_providers(conn):
     logger.info(f"Se obtuvieron {len(providers)} proveedores de nube")
     return providers
 
-def fix_cloud_uris(conn, providers, dry_run=True):
+def process_batch(conn, ejecuciones, providers, dry_run=True):
     """
-    Corrige las URIs cloud:// en ejecuciones_yaml
+    Procesa un lote de ejecuciones para corregir URIs cloud://
     
     Args:
         conn: Conexión a la base de datos
+        ejecuciones: Lista de ejecuciones a procesar
         providers: Diccionario de proveedores de nube {id: {...}}
         dry_run: Si es True, solo muestra los cambios sin aplicarlos
         
     Returns:
         int: Número de ejecuciones corregidas
     """
-    logger.info(f"Buscando URIs cloud:// mal formadas...")
+    corrected_count = 0
     
+    # Procesar cada ejecución
     with conn.cursor() as cursor:
-        # Obtener todas las ejecuciones con rutas cloud://
-        cursor.execute("""
-            SELECT id, uuid, nombre_yaml, ruta_nube, ruta_directorio, rutas_alternativas, 
-                   nube_primaria_id, nubes_alternativas
-            FROM ejecuciones_yaml
-            WHERE (
-                ruta_nube LIKE 'cloud://%' OR 
-                ruta_directorio LIKE 'cloud://%' OR 
-                rutas_alternativas::text LIKE '%cloud://%'
-            )
-            ORDER BY fecha_ejecucion DESC
-            LIMIT 1000  -- Por seguridad ponemos un límite
-        """)
-        
-        ejecuciones = cursor.fetchall()
-        logger.info(f"Se encontraron {len(ejecuciones)} ejecuciones con rutas cloud://")
-        
-        # Contador de correcciones
-        corrected_count = 0
-        
-        # Procesar cada ejecución
         for ejecucion in ejecuciones:
             ejecucion_id, uuid, nombre_yaml, ruta_nube, ruta_directorio, rutas_alternativas, nube_primaria_id, nubes_alternativas = ejecucion
             
@@ -263,15 +244,52 @@ def fix_cloud_uris(conn, providers, dry_run=True):
                         """, (pg_array, ejecucion_id))
                         
                         corrected_count += 1
-                        
-        # Aplicar los cambios si no es dry_run
-        if not dry_run:
-            conn.commit()
-            logger.info(f"Se corrigieron {corrected_count} ejecuciones")
-        else:
-            logger.info(f"Modo simulación completado. Se corregirían {corrected_count} ejecuciones")
+    
+    # Aplicar los cambios si no es dry_run
+    if not dry_run and corrected_count > 0:
+        conn.commit()
+        logger.info(f"Se corrigieron {corrected_count} ejecuciones")
+    elif dry_run and corrected_count > 0:
+        logger.info(f"Modo simulación completado. Se corregirían {corrected_count} ejecuciones")
+        
+    return corrected_count
+
+def fix_cloud_uris(conn, providers, dry_run=True, ejecuciones=None):
+    """
+    Corrige las URIs cloud:// en ejecuciones_yaml
+    
+    Args:
+        conn: Conexión a la base de datos
+        providers: Diccionario de proveedores de nube {id: {...}}
+        dry_run: Si es True, solo muestra los cambios sin aplicarlos
+        ejecuciones: Lista de ejecuciones a procesar (opcional)
+        
+    Returns:
+        int: Número de ejecuciones corregidas
+    """
+    if ejecuciones is None:
+        logger.info(f"Buscando URIs cloud:// mal formadas...")
+        
+        with conn.cursor() as cursor:
+            # Obtener todas las ejecuciones con rutas cloud://
+            cursor.execute("""
+                SELECT id, uuid, nombre_yaml, ruta_nube, ruta_directorio, rutas_alternativas, 
+                       nube_primaria_id, nubes_alternativas
+                FROM ejecuciones_yaml
+                WHERE (
+                    ruta_nube LIKE 'cloud://%' OR 
+                    ruta_directorio LIKE 'cloud://%' OR 
+                    rutas_alternativas::text LIKE '%cloud://%'
+                )
+                ORDER BY id DESC
+                LIMIT 20  -- Procesamos por lotes para evitar timeouts
+            """)
             
-        return corrected_count
+            ejecuciones = cursor.fetchall()
+            
+        logger.info(f"Se encontraron {len(ejecuciones)} ejecuciones con rutas cloud://")
+    
+    return process_batch(conn, ejecuciones, providers, dry_run)
 
 def corregir_uri_cloud(uri, default_provider, providers, logger, log_prefix=""):
     """
@@ -331,6 +349,73 @@ def parse_args():
     parser.add_argument('--apply', action='store_true', help='Aplicar los cambios (por defecto es modo simulación)')
     return parser.parse_args()
 
+def get_total_records_to_fix(conn):
+    """Obtiene el total de registros que necesitan ser corregidos"""
+    with conn.cursor() as cursor:
+        cursor.execute("""
+            SELECT COUNT(*) FROM ejecuciones_yaml
+            WHERE (
+                ruta_nube LIKE 'cloud://%' OR 
+                ruta_directorio LIKE 'cloud://%' OR 
+                rutas_alternativas::text LIKE '%cloud://%'
+            )
+        """)
+        return cursor.fetchone()[0]
+
+def process_in_batches(conn, providers, dry_run=True, batch_size=20, offset=0, limit=500):
+    """Procesa registros en lotes para evitar problemas de timeout"""
+    total_records = get_total_records_to_fix(conn)
+    logger.info(f"Total de registros a procesar: {total_records}")
+    
+    if limit > 0:
+        total_records = min(total_records, limit)
+        
+    total_corrected = 0
+    batches_processed = 0
+    
+    # Procesar en lotes
+    while offset < total_records:
+        with conn.cursor() as cursor:
+            cursor.execute(f"""
+                SELECT id, uuid, nombre_yaml, ruta_nube, ruta_directorio, rutas_alternativas, 
+                       nube_primaria_id, nubes_alternativas
+                FROM ejecuciones_yaml
+                WHERE (
+                    ruta_nube LIKE 'cloud://%' OR 
+                    ruta_directorio LIKE 'cloud://%' OR 
+                    rutas_alternativas::text LIKE '%cloud://%'
+                )
+                ORDER BY id DESC
+                LIMIT {batch_size} OFFSET {offset}
+            """)
+            
+            batch = cursor.fetchall()
+            
+            if not batch:
+                break
+                
+            logger.info(f"Procesando lote {batches_processed + 1} ({len(batch)} registros)")
+            
+            # Crear una nueva conexión para cada lote para evitar problemas con transacciones largas
+            batch_conn = get_database_connection()
+            try:
+                batch_corrected = fix_cloud_uris(batch_conn, providers, dry_run, batch)
+                total_corrected += batch_corrected
+                
+                if not dry_run:
+                    batch_conn.commit()
+            except Exception as e:
+                if not dry_run:
+                    batch_conn.rollback()
+                logger.error(f"Error procesando lote {batches_processed + 1}: {e}")
+            finally:
+                batch_conn.close()
+            
+            offset += batch_size
+            batches_processed += 1
+    
+    return total_corrected
+
 def main():
     """Función principal"""
     args = parse_args()
@@ -354,15 +439,12 @@ def main():
         # Obtener información de proveedores de nube
         providers = get_cloud_providers(conn)
         
-        # Corregir las URIs cloud://
-        fix_cloud_uris(conn, providers, dry_run=dry_run)
+        # Procesar en lotes
+        total_corrected = process_in_batches(conn, providers, dry_run, batch_size=20)
         
-        logger.info("Operación completada con éxito")
+        logger.info(f"Operación completada con éxito. Total corregido: {total_corrected}")
     except Exception as e:
-        logger.error(f"Error: {e}")
-        if 'conn' in locals() and not dry_run:
-            conn.rollback()
-            logger.info("Se ha revertido la transacción debido al error")
+        logger.error(f"Error general: {e}")
     finally:
         if 'conn' in locals():
             conn.close()
