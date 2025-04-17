@@ -324,7 +324,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           
           // Cada adaptador es un objeto exportado por defecto con varias funciones
           if (providerTipo === 's3') {
-            await s3Adapter.downloadFile(credentials, config, remoteFilePath, tempFilePath);
+            // Para el adaptador S3, modificamos el config para incluir la ruta real
+            const configWithRealPath = {
+              ...config,
+              realPath: remoteFilePath // Pasamos la ruta real como parte de la configuración
+            };
+            await s3Adapter.downloadFile(credentials, configWithRealPath, remoteFilePath, tempFilePath);
           } else if (providerTipo === 'azure') {
             await azureAdapter.downloadFile(credentials, config, remoteFilePath, tempFilePath);
           } else if (providerTipo === 'gcp') {

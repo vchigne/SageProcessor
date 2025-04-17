@@ -613,7 +613,7 @@ function removeLeadingSlash(path) {
  * @param {string} localPath Ruta local donde guardar
  * @returns {Promise<Object>} Información sobre la descarga
  */
-async function downloadFile(client, remotePath, localPath) {
+async function downloadFile(client, config, remotePath, localPath) {
   // Normalizar la estructura del cliente para asegurar que las credenciales estén en el formato correcto
   const credentials = client.credentials || client;
 
@@ -642,27 +642,35 @@ async function downloadFile(client, remotePath, localPath) {
           normalizedRemotePath = client.fileInfo.realPath;
           console.log(`[S3] Usando ruta real almacenada: ${normalizedRemotePath}`);
         } else {
-          // Si no tenemos la ruta real, usamos una ruta genérica basada en el formato que esperamos
-          // Extrayendo el path después del nombre descriptivo del cloud://
-          console.log(`[S3] Usando ruta de las credenciales con formato correcto`);
-          normalizedRemotePath = remotePath; // Por defecto, mantener el mismo valor
+          // IMPORTANTE: Verificar si hay una ruta alternativa proporcionada
+          let alternativePath = config && config.realPath ? config.realPath : null;
           
-          // Registrar el problema para facilitar la depuración y futura corrección
-          console.error(`
-          ============================================
-          ERROR CORREGIDO - ACCESO A CLOUD STORAGE (S3)
-          ============================================
-          Se ha detectado y corregido un problema en la construcción de la ruta:
-            - Se recibió: "testExecutions2"
-            - Bucket configurado: "${bucket}"
-            - Región configurada: "${region}"
+          if (alternativePath) {
+            console.log(`[S3] Usando ruta alternativa desde config.realPath: ${alternativePath}`);
+            normalizedRemotePath = removeLeadingSlash(alternativePath);
+          } else {
+            // Si no tenemos la ruta real, usamos una ruta genérica basada en el formato que esperamos
+            // Extrayendo el path después del nombre descriptivo del cloud://
+            console.log(`[S3] Usando ruta de las credenciales con formato correcto`);
+            normalizedRemotePath = remotePath; // Por defecto, mantener el mismo valor
             
-          Este problema ha sido parcialmente corregido. Revise el archivo:
-          src/pages/api/portales/historial-ejecuciones/[uuid]/archivo/[tipo].ts
-          
-          El valor correcto debería ser una ruta de ejecución completa.
-          ============================================
-          `);
+            // Registrar el problema para facilitar la depuración y futura corrección
+            console.error(`
+            ============================================
+            ERROR CORREGIDO - ACCESO A CLOUD STORAGE (S3)
+            ============================================
+            Se ha detectado y corregido un problema en la construcción de la ruta:
+              - Se recibió: "testExecutions2"
+              - Bucket configurado: "${bucket}"
+              - Región configurada: "${region}"
+              
+            Este problema ha sido parcialmente corregido. Revise el archivo:
+            src/pages/api/portales/historial-ejecuciones/[uuid]/archivo/[tipo].ts
+            
+            El valor correcto debería ser una ruta de ejecución completa.
+            ============================================
+            `);
+          }
         }
       } else {
         // Procesamiento normal para rutas bien formadas
@@ -675,19 +683,28 @@ async function downloadFile(client, remotePath, localPath) {
         console.error('[S3] ⚠️ CORRIGIENDO ERROR: Se detectó objeto con prefix="testExecutions2"');
         
         const bucket = credentials.bucket || '[BUCKET NO ESPECIFICADO]';
-        normalizedRemotePath = remotePath.prefix;
         
-        console.error(`
-        ============================================
-        ERROR CORREGIDO - OBJETO PREFIX INCORRECTO
-        ============================================
-        Se ha detectado un objeto con prefix incorrecta:
-          - Prefix recibido: "testExecutions2"
-          - Bucket configurado: "${bucket}"
+        // IMPORTANTE: Verificar si hay una ruta alternativa proporcionada
+        let alternativePath = config && config.realPath ? config.realPath : null;
+        
+        if (alternativePath) {
+          console.log(`[S3] Usando ruta alternativa desde config.realPath: ${alternativePath}`);
+          normalizedRemotePath = removeLeadingSlash(alternativePath);
+        } else {
+          normalizedRemotePath = remotePath.prefix;
           
-        Revise cómo se está construyendo la ruta.
-        ============================================
-        `);
+          console.error(`
+          ============================================
+          ERROR CORREGIDO - OBJETO PREFIX INCORRECTO
+          ============================================
+          Se ha detectado un objeto con prefix incorrecta:
+            - Prefix recibido: "testExecutions2"
+            - Bucket configurado: "${bucket}"
+            
+          Revise cómo se está construyendo la ruta.
+          ============================================
+          `);
+        }
       } else {
         // Manejar el caso donde remotePath es un objeto con propiedad prefix
         normalizedRemotePath = removeLeadingSlash(remotePath.prefix);
