@@ -58,7 +58,7 @@ async function listDirectory(credentials, directory = '/') {
     args.push(directory && directory !== '' ? directory : '~');
     
     // Mejorar el mensaje de log con más detalles
-    console.log(`[SFTP Server] Ejecutando script Python para listar directorio '${directory || "/"}' en ${credentials.host}:${port}`);
+    console.log(`[SFTP Server] Ejecutando script Python para listar directorio '${directory || "~"}' en ${credentials.host}:${port}`);
     
     // Ejecutar el script
     const pythonProcess = spawn('python', args);
