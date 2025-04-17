@@ -12,7 +12,7 @@ export default async function handler(req, res) {
   }
   
   try {
-    const db = await getDb();
+    const db = pool;
     
     // Obtener configuración del sistema
     const config = await getSystemConfig(db);

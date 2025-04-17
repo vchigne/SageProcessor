@@ -63,16 +63,12 @@ async function getSystemConfig(db) {
       
       await db.query(`
         INSERT INTO system_config (
-          id, admin_emails, janitor_notifications_enabled, 
-          disk_space_monitoring_enabled, log_level, updated_at
+          id, admin_emails, updated_at
         ) VALUES (
-          1, $1, $2, $3, $4, NOW()
+          1, $1, NOW()
         )
       `, [
-        JSON.stringify(defaultConfig.admin_emails), 
-        defaultConfig.janitor_notifications_enabled, 
-        defaultConfig.disk_space_monitoring_enabled,
-        defaultConfig.log_level
+        JSON.stringify(defaultConfig.admin_emails)
       ]);
       
       return defaultConfig;
@@ -81,13 +77,15 @@ async function getSystemConfig(db) {
     // Formatear la configuración obtenida
     const config = result.rows[0];
     
+    // Combinar con valores por defecto para retrocompatibilidad
+    const defaultConfig = getDefaultConfig();
     return {
       admin_emails: Array.isArray(config.admin_emails) 
         ? config.admin_emails 
         : JSON.parse(config.admin_emails || '[]'),
-      janitor_notifications_enabled: config.janitor_notifications_enabled,
-      disk_space_monitoring_enabled: config.disk_space_monitoring_enabled,
-      log_level: config.log_level || 'info',
+      janitor_notifications_enabled: defaultConfig.janitor_notifications_enabled,
+      disk_space_monitoring_enabled: defaultConfig.disk_space_monitoring_enabled,
+      log_level: defaultConfig.log_level,
       updated_at: config.updated_at
     };
   } catch (error) {
@@ -116,37 +114,30 @@ async function updateSystemConfig(db, newConfig) {
     // Validar entrada
     const config = validateConfig(newConfig);
     
-    // Actualizar configuración
+    // Actualizar configuración - solo guardar emails, los demás son valores por defecto
     const result = await db.query(`
       INSERT INTO system_config (
-        id, admin_emails, janitor_notifications_enabled, 
-        disk_space_monitoring_enabled, log_level, updated_at
+        id, admin_emails, updated_at
       ) 
-      VALUES (1, $1, $2, $3, $4, NOW())
+      VALUES (1, $1, NOW())
       ON CONFLICT (id) DO UPDATE SET
         admin_emails = $1,
-        janitor_notifications_enabled = $2,
-        disk_space_monitoring_enabled = $3,
-        log_level = $4,
         updated_at = NOW()
       RETURNING *
     `, [
-      JSON.stringify(config.admin_emails), 
-      config.janitor_notifications_enabled, 
-      config.disk_space_monitoring_enabled,
-      config.log_level
+      JSON.stringify(config.admin_emails)
     ]);
     
     const updatedConfig = result.rows[0];
     
-    // Formatear la respuesta
+    // Formatear la respuesta con valores por defecto para retrocompatibilidad
     return {
       admin_emails: Array.isArray(updatedConfig.admin_emails) 
         ? updatedConfig.admin_emails 
         : JSON.parse(updatedConfig.admin_emails || '[]'),
-      janitor_notifications_enabled: updatedConfig.janitor_notifications_enabled,
-      disk_space_monitoring_enabled: updatedConfig.disk_space_monitoring_enabled,
-      log_level: updatedConfig.log_level,
+      janitor_notifications_enabled: config.janitor_notifications_enabled,
+      disk_space_monitoring_enabled: config.disk_space_monitoring_enabled,
+      log_level: config.log_level,
       updated_at: updatedConfig.updated_at
     };
   } catch (error) {
@@ -189,9 +180,6 @@ async function createSystemConfigTable(db) {
       CREATE TABLE IF NOT EXISTS system_config (
         id INTEGER PRIMARY KEY,
         admin_emails JSONB NOT NULL DEFAULT '[]',
-        janitor_notifications_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-        disk_space_monitoring_enabled BOOLEAN NOT NULL DEFAULT FALSE,
-        log_level VARCHAR(20) NOT NULL DEFAULT 'info',
         created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
       )
