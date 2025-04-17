@@ -235,7 +235,8 @@ class JanitorDaemon:
                         (migrado_a_nube = TRUE AND (ruta_nube IS NULL OR ruta_nube = ''))
                     )
                     AND ruta_directorio IS NOT NULL
-                    AND ruta_directorio NOT LIKE 'cloud://%'
+                    -- Comentado temporalmente para permitir migrar ejecuciones desde cloud://
+                    -- AND ruta_directorio NOT LIKE 'cloud://%'
                     ORDER BY fecha_ejecucion DESC
                     LIMIT 10  -- Solo tomar las 10 más recientes para probar
                 """
@@ -294,8 +295,29 @@ class JanitorDaemon:
         
         logger.info(f"Migrando ejecución {ejecucion_id} ({nombre_yaml}) a la nube")
         
-        # Verificar que la ruta local existe
-        if not os.path.exists(ruta_directorio):
+        # Si la ruta es cloud://, significa que ya está en una nube pero necesitamos migrar a otras
+        es_ruta_cloud = ruta_directorio and ruta_directorio.startswith('cloud://')
+        
+        if es_ruta_cloud:
+            logger.info(f"La ejecución {ejecucion_id} ya está en la nube ({ruta_directorio}). Preparando para migrar a nubes alternativas.")
+            
+            # Extraer información de la ruta cloud:// original
+            # Formato: cloud://bucket/path
+            try:
+                original_bucket = ruta_directorio.split('/')[2]
+                original_path = '/'.join(ruta_directorio.split('/')[3:])
+                logger.info(f"Ruta cloud original: bucket={original_bucket}, path={original_path}")
+            except Exception as e:
+                logger.error(f"Error parseando ruta cloud original {ruta_directorio}: {e}")
+                cursor.execute("""
+                    UPDATE ejecuciones_yaml
+                    SET migrado_a_nube = TRUE
+                    WHERE id = %s
+                """, (ejecucion_id,))
+                return
+                
+        # Verificar que la ruta local existe (si no es ruta cloud)
+        elif not os.path.exists(ruta_directorio):
             logger.warning(f"La ruta local {ruta_directorio} no existe. Marcando como migrada sin migrar archivos.")
             cursor.execute("""
                 UPDATE ejecuciones_yaml
@@ -373,12 +395,72 @@ class JanitorDaemon:
         # Lista de rutas alternativas
         rutas_alternativas = []
         
-        # Migrar a la nube primaria
-        self._upload_directory_to_cloud(
-            ruta_directorio, 
-            carpeta_nube, 
-            proveedor_primario
-        )
+        # Si la ruta ya es de nube (cloud://), primero necesitamos crear un directorio temporal y descargar
+        if ruta_directorio and ruta_directorio.startswith('cloud://'):
+            logger.info(f"La ruta {ruta_directorio} es de tipo cloud://. Procesando como migración entre nubes.")
+            # Crear un directorio temporal para los archivos descargados de S3
+            temp_dir = os.path.join('tmp', f'cloud-migration-{ejecucion_id}')
+            os.makedirs(temp_dir, exist_ok=True)
+            
+            try:
+                # Intentar encontrar el proveedor de origen
+                origen_bucket = ruta_directorio.split('/')[2]
+                origen_path = '/'.join(ruta_directorio.split('/')[3:])
+                
+                # Buscar el proveedor que tenga ese bucket en sus credenciales
+                proveedor_origen = None
+                for prov_id, prov in self.cloud_providers.items():
+                    prov_credenciales = prov['credenciales'] if isinstance(prov['credenciales'], dict) else json.loads(prov['credenciales']) if 'credenciales' in prov else {}
+                    prov_bucket = prov_credenciales.get('bucket')
+                    
+                    if prov_bucket == origen_bucket:
+                        proveedor_origen = prov
+                        break
+                
+                if not proveedor_origen:
+                    logger.error(f"No se encontró un proveedor para el bucket {origen_bucket}")
+                    # En este caso, marcar como migrado sin realmente migrar
+                    cursor.execute("""
+                        UPDATE ejecuciones_yaml
+                        SET migrado_a_nube = TRUE
+                        WHERE id = %s
+                    """, (ejecucion_id,))
+                    return
+                    
+                # Descargar archivos del origen al directorio temporal
+                if proveedor_origen['tipo'].lower() == 's3':
+                    self._download_s3_directory(origen_bucket, origen_path, temp_dir, proveedor_origen)
+                elif proveedor_origen['tipo'].lower() == 'minio':
+                    self._download_minio_directory(origen_bucket, origen_path, temp_dir, proveedor_origen)
+                elif proveedor_origen['tipo'].lower() == 'azure':
+                    self._download_azure_directory(origen_bucket, origen_path, temp_dir, proveedor_origen)
+                elif proveedor_origen['tipo'].lower() == 'gcp':
+                    self._download_gcp_directory(origen_bucket, origen_path, temp_dir, proveedor_origen)
+                elif proveedor_origen['tipo'].lower() == 'sftp':
+                    self._download_sftp_directory(origen_bucket, origen_path, temp_dir, proveedor_origen)
+                else:
+                    raise ValueError(f"Tipo de proveedor no soportado para descarga: {proveedor_origen['tipo']}")
+                
+                # Usar el directorio temporal como origen para la migración
+                ruta_directorio = temp_dir
+                logger.info(f"Archivos descargados a {temp_dir} para su migración")
+            except Exception as e:
+                logger.error(f"Error preparando migración entre nubes: {e}")
+                # En este caso, marcar como migrado sin realmente migrar
+                cursor.execute("""
+                    UPDATE ejecuciones_yaml
+                    SET migrado_a_nube = TRUE
+                    WHERE id = %s
+                """, (ejecucion_id,))
+                return
+        
+        # Migrar a la nube primaria solo si no era ya una ruta cloud://
+        if not es_ruta_cloud:
+            self._upload_directory_to_cloud(
+                ruta_directorio, 
+                carpeta_nube, 
+                proveedor_primario
+            )
         
         # Migrar a nubes alternativas si están configuradas
         if self.config['nubes_alternativas']:
