@@ -625,8 +625,8 @@ class JanitorDaemon:
     
     def _upload_to_minio(self, local_path, cloud_path, provider):
         """Subir archivos a MinIO Storage"""
-        import boto3
-        from botocore.exceptions import ClientError
+        from minio import Minio
+        from minio.error import S3Error
         
         # Parsear credenciales y configuración
         config = provider['configuracion'] if isinstance(provider['configuracion'], dict) else json.loads(provider['configuracion']) if 'configuracion' in provider else {}
@@ -636,37 +636,55 @@ class JanitorDaemon:
         logger.info(f"Credenciales MinIO: {list(credentials.keys()) if credentials else 'No hay credenciales'}")
         logger.info(f"Configuración MinIO: {list(config.keys()) if config else 'No hay configuración'}")
         
-        # Determinar si el endpoint incluye el protocolo
+        # Obtener endpoint, access_key y secret_key
         endpoint = credentials.get('endpoint') or config.get('endpoint')
         if not endpoint:
             raise ValueError("No se configuró correctamente el endpoint para MinIO")
             
-        # Agregar el protocolo según si secure es false en credenciales o config
-        if not endpoint.startswith('http://') and not endpoint.startswith('https://'):
+        # Determinar si es secure (HTTPS) o no (HTTP)
+        secure = True
+        
+        # Quitar protocolo del endpoint si lo tiene
+        if endpoint.startswith('http://'):
+            endpoint = endpoint[7:]  # Quitar 'http://'
+            secure = False
+        elif endpoint.startswith('https://'):
+            endpoint = endpoint[8:]  # Quitar 'https://'
             secure = True
-            # Primero verificar en credenciales, luego en config
-            if 'secure' in credentials and credentials['secure'] is False:
-                secure = False
-            elif 'secure' in config and config['secure'] is False:
-                secure = False
-            protocol = 'https://' if secure else 'http://'
-            endpoint = protocol + endpoint
         else:
-            # Si ya tiene protocolo, determinar si es secure
-            secure = endpoint.startswith('https://')
-            
+            # Si no tiene protocolo, verificar en configuración
+            # Primero verificar en credenciales, luego en config
+            if 'secure' in credentials:
+                # Convertir a booleano ya que puede venir como string "false"
+                secure_val = credentials['secure']
+                if isinstance(secure_val, str):
+                    secure = secure_val.lower() != 'false'
+                else:
+                    secure = bool(secure_val)
+            elif 'secure' in config:
+                # Convertir a booleano ya que puede venir como string "false"
+                secure_val = config['secure']
+                if isinstance(secure_val, str):
+                    secure = secure_val.lower() != 'false'
+                else:
+                    secure = bool(secure_val)
+        
         # Logs específicos para MinIO
         logger.info(f"Usando endpoint MinIO: {endpoint} (secure: {secure})")
         
-        # Crear cliente MinIO usando boto3
-        minio_client = boto3.client(
-            's3',
-            endpoint_url=endpoint,
-            aws_access_key_id=credentials.get('access_key'),
-            aws_secret_access_key=credentials.get('secret_key'),
-            # No usar region_name para MinIO - puede causar problemas
-            # Forzar que no verifique el certificado SSL si estamos en http
-            verify=secure
+        # Obtener access_key y secret_key
+        access_key = credentials.get('access_key')
+        secret_key = credentials.get('secret_key')
+        
+        if not access_key or not secret_key:
+            raise ValueError("No se configuraron correctamente las credenciales de acceso para MinIO")
+        
+        # Cliente MinIO usando la librería nativa
+        minio_client = Minio(
+            endpoint,
+            access_key=access_key,
+            secret_key=secret_key,
+            secure=secure
         )
         
         # Bucket debe estar en credenciales
@@ -674,18 +692,14 @@ class JanitorDaemon:
         if not bucket:
             raise ValueError("No se configuró correctamente el bucket para MinIO")
         
-        # Intentar verificar si el bucket existe
+        # Verificar si el bucket existe
         try:
-            minio_client.head_bucket(Bucket=bucket)
-            logger.info(f"Bucket {bucket} existe y es accesible")
-        except ClientError as e:
-            error_code = e.response.get('Error', {}).get('Code')
-            if error_code == '404':
+            bucket_exists = minio_client.bucket_exists(bucket)
+            if not bucket_exists:
                 raise ValueError(f"El bucket {bucket} no existe en MinIO")
-            elif error_code == '403':
-                raise ValueError(f"No tiene permisos para acceder al bucket {bucket} en MinIO")
-            else:
-                raise ValueError(f"Error verificando bucket de MinIO: {e}")
+            logger.info(f"Bucket {bucket} existe y es accesible")
+        except Exception as e:
+            raise ValueError(f"Error verificando bucket de MinIO: {str(e)}")
         
         # Subir todos los archivos en el directorio
         for root, dirs, files in os.walk(local_path):
@@ -696,13 +710,28 @@ class JanitorDaemon:
                 rel_path = os.path.relpath(local_file_path, local_path)
                 minio_key = f"{cloud_path}/{rel_path}".replace('\\', '/')  # Asegurar uso de forward slashes
                 
-                # Subir el archivo
+                # Determinar el tipo de contenido
+                content_type = 'application/octet-stream'
+                if file.endswith('.txt') or file.endswith('.log'):
+                    content_type = 'text/plain'
+                elif file.endswith('.json'):
+                    content_type = 'application/json'
+                elif file.endswith('.yaml') or file.endswith('.yml'):
+                    content_type = 'application/yaml'
+                
+                # Subir el archivo usando la API nativa de MinIO
                 try:
-                    minio_client.upload_file(local_file_path, bucket, minio_key)
-                    logger.debug(f"Archivo {local_file_path} subido a minio://{bucket}/{minio_key}")
-                except ClientError as e:
-                    logger.error(f"Error subiendo archivo a MinIO: {e}")
-                    raise
+                    logger.info(f"Subiendo archivo {local_file_path} a minio://{bucket}/{minio_key}")
+                    minio_client.fput_object(
+                        bucket, 
+                        minio_key, 
+                        local_file_path,
+                        content_type=content_type
+                    )
+                    logger.info(f"✓ Archivo {local_file_path} subido exitosamente a minio://{bucket}/{minio_key}")
+                except Exception as e:
+                    logger.error(f"Error subiendo archivo a MinIO: {str(e)}")
+                    raise ValueError(f"Error subiendo archivo a MinIO: {str(e)}")
     
     def _upload_to_azure(self, local_path, cloud_path, provider):
         """Subir archivos a Azure Blob Storage"""
