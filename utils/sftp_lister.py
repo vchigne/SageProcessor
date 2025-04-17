@@ -69,9 +69,38 @@ def list_sftp_directory(host, port, username, password=None, key_path=None, dire
         # Manejar el directorio home del usuario
         if directory == '~':
             try:
-                # Intentar obtener el directorio home real
-                directory = sftp.normalize('.')
-                logger.info(f"Directorio home resuelto como: {directory}")
+                # Primero intentar ejecutar comando 'pwd' para obtener el directorio actual
+                import io
+                import time
+                
+                # El método exec_command es el más confiable para obtener el directorio home
+                # Creamos un nuevo canal para ejecutar el comando pwd
+                try:
+                    # Para obtener directorio home intentamos varios métodos
+                    logger.info("Intentando obtener directorio home con exec_command")
+                    client = transport.open_session()
+                    client.exec_command("pwd")
+                    stdout = client.makefile('r')
+                    stderr = client.makefile_stderr('r')
+                    exit_status = client.recv_exit_status()
+                    home_dir = stdout.readline().strip()
+                    logger.info(f"Directorio home obtenido con exec_command: {home_dir}")
+                    
+                    if home_dir:
+                        directory = home_dir
+                    else:
+                        # Si falla, intentamos con el directorio de trabajo actual
+                        directory = sftp.normalize('.')
+                        logger.info(f"Directorio home resuelto con normalize: {directory}")
+                except Exception as pwd_err:
+                    logger.warning(f"Error al ejecutar pwd: {str(pwd_err)}")
+                    try:
+                        # Último recurso: intentar con el directorio de trabajo actual
+                        directory = sftp.normalize('.')
+                        logger.info(f"Directorio home resuelto con normalize: {directory}")
+                    except Exception as norm_err:
+                        logger.warning(f"Error al normalizar ruta: {str(norm_err)}")
+                        directory = '/'  # Si todo falla, volver a la raíz
             except Exception as e:
                 logger.warning(f"No se pudo resolver el directorio home: {str(e)}")
                 directory = '/'  # Si hay un error, volver a la raíz
