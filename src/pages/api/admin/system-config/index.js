@@ -94,6 +94,8 @@ async function getSystemConfig(db) {
       disk_space_monitoring_enabled: config.monitor_disk_space,
       // Usar el campo de la base de datos
       log_level: config.log_level || 'info',
+      // Nuevos campos para eventos de notificación
+      notify_events: config.notify_events || ['cloud_connection_error', 'disk_space_warning'],
       updated_at: config.updated_at
     };
   } catch (error) {
@@ -122,15 +124,15 @@ async function updateSystemConfig(db, newConfig) {
     // Validar entrada
     const config = validateConfig(newConfig);
     
-    // Actualizar configuración con los campos de la tabla incluyendo log_level
+    // Actualizar configuración con los campos de la tabla incluyendo log_level y notify_events
     const result = await db.query(`
       INSERT INTO system_config (
         id, admin_emails, 
         check_interval_hours, monitor_cloud_providers, 
         monitor_disk_space, disk_space_warning_threshold,
-        notification_enabled, log_level, updated_at
+        notification_enabled, log_level, notify_events, updated_at
       ) 
-      VALUES (1, $1, $2, $3, $4, $5, $6, $7, NOW())
+      VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, NOW())
       ON CONFLICT (id) DO UPDATE SET
         admin_emails = $1,
         check_interval_hours = $2,
@@ -139,6 +141,7 @@ async function updateSystemConfig(db, newConfig) {
         disk_space_warning_threshold = $5,
         notification_enabled = $6,
         log_level = $7,
+        notify_events = $8,
         updated_at = NOW()
       RETURNING *
     `, [
@@ -148,7 +151,8 @@ async function updateSystemConfig(db, newConfig) {
       config.monitor_disk_space,
       config.disk_space_warning_threshold,
       config.notification_enabled,
-      config.log_level
+      config.log_level,
+      JSON.stringify(config.notify_events)
     ]);
     
     const updatedConfig = result.rows[0];
@@ -166,6 +170,10 @@ async function updateSystemConfig(db, newConfig) {
       monitor_cloud_providers: updatedConfig.monitor_cloud_providers,
       // Usar el valor directamente de la base de datos
       log_level: updatedConfig.log_level,
+      // Incluir los eventos de notificación
+      notify_events: Array.isArray(updatedConfig.notify_events) 
+        ? updatedConfig.notify_events
+        : JSON.parse(updatedConfig.notify_events || '["cloud_connection_error", "disk_space_warning"]'),
       updated_at: updatedConfig.updated_at
     };
   } catch (error) {
@@ -214,6 +222,7 @@ async function createSystemConfigTable(db) {
         disk_space_warning_threshold INTEGER NOT NULL DEFAULT 85,
         notification_enabled BOOLEAN NOT NULL DEFAULT TRUE,
         log_level VARCHAR(20) DEFAULT 'info',
+        notify_events JSONB DEFAULT '["cloud_connection_error", "disk_space_warning"]'::jsonb,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
       )
@@ -239,7 +248,8 @@ function getDefaultConfig() {
     monitor_disk_space: false,
     disk_space_warning_threshold: 85,
     notification_enabled: true,
-    log_level: 'info' // Virtual field - no almacenado en la BD
+    log_level: 'info',
+    notify_events: ['cloud_connection_error', 'disk_space_warning']
   };
 }
 
@@ -259,12 +269,18 @@ function validateConfig(config) {
     notification_enabled: Boolean(config.notification_enabled),
     log_level: ['debug', 'info', 'warning', 'error'].includes(config.log_level) 
       ? config.log_level 
-      : 'info'
+      : 'info',
+    notify_events: Array.isArray(config.notify_events) ? config.notify_events : ['cloud_connection_error', 'disk_space_warning']
   };
   
   // Validar emails
   validatedConfig.admin_emails = validatedConfig.admin_emails
     .filter(email => typeof email === 'string' && /\S+@\S+\.\S+/.test(email));
+
+  // Validar eventos de notificación
+  const validEvents = ['cloud_connection_error', 'disk_space_warning', 'janitor_error', 'migration_completed'];
+  validatedConfig.notify_events = validatedConfig.notify_events
+    .filter(event => typeof event === 'string' && validEvents.includes(event));
   
   return validatedConfig;
 }
