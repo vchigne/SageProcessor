@@ -109,7 +109,7 @@ task = "packager.installForAll"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "python janitor_daemon.py"
+args = "cd /home/runner/workspace && python janitor_daemon.py"
 
 [deployment]
 run = ["sh", "-c", "npm run dev"]
