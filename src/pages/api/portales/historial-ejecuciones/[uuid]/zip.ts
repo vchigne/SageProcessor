@@ -153,13 +153,7 @@ Archivos comunes:
         }
         
         if (!resultadoListado) {
-          console.log('No se encontraron archivos en la ruta específica, creando un readme.txt básico');
-          
-          // Crear un readme.txt con información de la ejecución en caso de que no haya archivos
-          const readmePath = path.join(tempDir, 'readme.txt');
-          fs.writeFileSync(readmePath, `Ejecución: ${uuid}\nFecha: ${ejecucion.fecha_ejecucion || 'No disponible'}\nNo se encontraron archivos en la ruta: ${rutaLimpia}`);
-          zipfile.addFile(readmePath, 'readme.txt');
-          
+          console.log('No se encontraron archivos en la ruta específica');
           // Finalizar aquí
           throw new Error(`No se encontraron archivos en la ruta: ${rutaLimpia}`);
         }
@@ -246,26 +240,11 @@ Archivos comunes:
         
         console.log(`Proceso completo: ${archivosDescargados} de ${filesArray.length} archivos descargados correctamente`);
         
-        // Crear un archivo readme.txt con información de la ejecución
-        const readmePath = path.join(tempDir, 'readme.txt');
-        const readmeContent = `Ejecución: ${uuid}
-Fecha: ${ejecucion.fecha_ejecucion || 'No disponible'}
-Nombre YAML: ${ejecucion.nombre_yaml || 'No disponible'}
-Estado: ${ejecucion.estado || 'No disponible'}
-Archivos de datos: ${ejecucion.archivo_datos || 'No disponible'}
-Ruta en nube: ${rutaLimpia}
-Archivos incluidos: ${archivosDescargados} / ${filesArray.length}`;
-        
-        fs.writeFileSync(readmePath, readmeContent);
-        zipfile.addFile(readmePath, 'readme.txt');
-        
       } catch (err) {
         console.error(`Error al procesar archivos: ${err.message}`);
         
-        // Crear un archivo readme.txt con información del error
-        const readmePath = path.join(tempDir, 'readme.txt');
-        fs.writeFileSync(readmePath, `Error al procesar archivos: ${err.message}\nRuta: ${cloudPath}\nEjecución: ${uuid}`);
-        zipfile.addFile(readmePath, 'readme.txt');
+        // No incluir readme.txt, simplemente devolver el error
+        throw new Error(`Error al procesar archivos: ${err.message}`);
       }
       
     } else {
