@@ -172,14 +172,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           });
         }
         
+        // No nos detenemos si no hay archivos, intentaremos descargar los esenciales
         if (filesArray.length === 0) {
-          return res.status(404).json({
-            message: 'No se encontraron archivos en la nube',
-            error: 'No hay archivos disponibles para esta ejecución en el almacenamiento en nube.',
-            tipo: 'archivos_nube_vacios',
-            proveedor: providerName,
-            ruta: cloudPath
-          });
+          console.log('AVISO: No se encontraron archivos en la lista de la nube, intentaremos buscar archivos esenciales');
         }
         
         // Crear directorio temporal para descargar archivos
@@ -189,32 +184,57 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         // Descargar todos los archivos
         const zipfile = new yazl.ZipFile();
         
+        // Información para debuggeo
+        console.log(`Archivos encontrados: ${filesArray.length}`);
+        filesArray.forEach((file, index) => {
+          console.log(`Archivo ${index + 1}: ${file.name || 'Sin nombre'}, ruta: ${file.path || 'Sin ruta'}`);
+        });
+        
+        // Lista de archivos clave para asegurarnos de incluirlos en el ZIP
+        // incluso si no están en la lista retornada por el adaptador
+        const archivosEsenciales = ['output.log', 'input.yaml'];
+        
+        // Agregar el archivo de datos a la lista de esenciales si existe en el registro
+        if (ejecucion.archivo_datos) {
+          archivosEsenciales.push(ejecucion.archivo_datos);
+        } else {
+          // Intentar diferentes formatos comunes si no hay un nombre específico
+          archivosEsenciales.push('data.csv', 'data.txt', 'data.xlsx', 'data');
+        }
+        
         // Descargar cada archivo y agregarlo al ZIP
         for (const file of filesArray) {
           // Verificar que file y file.name existen
-          if (!file || !file.name) {
+          if (!file || (!file.name && !file.Key && !file.Name)) {
             console.warn('Archivo inválido en la lista:', file);
             continue;
           }
           
-          const fileName = file.name;
+          // Extraer el nombre del archivo de la estructura que puede variar según el provider
+          const fileName = file.name || 
+            (file.Key ? file.Key.split('/').pop() : null) || 
+            (file.Name ? file.Name.split('/').pop() : 'archivo_sin_nombre');
+            
           const tempFilePath = path.join(tempDir, fileName);
           
           try {
-            // Verificar si la ruta del archivo ya incluye el prefijo completo o necesita concatenarse
+            // Obtener la ruta efectiva
+            // Algunos proveedores devuelven la ruta completa, otros solo la relativa
             let rutaEfectiva;
-            if (file.path.includes(cloudPath)) {
+            const filePath = file.path || file.Key || file.Name || '';
+            
+            if (filePath.includes(cloudPath)) {
               // La ruta ya contiene el prefijo completo, solo asegurarse de que no haya barras dobles
-              rutaEfectiva = file.path.replace(/\/+/g, '/');
+              rutaEfectiva = filePath.replace(/\/+/g, '/');
             } else {
               // Concatenar el cloudPath con la ruta del archivo y normalizar barras
-              rutaEfectiva = `${cloudPath}/${file.path}`.replace(/\/+/g, '/');
+              rutaEfectiva = `${cloudPath}/${filePath}`.replace(/\/+/g, '/');
             }
             
             console.log(`Descargando archivo para ZIP desde proveedor ${tipo}:`);
-            console.log(`- Archivo solicitado: ${file.name}`);
+            console.log(`- Archivo solicitado: ${fileName}`);
             console.log(`- Ruta base en nube: ${cloudPath}`);
-            console.log(`- Ruta en archivo:   ${file.path}`);
+            console.log(`- Ruta en archivo:   ${filePath}`);
             console.log(`- RUTA EFECTIVA:     ${rutaEfectiva}`);
             
             // Normalizar las credenciales y la configuración
@@ -280,6 +300,69 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             // Continuar con otros archivos incluso si hay error en uno
           }
         }
+        
+        // Verificar si tenemos archivos esenciales faltantes e intentar descargarlos
+        for (const archivoEsencial of archivosEsenciales) {
+          // Verificar si ya tenemos este archivo esencial en el ZIP
+          const yaExiste = filesArray.some(file => {
+            const nombreArchivo = file.name || 
+              (file.Key ? file.Key.split('/').pop() : null) || 
+              (file.Name ? file.Name.split('/').pop() : null);
+            return nombreArchivo === archivoEsencial;
+          });
+          
+          if (!yaExiste) {
+            console.log(`Intentando descargar archivo esencial: ${archivoEsencial}`);
+            const tempFilePath = path.join(tempDir, archivoEsencial);
+            const rutaEfectiva = `${cloudPath}/${archivoEsencial}`.replace(/\/+/g, '/');
+            
+            try {
+              console.log(`Descargando: ${rutaEfectiva}`);
+              let credentials = provider.credenciales;
+              let config = provider.configuracion;
+              
+              // Asegurarse de que son objetos
+              if (typeof credentials === 'string') credentials = JSON.parse(credentials);
+              if (typeof config === 'string') config = JSON.parse(config);
+              
+              if (tipo === 's3') {
+                await s3Adapter.downloadFile(credentials, config, rutaEfectiva, tempFilePath);
+              } else if (tipo === 'azure') {
+                await azureAdapter.downloadFile(credentials, config, rutaEfectiva, tempFilePath);
+              } else if (tipo === 'gcp') {
+                await gcpAdapter.downloadFile(credentials, config, rutaEfectiva, tempFilePath);
+              } else if (tipo === 'sftp') {
+                await sftpAdapter.downloadFile(credentials, config, rutaEfectiva, tempFilePath);
+              } else if (tipo === 'minio') {
+                await minioAdapter.downloadFile(credentials, config, rutaEfectiva, tempFilePath);
+              }
+              
+              if (fs.existsSync(tempFilePath)) {
+                console.log(`Archivo esencial ${archivoEsencial} descargado correctamente`);
+                zipfile.addFile(tempFilePath, archivoEsencial);
+              } else {
+                console.log(`No se pudo descargar el archivo esencial ${archivoEsencial}`);
+              }
+            } catch (err) {
+              console.error(`Error descargando archivo esencial ${archivoEsencial}:`, err.message);
+              // Ignorar el error y continuar con otros archivos
+            }
+          }
+        }
+        
+        // Siempre crearemos un archivo readme.txt para indicar la estructura
+        const readmePath = path.join(tempDir, 'readme.txt');
+        fs.writeFileSync(readmePath, `Ejecución: ${uuid}
+        Fecha: ${ejecucion.fecha_ejecucion}
+        Nombre YAML: ${ejecucion.nombre_yaml}
+        Estado: ${ejecucion.estado}
+        
+        Archivos comunes:
+        - output.log: Registro de la ejecución
+        - input.yaml: Configuración YAML utilizada
+        - data.*: Archivo de datos procesado (formato variable)
+        `);
+        zipfile.addFile(readmePath, 'readme.txt');
         
         // Finalizar y enviar el ZIP
         zipfile.end();
