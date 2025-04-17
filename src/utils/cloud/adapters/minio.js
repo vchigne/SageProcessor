@@ -400,18 +400,54 @@ async function listContents(credentials, config = {}, path = '') {
     const responseText = await response.text();
     console.log('[MinIO] Respuesta:', responseText.substring(0, 150) + '...');
     
-    // Extraer información de carpetas
-    const commonPrefixes = Array.from(responseText.matchAll(/<CommonPrefix><Prefix>(.*?)<\/Prefix><\/CommonPrefix>/g))
-      .map(match => {
-        const fullPath = match[1];
-        // Eliminar el prefijo actual y la barra final para obtener solo el nombre
-        const name = fullPath.replace(path ? path + '/' : '', '').replace(/\/$/, '');
-        return {
-          name,
-          path: fullPath.replace(/\/$/, ''),
-          type: 'folder'
-        };
+    // Extraer información de carpetas (compatibilidad con diferentes formatos XML)
+    // Intentar primero con etiquetas CommonPrefix y luego con Prefix dentro de CommonPrefixes
+    let commonPrefixMatches = Array.from(responseText.matchAll(/<CommonPrefix><Prefix>(.*?)<\/Prefix><\/CommonPrefix>/g));
+    
+    // Si no hay coincidencias, intentar con formato alternativo
+    if (commonPrefixMatches.length === 0) {
+      commonPrefixMatches = Array.from(responseText.matchAll(/<CommonPrefixes><Prefix>(.*?)<\/Prefix><\/CommonPrefixes>/g));
+    }
+    
+    // Si aún no hay resultados, buscar patrón con todas las carpetas (executions/ por ejemplo)
+    if (commonPrefixMatches.length === 0 && path === '') {
+      commonPrefixMatches = Array.from(responseText.matchAll(/<Key>(.*?)\/<\/Key>/g))
+        .filter(match => {
+          const dirPath = match[1];
+          // Obtener solo el directorio de primer nivel
+          return !dirPath.includes('/') || dirPath.lastIndexOf('/') === dirPath.indexOf('/');
+        })
+        .map(match => {
+          const dirPath = match[1];
+          // Si contiene /, obtener solo el directorio principal
+          if (dirPath.includes('/')) {
+            return [match[0], dirPath.substring(0, dirPath.indexOf('/') + 1)];
+          }
+          return [match[0], dirPath + '/'];
+        });
+      
+      // Eliminar duplicados
+      const uniqueDirs = new Set();
+      commonPrefixMatches = commonPrefixMatches.filter(match => {
+        const dir = match[1];
+        if (uniqueDirs.has(dir)) return false;
+        uniqueDirs.add(dir);
+        return true;
       });
+    }
+    
+    console.log('[MinIO] Carpetas encontradas:', commonPrefixMatches.length);
+    
+    const commonPrefixes = commonPrefixMatches.map(match => {
+      const fullPath = match[1];
+      // Eliminar el prefijo actual y la barra final para obtener solo el nombre
+      const name = fullPath.replace(path ? path + '/' : '', '').replace(/\/$/, '');
+      return {
+        name,
+        path: fullPath.replace(/\/$/, ''),
+        type: 'folder'
+      };
+    });
     
     // Extraer información de archivos
     const contents = Array.from(responseText.matchAll(/<Contents>(.*?)<\/Contents>/gs))
