@@ -269,7 +269,7 @@ export default function SystemConfig() {
                   <h4 className="text-sm font-medium text-gray-700 mb-2">Nivel de Log</h4>
                   <select
                     name="log_level"
-                    value={config.log_level}
+                    value={config.log_level || 'info'}
                     onChange={handleChange}
                     className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
                   >
