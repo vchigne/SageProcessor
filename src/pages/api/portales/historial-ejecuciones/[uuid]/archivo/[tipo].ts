@@ -264,45 +264,37 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             console.error('Error parseando credenciales o configuración:', err);
         }
         
-        // Extraer correctamente la ruta del archivo en la nube 
+        // CORRECCIÓN: Extraer correctamente la ruta del archivo en la nube 
         // La ruta completa está en formato cloud://proveedor/ruta/al/archivo
         // IMPORTANTE: Debemos ignorar el nombre descriptivo del proveedor y usar solo la ruta real
         
-        // 1. Extracción de la URI completa ignorando el nombre del proveedor
+        // PROBLEMA IDENTIFICADO: Cuando el archivo está en S3, el URI contiene el nombre descriptivo del 
+        // proveedor (ej: "AmazonBackup Executions") en lugar del nombre real del bucket (ej: "sage.vidasoft")
+        
+        // 1. Extraer el nombre descriptivo del proveedor para depuración
         const uriSinProtocolo = execDir.substring(8); // Quitar 'cloud://'
         const primerSlash = uriSinProtocolo.indexOf('/');
+        const nombreDescriptivo = primerSlash !== -1 ? uriSinProtocolo.substring(0, primerSlash) : '';
         
-        // 2. Extraer la ruta real después del primer slash (ignorando el nombre del proveedor)
+        // 2. Extraer la ruta real después del primer slash
         const rutaReal = primerSlash !== -1 ? uriSinProtocolo.substring(primerSlash + 1) : '';
         
-        // 3. Verificar si cloudPath ya está incluido en la configuración (podría estar en bucket)
-        const bucket = credentials.bucket || '';
-        
-        console.log(`ANÁLISIS DE RUTA:
+        // 3. IMPORTANTE: Usar el bucket real de las credenciales en lugar del nombre descriptivo
+        const bucket = credentials.bucket || ''; // Bucket real desde las credenciales
+                
+        console.log(`ANÁLISIS DE RUTA CORREGIDO:
           - URI original: ${execDir}
-          - Nombre descriptivo: ${uriSinProtocolo.substring(0, primerSlash)}
+          - Nombre descriptivo (ignorado): ${nombreDescriptivo}
           - Ruta real: ${rutaReal}
           - Bucket real según credenciales: ${bucket}
           - Archivo solicitado: ${relativePath}
         `);
         
-        // Combinar la ruta real con el nombre del archivo solicitado
+        // Construir la ruta remota correctamente usando el bucket real y la ruta
         let remoteFilePath;
         
-        // Construcción de ruta inteligente
-        if (rutaReal.includes(bucket)) {
-          // Si rutaReal ya contiene el bucket, extraer solo la parte después
-          const bucketPos = rutaReal.indexOf(bucket) + bucket.length;
-          const rutaSinBucket = rutaReal.substring(bucketPos).replace(/^\/+/, '');
-          
-          if (rutaSinBucket) {
-            remoteFilePath = `${rutaSinBucket}/${relativePath}`.replace(/\/+/g, '/');
-          } else {
-            remoteFilePath = relativePath;
-          }
-          
-          console.log(`Ruta real ya contiene bucket, extrayendo: ${remoteFilePath}`);
-        } else if (rutaReal.endsWith('/')) {
+        // Construcción directa de la ruta usando la parte después del nombre descriptivo
+        if (rutaReal.endsWith('/')) {
           remoteFilePath = `${rutaReal}${relativePath}`;
         } else if (rutaReal) {
           remoteFilePath = `${rutaReal}/${relativePath}`;
