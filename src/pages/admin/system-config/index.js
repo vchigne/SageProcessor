@@ -253,96 +253,78 @@ export default function SystemConfig() {
                 <div className="mb-4">
                   <h4 className="text-sm font-medium text-gray-700 mb-2">Configuración de Notificaciones</h4>
                   
-                  <div className="space-y-3">
-                    <div className="flex items-center">
-                      <input
-                        id="notification_enabled"
-                        name="notification_enabled"
-                        type="checkbox"
-                        checked={config.notification_enabled}
-                        onChange={handleChange}
-                        className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                      />
-                      <label htmlFor="notification_enabled" className="ml-2 block text-sm text-gray-700">
-                        Notificaciones de errores del Janitor Daemon
-                      </label>
-                    </div>
-                    
-                    <div className="flex items-center">
-                      <input
-                        id="disk_space_monitoring_enabled"
-                        name="disk_space_monitoring_enabled"
-                        type="checkbox"
-                        checked={config.disk_space_monitoring_enabled}
-                        onChange={handleChange}
-                        className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                      />
-                      <label htmlFor="disk_space_monitoring_enabled" className="ml-2 block text-sm text-gray-700">
-                        Monitoreo de espacio en disco
-                      </label>
-                      <Badge color="purple" size="xs" className="ml-2">
-                        Próximamente
-                      </Badge>
-                    </div>
-                    
-                    {config.notification_enabled && (
-                      <div className="mt-3 pt-3 border-t border-gray-200">
-                        <h5 className="text-sm font-medium text-gray-700 mb-2">Eventos a notificar</h5>
-                        <div className="space-y-2 pl-2">
-                          <div className="flex items-center">
-                            <input
-                              id="event_cloud_connection_error"
-                              type="checkbox"
-                              checked={config.notify_events?.includes('cloud_connection_error')}
-                              onChange={() => handleEventToggle('cloud_connection_error')}
-                              className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                            />
-                            <label htmlFor="event_cloud_connection_error" className="ml-2 block text-sm text-gray-700">
-                              Errores de conexión con proveedores cloud
-                            </label>
-                          </div>
-                          
-                          <div className="flex items-center">
-                            <input
-                              id="event_disk_space_warning"
-                              type="checkbox"
-                              checked={config.notify_events?.includes('disk_space_warning')}
-                              onChange={() => handleEventToggle('disk_space_warning')}
-                              className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                            />
-                            <label htmlFor="event_disk_space_warning" className="ml-2 block text-sm text-gray-700">
-                              Advertencias de espacio en disco
-                            </label>
-                          </div>
-                          
-                          <div className="flex items-center">
-                            <input
-                              id="event_janitor_error"
-                              type="checkbox"
-                              checked={config.notify_events?.includes('janitor_error')}
-                              onChange={() => handleEventToggle('janitor_error')}
-                              className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                            />
-                            <label htmlFor="event_janitor_error" className="ml-2 block text-sm text-gray-700">
-                              Errores generales del Janitor Daemon
-                            </label>
-                          </div>
-                          
-                          <div className="flex items-center">
-                            <input
-                              id="event_migration_completed"
-                              type="checkbox"
-                              checked={config.notify_events?.includes('migration_completed')}
-                              onChange={() => handleEventToggle('migration_completed')}
-                              className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                            />
-                            <label htmlFor="event_migration_completed" className="ml-2 block text-sm text-gray-700">
-                              Migración de ejecuciones completada
-                            </label>
-                          </div>
-                        </div>
+                  <div>
+                    <h5 className="text-sm font-medium text-gray-700 mb-2">Eventos a notificar</h5>
+                    <div className="space-y-2 pl-2">
+                      <div className="flex items-center">
+                        <input
+                          id="event_cloud_connection_error"
+                          type="checkbox"
+                          checked={config.notify_events?.includes('cloud_connection_error')}
+                          onChange={() => handleEventToggle('cloud_connection_error')}
+                          className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <label htmlFor="event_cloud_connection_error" className="ml-2 block text-sm text-gray-700">
+                          Errores de conexión con proveedores cloud
+                        </label>
                       </div>
-                    )}
+                      
+                      <div className="flex items-center">
+                        <input
+                          id="event_disk_space_warning"
+                          type="checkbox"
+                          checked={config.notify_events?.includes('disk_space_warning')}
+                          onChange={() => handleEventToggle('disk_space_warning')}
+                          className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <label htmlFor="event_disk_space_warning" className="ml-2 block text-sm text-gray-700">
+                          Advertencias de espacio en disco
+                        </label>
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <input
+                          id="event_janitor_error"
+                          type="checkbox"
+                          checked={config.notify_events?.includes('janitor_error')}
+                          onChange={() => handleEventToggle('janitor_error')}
+                          className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <label htmlFor="event_janitor_error" className="ml-2 block text-sm text-gray-700">
+                          Errores generales del Janitor Daemon
+                        </label>
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <input
+                          id="event_migration_completed"
+                          type="checkbox"
+                          checked={config.notify_events?.includes('migration_completed')}
+                          onChange={() => handleEventToggle('migration_completed')}
+                          className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <label htmlFor="event_migration_completed" className="ml-2 block text-sm text-gray-700">
+                          Migración de ejecuciones completada
+                        </label>
+                      </div>
+                      
+                      <div className="flex items-center mt-4">
+                        <input
+                          id="disk_space_monitoring_enabled"
+                          name="disk_space_monitoring_enabled"
+                          type="checkbox"
+                          checked={config.disk_space_monitoring_enabled}
+                          onChange={handleChange}
+                          className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <label htmlFor="disk_space_monitoring_enabled" className="ml-2 block text-sm text-gray-700">
+                          Monitoreo de espacio en disco
+                        </label>
+                        <Badge color="purple" size="xs" className="ml-2">
+                          Próximamente
+                        </Badge>
+                      </div>
+                    </div>
                   </div>
                 </div>
                 
