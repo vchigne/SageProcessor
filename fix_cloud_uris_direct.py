@@ -170,59 +170,62 @@ def fix_cloud_uris_direct(conn, providers, dry_run=True):
                     # En modo simulación, también contamos las correcciones para el reporte final
                     corrected_count += count
         
-        # Corregir rutas_alternativas (esto es más complejo porque es un array)
-        # Usamos un enfoque diferente: obtenemos todos los registros, los procesamos, y luego los actualizamos
+        # Corregir rutas_alternativas (esto es más complejo porque es un array de texto)
+        # Usamos un enfoque diferente con unnest para recorrer los elementos del array
         with conn.cursor() as cursor:
+            # En PostgreSQL podemos usar unnest para trabajar con arrays
             cursor.execute("""
-                SELECT id, rutas_alternativas
-                FROM ejecuciones_yaml
-                WHERE rutas_alternativas::text LIKE %s
-            """, (f"%cloud://{desc_name}/%",))
+                SELECT COUNT(DISTINCT id)
+                FROM ejecuciones_yaml e,
+                unnest(rutas_alternativas) as ruta
+                WHERE ruta LIKE %s
+            """, (f"cloud://{desc_name}/%",))
             
-            rows = cursor.fetchall()
-            if len(rows) > 0:
-                logger.info(f"Se encontraron {len(rows)} ejecuciones con rutas_alternativas que contienen '{desc_name}'")
+            count = cursor.fetchone()[0]
+            if count > 0:
+                logger.info(f"Se encontraron {count} ejecuciones con rutas_alternativas que contienen '{desc_name}'")
                 
-                update_candidates = 0
-                for row_id, rutas in rows:
-                    # Si es un string pero no un array PostgreSQL, omitir
-                    if not (isinstance(rutas, str) and rutas.startswith('{') and rutas.endswith('}')):
-                        continue
+                if not dry_run:
+                    # Obtenemos todas las ejecuciones que necesitan actualización
+                    cursor.execute("""
+                        SELECT id, rutas_alternativas
+                        FROM ejecuciones_yaml
+                        WHERE id IN (
+                            SELECT DISTINCT id
+                            FROM ejecuciones_yaml,
+                            unnest(rutas_alternativas) as ruta
+                            WHERE ruta LIKE %s
+                        )
+                    """, (f"cloud://{desc_name}/%",))
                     
-                    # Verificar si hay una ruta que necesita ser reemplazada
-                    if f"cloud://{desc_name}/" in rutas:
-                        update_candidates += 1
-                
-                logger.info(f"De esas, {update_candidates} tienen rutas_alternativas que necesitan ser actualizadas")
-                
-                if not dry_run and update_candidates > 0:
-                    updated_count = 0
+                    rows = cursor.fetchall()
+                    updated_rows = 0
+                    
                     for row_id, rutas in rows:
-                        # Si es un string pero no un array PostgreSQL, omitir
-                        if not (isinstance(rutas, str) and rutas.startswith('{') and rutas.endswith('}')):
-                            continue
+                        # Crear un nuevo array con las rutas corregidas
+                        new_rutas = []
+                        for ruta in rutas:
+                            if ruta.startswith(f"cloud://{desc_name}/"):
+                                # Reemplazar el nombre del bucket
+                                new_ruta = ruta.replace(f"cloud://{desc_name}/", f"cloud://{real_bucket}/")
+                                new_rutas.append(new_ruta)
+                            else:
+                                new_rutas.append(ruta)
                         
-                        # Reemplazar directamente en el texto del array
-                        if f"cloud://{desc_name}/" in rutas:
-                            new_rutas = rutas.replace(
-                                f"cloud://{desc_name}/", 
-                                f"cloud://{real_bucket}/"
-                            )
-                            
-                            # Actualizar el registro
+                        # Actualizar el registro si hubo cambios
+                        if new_rutas != rutas:
                             cursor.execute("""
                                 UPDATE ejecuciones_yaml
                                 SET rutas_alternativas = %s
                                 WHERE id = %s
                             """, (new_rutas, row_id))
-                            
-                            updated_count += 1
+                            updated_rows += 1
                     
-                    corrected_count += updated_count
-                    logger.info(f"Se corrigieron {updated_count} rutas en campo rutas_alternativas para '{desc_name}' -> '{real_bucket}'")
-                elif update_candidates > 0:
+                    corrected_count += updated_rows
+                    logger.info(f"Se corrigieron rutas en el campo rutas_alternativas para {updated_rows} ejecuciones, reemplazando '{desc_name}' por '{real_bucket}'")
+                else:
                     # En modo simulación, también contamos las correcciones para el reporte final
-                    corrected_count += update_candidates
+                    corrected_count += count
     
     # Confirmar las transacciones si no es modo simulación
     if not dry_run:
