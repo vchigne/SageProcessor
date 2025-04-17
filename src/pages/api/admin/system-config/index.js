@@ -92,8 +92,8 @@ async function getSystemConfig(db) {
       disk_space_warning_threshold: config.disk_space_warning_threshold,
       janitor_notifications_enabled: config.notification_enabled,
       disk_space_monitoring_enabled: config.monitor_disk_space,
-      // Campo virtual para retrocompatibilidad
-      log_level: 'info',
+      // Usar el campo de la base de datos
+      log_level: config.log_level || 'info',
       updated_at: config.updated_at
     };
   } catch (error) {
@@ -122,15 +122,15 @@ async function updateSystemConfig(db, newConfig) {
     // Validar entrada
     const config = validateConfig(newConfig);
     
-    // Actualizar configuración con los campos de la tabla
+    // Actualizar configuración con los campos de la tabla incluyendo log_level
     const result = await db.query(`
       INSERT INTO system_config (
         id, admin_emails, 
         check_interval_hours, monitor_cloud_providers, 
         monitor_disk_space, disk_space_warning_threshold,
-        notification_enabled, updated_at
+        notification_enabled, log_level, updated_at
       ) 
-      VALUES (1, $1, $2, $3, $4, $5, $6, NOW())
+      VALUES (1, $1, $2, $3, $4, $5, $6, $7, NOW())
       ON CONFLICT (id) DO UPDATE SET
         admin_emails = $1,
         check_interval_hours = $2,
@@ -138,6 +138,7 @@ async function updateSystemConfig(db, newConfig) {
         monitor_disk_space = $4,
         disk_space_warning_threshold = $5,
         notification_enabled = $6,
+        log_level = $7,
         updated_at = NOW()
       RETURNING *
     `, [
@@ -146,7 +147,8 @@ async function updateSystemConfig(db, newConfig) {
       config.monitor_cloud_providers,
       config.monitor_disk_space,
       config.disk_space_warning_threshold,
-      config.notification_enabled
+      config.notification_enabled,
+      config.log_level
     ]);
     
     const updatedConfig = result.rows[0];
@@ -162,8 +164,8 @@ async function updateSystemConfig(db, newConfig) {
       disk_space_monitoring_enabled: updatedConfig.monitor_disk_space,
       disk_space_warning_threshold: updatedConfig.disk_space_warning_threshold,
       monitor_cloud_providers: updatedConfig.monitor_cloud_providers,
-      // Para retrocompatibilidad con el frontend
-      log_level: config.log_level,
+      // Usar el valor directamente de la base de datos
+      log_level: updatedConfig.log_level,
       updated_at: updatedConfig.updated_at
     };
   } catch (error) {
@@ -211,6 +213,7 @@ async function createSystemConfigTable(db) {
         monitor_disk_space BOOLEAN NOT NULL DEFAULT FALSE,
         disk_space_warning_threshold INTEGER NOT NULL DEFAULT 85,
         notification_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        log_level VARCHAR(20) DEFAULT 'info',
         created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
       )
