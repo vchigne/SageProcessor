@@ -594,14 +594,31 @@ class JanitorDaemon:
         logger.info(f"Credenciales S3: {list(credentials.keys()) if credentials else 'No hay credenciales'}")
         logger.info(f"Configuración S3: {list(config.keys()) if config else 'No hay configuración'}")
         
+        # Obtener solo los parámetros necesarios para S3 (evitar parámetros extras como aws_account_id)
+        endpoint_url = credentials.get('endpoint')
+        access_key = credentials.get('access_key')
+        secret_key = credentials.get('secret_key')
+        region = credentials.get('region', 'us-east-1')  # Valor predeterminado como en el JavaScript
+        
+        # Logs específicos para S3
+        logger.info(f"Usando endpoint S3: {endpoint_url or 'Default S3'}")
+        logger.info(f"Usando región S3: {region}")
+        
         # Crear cliente S3 - Ajustado para coincidir con la implementación JS
-        s3_client = boto3.client(
-            's3',
-            endpoint_url=credentials.get('endpoint'),
-            aws_access_key_id=credentials.get('access_key'),
-            aws_secret_access_key=credentials.get('secret_key'),
-            region_name=credentials.get('region', 'us-east-1')  # Valor predeterminado como en el JavaScript
-        )
+        s3_params = {
+            'aws_access_key_id': access_key,
+            'aws_secret_access_key': secret_key,
+            'region_name': region
+        }
+        
+        # Solo añadir endpoint_url si existe
+        if endpoint_url:
+            s3_params['endpoint_url'] = endpoint_url
+            
+        logger.info(f"Parámetros para cliente S3: {list(s3_params.keys())}")
+        
+        # Crear cliente S3 con parámetros depurados
+        s3_client = boto3.client('s3', **s3_params)
         
         # Bucket puede estar en credenciales o en configuración
         bucket = credentials.get('bucket') or config.get('bucket')
