@@ -32,6 +32,10 @@ args = "Next.js Development Server with Turbopack"
 task = "workflow.run"
 args = "Janitor Daemon"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Janitor Manual Run"
+
 [[workflows.workflow]]
 name = "SAGE Daemon 2"
 author = "agent"
@@ -92,6 +96,20 @@ mode = "sequential"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "npm run dev"
+
+[[workflows.workflow]]
+name = "Janitor Manual Run"
+author = "agent"
+
+[workflows.workflow.metadata]
+agentRequireRestartOnSave = false
+
+[[workflows.workflow.tasks]]
+task = "packager.installForAll"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python janitor_daemon.py"
 
 [deployment]
 run = ["sh", "-c", "npm run dev"]

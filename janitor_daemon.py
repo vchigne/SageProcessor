@@ -559,13 +559,19 @@ class JanitorDaemon:
         if not endpoint:
             raise ValueError("No se configuró correctamente el endpoint para MinIO")
             
-        # Agregar el protocolo según si secure es false en config
+        # Agregar el protocolo según si secure es false en credenciales o config
         if not endpoint.startswith('http://') and not endpoint.startswith('https://'):
             secure = True
-            if 'secure' in config and config['secure'] is False:
+            # Primero verificar en credenciales, luego en config
+            if 'secure' in credentials and credentials['secure'] is False:
+                secure = False
+            elif 'secure' in config and config['secure'] is False:
                 secure = False
             protocol = 'https://' if secure else 'http://'
             endpoint = protocol + endpoint
+        else:
+            # Si ya tiene protocolo, determinar si es secure
+            secure = endpoint.startswith('https://')
             
         # Logs específicos para MinIO
         logger.info(f"Usando endpoint MinIO: {endpoint} (secure: {secure})")
