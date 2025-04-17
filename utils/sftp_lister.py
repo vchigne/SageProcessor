@@ -68,42 +68,23 @@ def list_sftp_directory(host, port, username, password=None, key_path=None, dire
             
         # Manejar el directorio home del usuario
         if directory == '~':
-            try:
-                # Primero intentar ejecutar comando 'pwd' para obtener el directorio actual
-                import io
-                import time
-                
-                # El método exec_command es el más confiable para obtener el directorio home
-                # Creamos un nuevo canal para ejecutar el comando pwd
+            # Para los hosts Dreamhost, ya sabemos que el directorio home está en este formato:
+            if 'dreamhost.com' in host.lower():
+                directory = f'/home/{username}'
+                logger.info(f"Usando directorio home para Dreamhost: {directory}")
+            else:
                 try:
-                    # Para obtener directorio home intentamos varios métodos
-                    logger.info("Intentando obtener directorio home con exec_command")
-                    client = transport.open_session()
-                    client.exec_command("pwd")
-                    stdout = client.makefile('r')
-                    stderr = client.makefile_stderr('r')
-                    exit_status = client.recv_exit_status()
-                    home_dir = stdout.readline().strip()
-                    logger.info(f"Directorio home obtenido con exec_command: {home_dir}")
-                    
-                    if home_dir:
-                        directory = home_dir
-                    else:
-                        # Si falla, intentamos con el directorio de trabajo actual
-                        directory = sftp.normalize('.')
-                        logger.info(f"Directorio home resuelto con normalize: {directory}")
-                except Exception as pwd_err:
-                    logger.warning(f"Error al ejecutar pwd: {str(pwd_err)}")
+                    # Intentar obtener el directorio actual (esto suele ser el home en la mayoría de servidores SFTP)
                     try:
-                        # Último recurso: intentar con el directorio de trabajo actual
+                        # Este método es más seguro y no se bloquea
                         directory = sftp.normalize('.')
-                        logger.info(f"Directorio home resuelto con normalize: {directory}")
+                        logger.info(f"Directorio home resuelto como: {directory}")
                     except Exception as norm_err:
                         logger.warning(f"Error al normalizar ruta: {str(norm_err)}")
-                        directory = '/'  # Si todo falla, volver a la raíz
-            except Exception as e:
-                logger.warning(f"No se pudo resolver el directorio home: {str(e)}")
-                directory = '/'  # Si hay un error, volver a la raíz
+                        directory = '/'  # Si hay un error, volver a la raíz
+                except Exception as e:
+                    logger.warning(f"No se pudo resolver el directorio home: {str(e)}")
+                    directory = '/'  # Si hay un error, volver a la raíz
         
         # Normalizar la ruta para que siempre comience con /
         if not directory.startswith('/'):
