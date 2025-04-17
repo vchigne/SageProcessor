@@ -342,8 +342,33 @@ class JanitorDaemon:
         # Debug para ver qué tiene el proveedor
         logger.info(f"Estructura del proveedor primario: {proveedor_primario.keys()}")
         
-        # Construir la ruta URI para la nube primaria
-        ruta_nube_primaria = f"cloud://{proveedor_primario['nombre']}/{carpeta_nube}"
+        # CORRECCIÓN CRÍTICA: Extraer el nombre real del bucket de las credenciales en lugar de usar el nombre descriptivo
+        # Esto corrige el problema de rutas cloud:// mal formadas
+        bucket_real = None
+        try:
+            if 'credenciales' in proveedor_primario and isinstance(proveedor_primario['credenciales'], dict):
+                if proveedor_primario['tipo'].lower() in ['s3', 'minio']:
+                    bucket_real = proveedor_primario['credenciales'].get('bucket')
+                elif proveedor_primario['tipo'].lower() == 'azure':
+                    bucket_real = proveedor_primario['credenciales'].get('container_name')
+                elif proveedor_primario['tipo'].lower() == 'gcp':
+                    bucket_real = proveedor_primario['credenciales'].get('bucket_name')
+                elif proveedor_primario['tipo'].lower() == 'sftp':
+                    bucket_real = proveedor_primario['credenciales'].get('directory', 'storage')
+            
+            # Si no se pudo determinar el bucket, usar un identificador único
+            if not bucket_real:
+                logger.warning(f"No se pudo determinar el nombre real del bucket para el proveedor {proveedor_primario['nombre']}. Usando ID como fallback.")
+                bucket_real = f"storage-{proveedor_primario['id']}"
+                
+            logger.info(f"Nombre del bucket real para URI cloud:// : {bucket_real}")
+        except Exception as e:
+            logger.error(f"Error obteniendo el bucket real: {e}")
+            bucket_real = f"storage-{proveedor_primario['id']}"
+            
+        # Construir la ruta URI para la nube primaria usando el bucket real
+        ruta_nube_primaria = f"cloud://{bucket_real}/{carpeta_nube}"
+        logger.info(f"URI cloud construido correctamente: {ruta_nube_primaria}")
         
         # Lista de rutas alternativas
         rutas_alternativas = []
@@ -375,8 +400,33 @@ class JanitorDaemon:
                             except:
                                 logger.warning(f"No se pudo parsear las credenciales del proveedor alternativo {proveedor_alt['nombre']}")
                                 
-                        # Construir la ruta URI para la nube alternativa
-                        ruta_alt = f"cloud://{proveedor_alt['nombre']}/{carpeta_nube}"
+                        # CORRECCIÓN CRÍTICA: Extraer el nombre real del bucket para nubes alternativas
+                        # Al igual que con la nube primaria, debemos usar el bucket real, no el nombre descriptivo
+                        bucket_alt_real = None
+                        try:
+                            if 'credenciales' in proveedor_alt and isinstance(proveedor_alt['credenciales'], dict):
+                                if proveedor_alt['tipo'].lower() in ['s3', 'minio']:
+                                    bucket_alt_real = proveedor_alt['credenciales'].get('bucket')
+                                elif proveedor_alt['tipo'].lower() == 'azure':
+                                    bucket_alt_real = proveedor_alt['credenciales'].get('container_name')
+                                elif proveedor_alt['tipo'].lower() == 'gcp':
+                                    bucket_alt_real = proveedor_alt['credenciales'].get('bucket_name')
+                                elif proveedor_alt['tipo'].lower() == 'sftp':
+                                    bucket_alt_real = proveedor_alt['credenciales'].get('directory', 'storage')
+                                    
+                            # Si no se pudo determinar el bucket, usar un identificador único
+                            if not bucket_alt_real:
+                                logger.warning(f"No se pudo determinar el nombre real del bucket para el proveedor alternativo {proveedor_alt['nombre']}. Usando ID como fallback.")
+                                bucket_alt_real = f"storage-{proveedor_alt['id']}"
+                                
+                            logger.info(f"Nombre del bucket real alternativo para URI cloud:// : {bucket_alt_real}")
+                        except Exception as e:
+                            logger.error(f"Error obteniendo el bucket alternativo real: {e}")
+                            bucket_alt_real = f"storage-{proveedor_alt['id']}"
+                            
+                        # Construir la ruta URI para la nube alternativa usando el bucket real
+                        ruta_alt = f"cloud://{bucket_alt_real}/{carpeta_nube}"
+                        logger.info(f"URI cloud alternativo construido correctamente: {ruta_alt}")
                         rutas_alternativas.append(ruta_alt)
                         
                         # Migrar a la nube alternativa
