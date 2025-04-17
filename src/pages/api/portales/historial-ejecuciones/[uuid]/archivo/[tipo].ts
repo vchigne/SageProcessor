@@ -372,69 +372,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           });
         }
         
-        // Si es un archivo de log, lo formateamos como HTML (igual que en /api/executions/{uuid}/log)
+        // Forzar la descarga para todos los archivos
+        res.setHeader('Content-Disposition', `attachment; filename="${String(tipo) === 'log' ? 'output.log' : String(tipo) === 'yaml' ? 'configuracion.yaml' : 'datos.txt'}"`);
+        
+        // Configurar el tipo MIME según el tipo de archivo
         if (String(tipo) === 'log') {
-          try {
-            // Leer el contenido del log
-            const logContent = fs.readFileSync(tempFilePath, 'utf-8');
-            
-            // Convertir el contenido del log a HTML formateado
-            const formattedContent = `
-              <!DOCTYPE html>
-              <html>
-                <head>
-                  <title>Log de Ejecución</title>
-                  <style>
-                    body { font-family: monospace; padding: 20px; line-height: 1.5; }
-                    .success { color: green; }
-                    .error { color: red; }
-                    .warning { color: orange; }
-                    .info { color: blue; }
-                  </style>
-                </head>
-                <body>
-                  <pre>${logContent
-                    .replace(/SUCCESS/g, '<span class="success">SUCCESS</span>')
-                    .replace(/ERROR/g, '<span class="error">ERROR</span>')
-                    .replace(/WARNING/g, '<span class="warning">WARNING</span>')
-                    .replace(/MESSAGE/g, '<span class="info">MESSAGE</span>')
-                  }</pre>
-                </body>
-              </html>
-            `;
-            
-            // Enviar una página HTML con el contenido formateado
-            res.send(formattedContent);
-            
-            // Limpiar archivos temporales después de enviar
-            try {
-              fs.unlinkSync(tempFilePath);
-              fs.rmdirSync(tempDir, { recursive: true });
-            } catch (cleanupError) {
-              console.error('Error limpiando archivos temporales:', cleanupError);
-            }
-          } catch (readError) {
-            console.error('Error al leer y formatear archivo de log:', readError);
-            return res.status(500).json({
-              message: 'Error al leer y formatear archivo de log',
-              error: readError.message,
-              tipo: 'error_formato_log'
-            });
-          }
+          res.setHeader('Content-Type', 'text/plain');
+        } else if (String(tipo) === 'yaml') {
+          res.setHeader('Content-Type', 'text/yaml');
         } else {
-          // Para otros tipos de archivos, usamos streaming normal
-          const fileStream = fs.createReadStream(tempFilePath);
-          fileStream.on('end', () => {
-            // Limpiar archivos temporales después de enviarlos
-            try {
-              fs.unlinkSync(tempFilePath);
-              fs.rmdirSync(tempDir, { recursive: true });
-            } catch (cleanupError) {
-              console.error('Error limpiando archivos temporales:', cleanupError);
-            }
-          });
-          
-          fileStream.pipe(res);
+          res.setHeader('Content-Type', 'text/plain');
+        }
+        
+        // Usar streaming para todos los tipos de archivos
+        const fileStream = fs.createReadStream(tempFilePath);
+        fileStream.on('end', () => {
+          // Limpiar archivos temporales después de enviarlos
+          try {
+            fs.unlinkSync(tempFilePath);
+            fs.rmdirSync(tempDir, { recursive: true });
+          } catch (cleanupError) {
+            console.error('Error limpiando archivos temporales:', cleanupError);
+          }
+        });
+        
+        fileStream.pipe(res);
         }
       } catch (cloudError) {
         console.error('Error accediendo a archivo en la nube:', cloudError);
@@ -463,52 +425,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         });
       }
       
-      // Para archivos de log, formateamos como HTML igual que en caso de nube
+      // Forzar la descarga para todos los archivos
+      res.setHeader('Content-Disposition', `attachment; filename="${String(tipo) === 'log' ? 'output.log' : String(tipo) === 'yaml' ? 'configuracion.yaml' : 'datos.txt'}"`);
+      
+      // Configurar el tipo MIME según el tipo de archivo
       if (String(tipo) === 'log') {
-        try {
-          // Leer el contenido del log
-          const logContent = fs.readFileSync(filePath, 'utf-8');
-          
-          // Convertir el contenido del log a HTML formateado
-          const formattedContent = `
-            <!DOCTYPE html>
-            <html>
-              <head>
-                <title>Log de Ejecución</title>
-                <style>
-                  body { font-family: monospace; padding: 20px; line-height: 1.5; }
-                  .success { color: green; }
-                  .error { color: red; }
-                  .warning { color: orange; }
-                  .info { color: blue; }
-                </style>
-              </head>
-              <body>
-                <pre>${logContent
-                  .replace(/SUCCESS/g, '<span class="success">SUCCESS</span>')
-                  .replace(/ERROR/g, '<span class="error">ERROR</span>')
-                  .replace(/WARNING/g, '<span class="warning">WARNING</span>')
-                  .replace(/MESSAGE/g, '<span class="info">MESSAGE</span>')
-                }</pre>
-              </body>
-            </html>
-          `;
-          
-          // Enviar una página HTML con el contenido formateado
-          res.send(formattedContent);
-        } catch (readError) {
-          console.error('Error al leer y formatear archivo de log local:', readError);
-          return res.status(500).json({
-            message: 'Error al leer y formatear archivo de log',
-            error: readError.message,
-            tipo: 'error_formato_log'
-          });
-        }
+        res.setHeader('Content-Type', 'text/plain');
+      } else if (String(tipo) === 'yaml') {
+        res.setHeader('Content-Type', 'text/yaml');
       } else {
-        // Para otros tipos de archivos, usamos streaming normal
-        const fileStream = fs.createReadStream(filePath);
-        fileStream.pipe(res);
+        res.setHeader('Content-Type', 'text/plain');
       }
+      
+      // Usar streaming para todos los tipos de archivos
+      const fileStream = fs.createReadStream(filePath);
+      fileStream.pipe(res);
     }
   } catch (error) {
     console.error('Error al obtener archivo de ejecución:', error);
