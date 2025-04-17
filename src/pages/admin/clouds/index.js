@@ -163,6 +163,65 @@ function CloudProviders() {
       setLoading(false);
     }
   };
+  
+  // Probar todas las conexiones de nube
+  const testAllClouds = async () => {
+    try {
+      // Mostrar toast de inicio
+      toast.info("Iniciando pruebas de conexión para todos los proveedores de nube...");
+      
+      // Crear un array de promesas para probar cada proveedor
+      const testPromises = providers.map(async (provider) => {
+        try {
+          const response = await fetch(`/api/clouds/${provider.id}/test`, {
+            method: 'POST'
+          });
+          
+          const result = await response.json();
+          return {
+            id: provider.id,
+            nombre: provider.nombre,
+            tipo: provider.tipo,
+            success: result.success,
+            message: result.message || (result.success ? 'Conexión exitosa' : 'Error de conexión')
+          };
+        } catch (error) {
+          return {
+            id: provider.id,
+            nombre: provider.nombre,
+            tipo: provider.tipo,
+            success: false,
+            message: `Error: ${error.message}`
+          };
+        }
+      });
+      
+      // Esperar a que todas las pruebas terminen
+      const results = await Promise.all(testPromises);
+      
+      // Contar éxitos y fallos
+      const successCount = results.filter(r => r.success).length;
+      const failureCount = results.filter(r => !r.success).length;
+      
+      // Mostrar resultados generales
+      if (failureCount === 0) {
+        toast.success(`¡Todas las conexiones (${successCount}) funcionan correctamente!`, { autoClose: 5000 });
+      } else {
+        toast.warning(`Pruebas completadas: ${successCount} exitosas, ${failureCount} con errores.`, { autoClose: 5000 });
+        
+        // Mostrar errores específicos
+        results.filter(r => !r.success).forEach(result => {
+          toast.error(`${result.nombre} (${result.tipo}): ${result.message}`, { autoClose: 8000 });
+        });
+      }
+      
+      // Actualizar la lista para reflejar los nuevos estados
+      fetchProviders();
+    } catch (error) {
+      console.error('Error al probar todas las nubes:', error);
+      toast.error(`Error al probar las conexiones: ${error.message}`);
+    }
+  };
 
   // Función para validar el formulario
   const validateForm = () => {
@@ -546,6 +605,13 @@ function CloudProviders() {
               color="cyan"
             >
               Migraciones
+            </Button>
+            <Button 
+              icon={CheckCircleIcon} 
+              onClick={testAllClouds}
+              color="amber"
+            >
+              Test Clouds
             </Button>
             <Button 
               icon={PlusCircleIcon} 
