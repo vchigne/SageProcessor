@@ -1,182 +1,169 @@
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/router';
 import Head from 'next/head';
+import { Title, Text, Card, Button, Badge } from '@tremor/react';
 import { toast } from 'react-toastify';
 import { 
-  EnvelopeIcon, 
-  CheckCircleIcon, 
-  WrenchScrewdriverIcon, 
-  CloudIcon,
-  ServerIcon
+  TrashIcon, 
+  PlusCircleIcon, 
+  EnvelopeIcon,
+  CheckCircleIcon
 } from '@heroicons/react/24/outline';
-import { 
-  Title, 
-  Text, 
-  Subtitle, 
-  Button, 
-  Card 
-} from '@tremor/react';
 
-const initialConfig = {
-  admin_emails: [],
-  check_interval_hours: 12,
-  monitor_cloud_providers: true,
-  monitor_disk_space: true,
-  disk_space_warning_threshold: 80,  // Porcentaje
-  notification_enabled: true
-};
-
+// Componente para una fila de email de administrador
 function AdminEmailRow({ email, index, onDelete }) {
   return (
-    <div className="flex items-center space-x-2 mb-2">
-      <div className="flex-1 p-2 border border-gray-200 rounded-md flex items-center">
-        <EnvelopeIcon className="h-4 w-4 text-gray-500 mr-2" />
-        <span className="text-sm">{email}</span>
+    <div className="flex items-center space-x-2 py-2">
+      <div className="flex-grow bg-gray-50 px-3 py-2 rounded-md flex items-center">
+        <EnvelopeIcon className="h-5 w-5 text-gray-500 mr-2" />
+        <span>{email}</span>
       </div>
-      <button
-        type="button"
+      <Button
+        icon={TrashIcon}
+        variant="light"
+        color="red"
+        tooltip="Eliminar"
         onClick={() => onDelete(index)}
-        className="text-red-500 hover:text-red-700"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
+      />
     </div>
   );
 }
 
 export default function SystemConfig() {
-  const router = useRouter();
-  const [config, setConfig] = useState(initialConfig);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [config, setConfig] = useState({
+    admin_emails: [],
+    janitor_notifications_enabled: true,
+    disk_space_monitoring_enabled: false,
+    log_level: 'info',
+  });
   const [newEmail, setNewEmail] = useState('');
   
-  // Cargar configuración actual
+  // Cargar configuración al inicio
   useEffect(() => {
     fetchConfig();
   }, []);
   
+  // Obtener configuración actual
   const fetchConfig = async () => {
     try {
       setLoading(true);
       const response = await fetch('/api/admin/system-config');
-      if (!response.ok) {
-        throw new Error('Error al cargar la configuración del sistema');
-      }
+      if (!response.ok) throw new Error('Error al cargar la configuración');
       
       const data = await response.json();
+      console.log('Configuración cargada:', data);
       
-      // Si hay datos, actualizar estado. Si no, dejar el initialConfig
-      if (data && Object.keys(data).length > 0) {
-        setConfig(data);
+      // Asegurarnos de que admin_emails sea un array
+      if (!Array.isArray(data.admin_emails)) {
+        data.admin_emails = [];
       }
+      
+      setConfig(data);
     } catch (error) {
       console.error('Error:', error);
-      toast.error('Error al cargar la configuración del sistema: ' + error.message);
+      toast.error('Error al cargar la configuración: ' + error.message);
     } finally {
       setLoading(false);
     }
   };
   
+  // Guardar configuración
   const saveConfig = async () => {
     try {
       setSaving(true);
-      
       const response = await fetch('/api/admin/system-config', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(config),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config)
       });
       
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Error al guardar la configuración');
+        const error = await response.json();
+        throw new Error(error.message || 'Error al guardar la configuración');
       }
       
-      toast.success('Configuración guardada correctamente');
+      toast.success('Configuración guardada con éxito');
     } catch (error) {
-      console.error('Error:', error);
+      console.error('Error al guardar:', error);
       toast.error('Error al guardar la configuración: ' + error.message);
     } finally {
       setSaving(false);
     }
   };
   
-  const handleInputChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    
-    setConfig(prevState => ({
-      ...prevState,
-      [name]: type === 'checkbox' ? checked : 
-              type === 'number' ? Number(value) : 
-              value
-    }));
-  };
-  
-  const handleAddEmail = () => {
-    if (!newEmail) return;
-    
-    // Validar formato de email
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(newEmail)) {
-      toast.error('Por favor, introduce una dirección de correo electrónico válida');
-      return;
-    }
-    
-    // Verificar si ya existe
-    if (config.admin_emails.includes(newEmail)) {
-      toast.warning('Esta dirección de correo ya está en la lista');
-      return;
-    }
-    
-    // Añadir nuevo email
-    setConfig(prevState => ({
-      ...prevState,
-      admin_emails: [...prevState.admin_emails, newEmail]
-    }));
-    
-    // Limpiar campo
-    setNewEmail('');
-  };
-  
-  const handleDeleteEmail = (index) => {
-    setConfig(prevState => ({
-      ...prevState,
-      admin_emails: prevState.admin_emails.filter((_, i) => i !== index)
-    }));
-  };
-  
-  const handleTestNotification = async () => {
+  // Enviar notificación de prueba
+  const sendTestNotification = async () => {
     try {
       if (config.admin_emails.length === 0) {
-        toast.warning('No hay direcciones de correo configuradas para enviar la prueba');
+        toast.warn('Debe agregar al menos un email de administrador para enviar la notificación de prueba');
         return;
       }
       
-      toast.info('Enviando correo de prueba...');
-      
+      setTesting(true);
       const response = await fetch('/api/admin/system-config/test-notification', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ emails: config.admin_emails }),
+        headers: { 'Content-Type': 'application/json' },
       });
       
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Error al enviar notificación de prueba');
+        const error = await response.json();
+        throw new Error(error.message || 'Error al enviar notificación de prueba');
       }
       
-      toast.success('Notificación de prueba enviada correctamente');
+      const result = await response.json();
+      toast.success(`Notificación de prueba enviada a ${result.sentTo.length} destinatarios`);
     } catch (error) {
       console.error('Error:', error);
-      toast.error('Error al enviar notificación de prueba: ' + error.message);
+      toast.error('Error al enviar notificación: ' + error.message);
+    } finally {
+      setTesting(false);
     }
+  };
+  
+  // Agregar nuevo email
+  const addEmail = () => {
+    if (!newEmail.trim()) {
+      toast.warn('Ingrese un email válido');
+      return;
+    }
+    
+    // Validación básica del formato de email
+    if (!/\S+@\S+\.\S+/.test(newEmail)) {
+      toast.warn('Ingrese un email con formato válido');
+      return;
+    }
+    
+    // Verificar que no exista ya
+    if (config.admin_emails.includes(newEmail)) {
+      toast.warn('Este email ya está en la lista');
+      return;
+    }
+    
+    setConfig(prev => ({
+      ...prev,
+      admin_emails: [...prev.admin_emails, newEmail]
+    }));
+    
+    setNewEmail('');
+  };
+  
+  // Eliminar email
+  const deleteEmail = (index) => {
+    setConfig(prev => ({
+      ...prev,
+      admin_emails: prev.admin_emails.filter((_, i) => i !== index)
+    }));
+  };
+  
+  // Manejar cambio en campos
+  const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setConfig(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }));
   };
   
   return (
@@ -184,13 +171,10 @@ export default function SystemConfig() {
       <Head>
         <title>SAGE - Gestión Administrativa</title>
       </Head>
-      
-      <div className="p-6">
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <Title>Gestión Administrativa</Title>
-            <Text>Configuración y monitoreo del sistema SAGE</Text>
-          </div>
+      <div className="space-y-6 p-6">
+        <div>
+          <Title>Gestión Administrativa</Title>
+          <Text>Configuración de monitoreo y notificaciones del sistema</Text>
         </div>
         
         {loading ? (
@@ -198,182 +182,127 @@ export default function SystemConfig() {
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500"></div>
           </div>
         ) : (
-          <div className="space-y-6">
-            <Card className="p-6">
-              <Subtitle className="mb-4 flex items-center">
-                <EnvelopeIcon className="h-5 w-5 mr-2" /> 
-                Notificaciones del Sistema
-              </Subtitle>
-              
-              <div className="space-y-4">
-                <div className="flex items-center mb-4">
-                  <input
-                    type="checkbox"
-                    id="notification_enabled"
-                    name="notification_enabled"
-                    checked={config.notification_enabled}
-                    onChange={handleInputChange}
-                    className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4 mr-2"
-                  />
-                  <label htmlFor="notification_enabled" className="text-sm font-medium text-gray-700">
-                    Habilitar notificaciones por correo electrónico
-                  </label>
-                </div>
+          <>
+            <Card className="space-y-6">
+              <div>
+                <h3 className="text-lg font-medium text-gray-900 mb-3">Notificaciones de Administración</h3>
+                <p className="text-sm text-gray-500 mb-4">
+                  Configura los correos electrónicos que recibirán alertas y notificaciones administrativas del sistema
+                </p>
                 
                 <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Correos electrónicos de administradores
-                  </label>
-                  <div className="mb-3">
-                    {config.admin_emails.length === 0 ? (
-                      <p className="text-sm text-gray-500 italic">No hay direcciones de correo configuradas</p>
-                    ) : (
-                      config.admin_emails.map((email, index) => (
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">Emails de Administradores</h4>
+                  
+                  {config.admin_emails.length > 0 ? (
+                    <div className="mb-4 space-y-1">
+                      {config.admin_emails.map((email, index) => (
                         <AdminEmailRow 
                           key={index} 
                           email={email} 
                           index={index} 
-                          onDelete={handleDeleteEmail} 
+                          onDelete={deleteEmail} 
                         />
-                      ))
-                    )}
-                  </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-gray-500 italic mb-4 py-2">
+                      No hay emails configurados. Agrega al menos uno para recibir notificaciones.
+                    </div>
+                  )}
+                  
                   <div className="flex space-x-2">
                     <input
                       type="email"
                       value={newEmail}
                       onChange={(e) => setNewEmail(e.target.value)}
-                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                      placeholder="nombre@ejemplo.com"
+                      placeholder="Ingrese email de administrador"
+                      className="block flex-grow rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
                     />
                     <Button
-                      size="xs"
+                      icon={PlusCircleIcon}
+                      onClick={addEmail}
                       color="indigo"
-                      onClick={handleAddEmail}
                     >
-                      Añadir
+                      Agregar
                     </Button>
                   </div>
                 </div>
                 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Intervalo de verificación (horas)
-                  </label>
-                  <input
-                    type="number"
-                    name="check_interval_hours"
-                    value={config.check_interval_hours}
-                    onChange={handleInputChange}
-                    min="1"
-                    max="48"
-                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                  />
-                </div>
-                
-                <div className="flex justify-end">
-                  <Button
-                    size="xs"
-                    color="amber"
-                    onClick={handleTestNotification}
-                    disabled={config.admin_emails.length === 0}
-                  >
-                    Enviar notificación de prueba
-                  </Button>
-                </div>
-              </div>
-            </Card>
-            
-            <Card className="p-6">
-              <Subtitle className="mb-4 flex items-center">
-                <CloudIcon className="h-5 w-5 mr-2" /> 
-                Monitoreo de Proveedores de Nube
-              </Subtitle>
-              
-              <div className="space-y-4">
-                <div className="flex items-center mb-4">
-                  <input
-                    type="checkbox"
-                    id="monitor_cloud_providers"
-                    name="monitor_cloud_providers"
-                    checked={config.monitor_cloud_providers}
-                    onChange={handleInputChange}
-                    className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4 mr-2"
-                  />
-                  <label htmlFor="monitor_cloud_providers" className="text-sm font-medium text-gray-700">
-                    Monitorear conectividad de proveedores de nube
-                  </label>
-                </div>
-                
-                <div className="p-4 bg-blue-50 rounded-md text-sm text-blue-800">
-                  <p>El sistema realizará comprobaciones periódicas de conectividad con todos los proveedores de nube configurados y enviará notificaciones si detecta problemas.</p>
-                </div>
-              </div>
-            </Card>
-            
-            <Card className="p-6">
-              <Subtitle className="mb-4 flex items-center">
-                <ServerIcon className="h-5 w-5 mr-2" /> 
-                Monitoreo de Recursos del Sistema
-              </Subtitle>
-              
-              <div className="space-y-4">
-                <div className="flex items-center mb-4">
-                  <input
-                    type="checkbox"
-                    id="monitor_disk_space"
-                    name="monitor_disk_space"
-                    checked={config.monitor_disk_space}
-                    onChange={handleInputChange}
-                    className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4 mr-2"
-                  />
-                  <label htmlFor="monitor_disk_space" className="text-sm font-medium text-gray-700">
-                    Monitorear espacio en disco
-                  </label>
-                </div>
-                
-                {config.monitor_disk_space && (
-                  <div className="ml-6">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Umbral de advertencia (%)
-                    </label>
-                    <input
-                      type="number"
-                      name="disk_space_warning_threshold"
-                      value={config.disk_space_warning_threshold}
-                      onChange={handleInputChange}
-                      min="50"
-                      max="95"
-                      className="block w-40 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                    />
-                    <p className="mt-1 text-sm text-gray-500">
-                      Se enviará una notificación cuando el uso de disco supere este porcentaje.
-                    </p>
+                <div className="mb-4">
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">Configuración de Notificaciones</h4>
+                  
+                  <div className="space-y-3">
+                    <div className="flex items-center">
+                      <input
+                        id="janitor_notifications_enabled"
+                        name="janitor_notifications_enabled"
+                        type="checkbox"
+                        checked={config.janitor_notifications_enabled}
+                        onChange={handleChange}
+                        className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <label htmlFor="janitor_notifications_enabled" className="ml-2 block text-sm text-gray-700">
+                        Notificaciones de errores del Janitor Daemon
+                      </label>
+                    </div>
+                    
+                    <div className="flex items-center">
+                      <input
+                        id="disk_space_monitoring_enabled"
+                        name="disk_space_monitoring_enabled"
+                        type="checkbox"
+                        checked={config.disk_space_monitoring_enabled}
+                        onChange={handleChange}
+                        className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <label htmlFor="disk_space_monitoring_enabled" className="ml-2 block text-sm text-gray-700">
+                        Monitoreo de espacio en disco
+                      </label>
+                      <Badge color="purple" size="xs" className="ml-2">
+                        Próximamente
+                      </Badge>
+                    </div>
                   </div>
-                )}
+                </div>
                 
-                <div className="p-4 bg-amber-50 rounded-md text-sm text-amber-800">
-                  <p>El monitoreo de recursos del sistema ayuda a prevenir problemas relacionados con el rendimiento. Estas verificaciones se ejecutan junto con el resto de tareas de mantenimiento del sistema.</p>
+                <div className="mb-4">
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">Nivel de Log</h4>
+                  <select
+                    name="log_level"
+                    value={config.log_level}
+                    onChange={handleChange}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                  >
+                    <option value="debug">Debug (Detallado)</option>
+                    <option value="info">Info (Normal)</option>
+                    <option value="warning">Warning (Solo alertas)</option>
+                    <option value="error">Error (Solo errores)</option>
+                  </select>
                 </div>
               </div>
+              
+              <div className="flex justify-end space-x-3 border-t pt-4">
+                <Button
+                  color="cyan"
+                  onClick={sendTestNotification}
+                  disabled={testing || config.admin_emails.length === 0}
+                  loading={testing}
+                  icon={EnvelopeIcon}
+                >
+                  {testing ? 'Enviando...' : 'Enviar Notificación de Prueba'}
+                </Button>
+                <Button
+                  color="indigo"
+                  onClick={saveConfig}
+                  disabled={saving}
+                  loading={saving}
+                  icon={CheckCircleIcon}
+                >
+                  {saving ? 'Guardando...' : 'Guardar Configuración'}
+                </Button>
+              </div>
             </Card>
-            
-            <div className="flex justify-end space-x-3">
-              <Button
-                color="gray"
-                onClick={() => router.back()}
-              >
-                Cancelar
-              </Button>
-              <Button
-                color="indigo"
-                onClick={saveConfig}
-                loading={saving}
-              >
-                Guardar Configuración
-              </Button>
-            </div>
-          </div>
+          </>
         )}
       </div>
     </>

@@ -120,6 +120,7 @@ function CloudProviders() {
   const [currentProvider, setCurrentProvider] = useState(initialProviderState);
   const [isEditing, setIsEditing] = useState(false);
   const [testingId, setTestingId] = useState(null);
+  const [testingAll, setTestingAll] = useState(false);
   
   // Estados para el explorador de archivos
   const [showExplorer, setShowExplorer] = useState(false);
@@ -167,6 +168,9 @@ function CloudProviders() {
   // Probar todas las conexiones de nube
   const testAllClouds = async () => {
     try {
+      // Establecer estado de prueba
+      setTestingAll(true);
+      
       // Mostrar toast de inicio
       toast.info("Iniciando pruebas de conexión para todos los proveedores de nube...");
       
@@ -220,6 +224,8 @@ function CloudProviders() {
     } catch (error) {
       console.error('Error al probar todas las nubes:', error);
       toast.error(`Error al probar las conexiones: ${error.message}`);
+    } finally {
+      setTestingAll(false);
     }
   };
 
@@ -610,8 +616,10 @@ function CloudProviders() {
               icon={CheckCircleIcon} 
               onClick={testAllClouds}
               color="amber"
+              disabled={testingAll}
+              loading={testingAll}
             >
-              Test Clouds
+              {testingAll ? 'Probando conexiones...' : 'Test Clouds'}
             </Button>
             <Button 
               icon={PlusCircleIcon} 
