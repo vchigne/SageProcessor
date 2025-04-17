@@ -1,0 +1,3 @@
+Archivo de prueba de MinIO creado el 2025-04-17T02:28:52.103414
+Este archivo debe ser visible en la raíz del bucket
+Prueba para ver si los archivos en la raíz son visibles en la interfaz
