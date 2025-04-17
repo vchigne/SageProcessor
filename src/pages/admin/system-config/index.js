@@ -34,7 +34,7 @@ export default function SystemConfig() {
   const [testing, setTesting] = useState(false);
   const [config, setConfig] = useState({
     admin_emails: [],
-    janitor_notifications_enabled: true,
+    notification_enabled: true,
     disk_space_monitoring_enabled: false,
     log_level: 'info',
     notify_events: ['cloud_connection_error', 'disk_space_warning'],
@@ -256,14 +256,14 @@ export default function SystemConfig() {
                   <div className="space-y-3">
                     <div className="flex items-center">
                       <input
-                        id="janitor_notifications_enabled"
-                        name="janitor_notifications_enabled"
+                        id="notification_enabled"
+                        name="notification_enabled"
                         type="checkbox"
-                        checked={config.janitor_notifications_enabled}
+                        checked={config.notification_enabled}
                         onChange={handleChange}
                         className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                       />
-                      <label htmlFor="janitor_notifications_enabled" className="ml-2 block text-sm text-gray-700">
+                      <label htmlFor="notification_enabled" className="ml-2 block text-sm text-gray-700">
                         Notificaciones de errores del Janitor Daemon
                       </label>
                     </div>
@@ -285,7 +285,7 @@ export default function SystemConfig() {
                       </Badge>
                     </div>
                     
-                    {config.janitor_notifications_enabled && (
+                    {config.notification_enabled && (
                       <div className="mt-3 pt-3 border-t border-gray-200">
                         <h5 className="text-sm font-medium text-gray-700 mb-2">Eventos a notificar</h5>
                         <div className="space-y-2 pl-2">
