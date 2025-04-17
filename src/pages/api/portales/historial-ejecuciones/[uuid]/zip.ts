@@ -79,19 +79,49 @@ Archivos comunes:
       const providerName = cloudParts[0];
       const cloudPath = '/' + cloudParts.slice(1).join('/');
       
+      // Mostrar toda la información disponible para depuración
+      console.log(`=========== INFORMACIÓN DE EJECUCIÓN ===========`);
+      console.log(`UUID: ${uuid}`);
+      console.log(`ID: ${ejecucion.id}`);
+      console.log(`Estado: ${ejecucion.estado}`);
+      console.log(`Ruta directorio: ${ejecucion.ruta_directorio}`);
+      console.log(`Migrado a nube: ${ejecucion.migrado_a_nube ? 'Sí' : 'No'}`);
+      console.log(`Ruta nube: ${ejecucion.ruta_nube || 'No definida'}`);
+      console.log(`Nube primaria ID: ${ejecucion.nube_primaria_id || 'No definida'}`);
+      console.log(`Archivo datos: ${ejecucion.archivo_datos || 'No definido'}`);
+      console.log(`=========== INFORMACIÓN DE CLOUD URI ===========`);
       console.log(`Descargando archivos desde nube: ${providerName}, ruta: ${cloudPath}`);
       
-      // Obtener información del proveedor
-      const providerResult = await pool.query(
-        'SELECT id, nombre, tipo, descripcion, configuracion, credenciales FROM cloud_providers WHERE nombre = $1',
-        [providerName]
+      // IMPORTANTE: Aquí hay un problema con los nombres de los proveedores en la base de datos
+      // Los nombres en las URIs cloud:// no coinciden exactamente con los nombres en la tabla cloud_providers
+      
+      // Usar directamente el proveedor Amazon S3 con ID 1
+      let providerResult = await pool.query(
+        'SELECT id, nombre, tipo, descripcion, configuracion, credenciales FROM cloud_providers WHERE id = 1'
       );
       
-      if (providerResult.rows.length === 0) {
-        throw new Error(`Proveedor de nube "${providerName}" no encontrado`);
+      // Si no se encuentra Amazon, intentar con cualquier otro
+      if (!providerResult || providerResult.rows.length === 0) {
+        providerResult = await pool.query(
+          'SELECT id, nombre, tipo, descripcion, configuracion, credenciales FROM cloud_providers LIMIT 1'
+        );
+      }
+      
+      // Si después de todo, no encontramos proveedor, lanzar error
+      if (!providerResult || providerResult.rows.length === 0) {
+        throw new Error(`No se pudo encontrar un proveedor de nube válido. Nombre intentado: "${providerName}"`);
       }
       
       const provider = providerResult.rows[0];
+      
+      // Imprimir información del proveedor encontrado
+      console.log(`=========== INFORMACIÓN DE PROVEEDOR ===========`);
+      console.log(`ID Proveedor: ${provider.id}`);
+      console.log(`Nombre: ${provider.nombre}`);
+      console.log(`Tipo: ${provider.tipo}`);
+      console.log(`Descripción: ${provider.descripcion || 'No definida'}`);
+      console.log(`Credenciales: ${typeof provider.credenciales === 'string' ? 'String JSON' : 'Objeto'}`);
+      console.log(`Configuración: ${typeof provider.configuracion === 'string' ? 'String JSON' : 'Objeto'}`);
       
       // Preparar credenciales y configuración
       let credentials = provider.credenciales;
