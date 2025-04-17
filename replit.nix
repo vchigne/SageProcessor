@@ -1,5 +1,6 @@
 {pkgs}: {
   deps = [
+    pkgs.awscli
     pkgs.cacert
     pkgs.dnsutils
     pkgs.dig
