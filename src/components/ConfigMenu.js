@@ -7,7 +7,8 @@ import {
   CodeBracketIcon,
   DocumentTextIcon,
   CloudIcon,
-  CloudArrowUpIcon
+  CloudArrowUpIcon,
+  ShieldCheckIcon
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 
@@ -58,6 +59,12 @@ export default function ConfigMenu() {
       href: '/admin/ejecuciones-config', 
       icon: CloudArrowUpIcon, 
       description: 'Configurar almacenamiento en la nube para ejecuciones' 
+    },
+    { 
+      name: 'Gestión Administrativa', 
+      href: '/admin/system-config', 
+      icon: ShieldCheckIcon, 
+      description: 'Administrar notificaciones y monitoreo del sistema' 
     }
   ];
 
