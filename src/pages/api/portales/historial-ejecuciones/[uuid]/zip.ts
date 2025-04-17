@@ -162,19 +162,80 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }));
         } else {
           console.error('Formato de respuesta no reconocido:', cloudFiles);
-          return res.status(500).json({
-            message: 'Formato de respuesta no reconocido',
-            error: 'El proveedor de nube devolvió datos en un formato no compatible.',
-            tipo: 'error_formato_respuesta',
-            proveedor: providerName,
-            ruta: cloudPath,
-            respuestaOriginal: JSON.stringify(cloudFiles).substring(0, 1000)
-          });
+          console.log('Intentaremos usar la lista manual de archivos esenciales');
+          // No retornamos error, seguimos con la lista manual
         }
         
-        // No nos detenemos si no hay archivos, intentaremos descargar los esenciales
+        // No nos detenemos si no hay archivos, intentaremos descargar archivos esenciales
         if (filesArray.length === 0) {
-          console.log('AVISO: No se encontraron archivos en la lista de la nube, intentaremos buscar archivos esenciales');
+          console.log('AVISO: No se encontraron archivos en la lista de la nube, intentaremos obtener archivos manualmente');
+        }
+        
+        // Si la lista está vacía o es muy corta, intentamos construir una
+        // lista más completa basada en patrones comunes de archivos
+        if (filesArray.length < 3) {
+          console.log(`Usando estrategia alternativa para listar archivos (${filesArray.length} encontrados originalmente)`);
+          
+          // Guardamos los archivos que ya teníamos
+          const archivosExistentes = [...filesArray];
+          
+          try {
+            // Lista básica de archivos que deberían estar siempre presentes
+            filesArray = [
+              { name: 'output.log', path: `${cloudPath}/output.log` },
+              { name: 'input.yaml', path: `${cloudPath}/input.yaml` }
+            ];
+            
+            // Si conocemos el nombre del YAML, agregarlo 
+            if (ejecucion.nombre_yaml) {
+              filesArray.push({ 
+                name: ejecucion.nombre_yaml, 
+                path: `${cloudPath}/${ejecucion.nombre_yaml}` 
+              });
+            }
+            
+            // Si tenemos el nombre del archivo de datos, agregarlo a la lista
+            if (ejecucion.archivo_datos) {
+              filesArray.push({ 
+                name: ejecucion.archivo_datos, 
+                path: `${cloudPath}/${ejecucion.archivo_datos}` 
+              });
+            } else {
+              // Tipos comunes de archivos de datos
+              const dataFiles = ['data.csv', 'data.txt', 'data.xlsx', 'data', 'dataset.csv'];
+              dataFiles.forEach(dataFile => {
+                filesArray.push({ name: dataFile, path: `${cloudPath}/${dataFile}` });
+              });
+            }
+            
+            // Otros archivos comunes que pueden estar presentes
+            const otrosArchivos = [
+              'config.json', 'metadata.json', 'resultados.csv', 'resultados.json',
+              'reporte.txt', 'reporte.html', 'reporte.csv', 'reporte.json',
+              'errors.log', 'warning.log', 'estadisticas.csv'
+            ];
+            
+            otrosArchivos.forEach(archivo => {
+              filesArray.push({ name: archivo, path: `${cloudPath}/${archivo}` });
+            });
+            
+            // Agregamos los archivos que ya teníamos para no perderlos
+            archivosExistentes.forEach(archivo => {
+              if (!filesArray.some(a => a.name === archivo.name)) {
+                filesArray.push(archivo);
+              }
+            });
+            
+            console.log(`Lista ampliada generada con ${filesArray.length} archivos potenciales`);
+            
+          } catch (err) {
+            console.error('Error creando lista manual de archivos:', err);
+            // Si falló la estrategia alternativa, volvemos a la lista original
+            if (archivosExistentes.length > 0) {
+              filesArray = archivosExistentes;
+              console.log('Volviendo a la lista original de archivos');
+            }
+          }
         }
         
         // Crear directorio temporal para descargar archivos
@@ -456,14 +517,35 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   } catch (error) {
     console.error('Error al crear archivo ZIP:', error);
+    
+    // Verificar si hay información valiosa en el objeto de ejecución
+    let infoEjecucion = {};
+    try {
+      if (typeof ejecucion !== 'undefined') {
+        infoEjecucion = {
+          id: ejecucion.id,
+          fecha: ejecucion.fecha_ejecucion,
+          nombreYaml: ejecucion.nombre_yaml,
+          rutaDirectorio: ejecucion.ruta_directorio,
+          migradoANube: ejecucion.migrado_a_nube,
+          rutaNube: ejecucion.ruta_nube,
+          archivosDatos: ejecucion.archivo_datos
+        };
+      }
+    } catch (infoError) {
+      console.error('Error extrayendo información adicional:', infoError);
+    }
+    
     return res.status(500).json({ 
       message: 'Error al crear archivo ZIP', 
       error: 'No se pudo crear el archivo ZIP con los archivos de la ejecución.',
-      details: 'Ocurrió un error al procesar su solicitud. Por favor intente nuevamente más tarde.',
+      details: 'Ocurrió un error al intentar comprimir y descargar los archivos. El error puede ser debido a problemas de conectividad con el almacenamiento cloud, falta de archivos en la ubicación esperada, o errores en la configuración del proveedor de nube.',
+      sugerencia: 'Intente descargar los archivos individualmente usando los botones respectivos o contacte al administrador del sistema.',
       tipo: 'error_crear_zip',
       errorTecnico: error.message,
       errorStack: error.stack,
-      uuid: uuid
+      uuid: uuid,
+      infoEjecucion: infoEjecucion
     });
   }
 }
