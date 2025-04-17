@@ -406,18 +406,19 @@ export default function HistorialPage() {
   // Función para descargar ZIP con manejo de errores
   const descargarZIP = async (uuid: string) => {
     try {
-      // Primero verificamos si el archivo existe
-      const response = await fetch(`/api/portales/historial-ejecuciones/${uuid}/zip`, {
-        method: 'HEAD'
-      });
+      // Forzar descarga directa del archivo sin intentar abrirlo en el navegador
+      // Eliminamos la verificación con HEAD y simplemente descargamos el archivo directamente
+      const url = `/api/portales/historial-ejecuciones/${uuid}/zip`;
       
-      if (!response.ok) {
-        const fullResponse = await fetch(`/api/portales/historial-ejecuciones/${uuid}/zip`);
-        return await manejarErrorArchivo(fullResponse);
-      }
+      // Crear un elemento <a> invisible para forzar la descarga
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `ejecucion_${uuid}.zip`;
+      link.target = '_blank';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
       
-      // Si llegamos aquí, el archivo existe y podemos descargarlo
-      window.open(`/api/portales/historial-ejecuciones/${uuid}/zip`, '_blank');
       return true;
     } catch (error) {
       console.error('Error al verificar ZIP:', error);
@@ -453,18 +454,19 @@ export default function HistorialPage() {
   // Función para abrir archivo en nueva pestaña con manejo de errores
   const abrirArchivo = async (uuid: string, tipo: 'log' | 'yaml' | 'datos') => {
     try {
-      // Primero verificamos si el archivo existe
-      const response = await fetch(`/api/portales/historial-ejecuciones/${uuid}/archivo/${tipo}`, {
-        method: 'HEAD'
-      });
+      // Forzar descarga directa del archivo sin intentar abrirlo en el navegador
+      // Eliminamos la verificación con HEAD y simplemente descargamos el archivo directamente
+      const url = `/api/portales/historial-ejecuciones/${uuid}/archivo/${tipo}`;
       
-      if (!response.ok) {
-        const fullResponse = await fetch(`/api/portales/historial-ejecuciones/${uuid}/archivo/${tipo}`);
-        return await manejarErrorArchivo(fullResponse);
-      }
+      // Crear un elemento <a> invisible para forzar la descarga
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = tipo === 'log' ? 'output.log' : tipo === 'yaml' ? 'configuracion.yaml' : 'datos.txt';
+      link.target = '_blank';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
       
-      // Si llegamos aquí, el archivo existe y podemos abrirlo
-      window.open(`/api/portales/historial-ejecuciones/${uuid}/archivo/${tipo}`, '_blank');
       return true;
     } catch (error) {
       console.error(`Error al verificar archivo ${tipo}:`, error);

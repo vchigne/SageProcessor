@@ -129,10 +129,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(400).json({ message: 'Tipo de archivo no válido' });
     }
 
-    // Configuramos la respuesta para servir el archivo
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
-    
+    // No aplicamos el Content-Type y Disposition aquí, 
+    // pues lo configuraremos específicamente para cada caso más adelante
     if (estaEnNube) {
       // Definir las variables a nivel del bloque try/catch para tenerlas disponibles en caso de error
       let cloudPath = '';
@@ -397,7 +395,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         });
         
         fileStream.pipe(res);
-        }
       } catch (cloudError) {
         console.error('Error accediendo a archivo en la nube:', cloudError);
         // Ya no necesitamos definir el nombre nuevamente, usamos el que ya declaramos antes
