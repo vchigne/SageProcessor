@@ -64,7 +64,17 @@ def list_sftp_directory(host, port, username, password=None, key_path=None, dire
         
         # Asegurarse de que el directorio sea una cadena válida
         if directory is None or directory == '':
-            directory = '/'
+            directory = '~'  # Usar directorio home en lugar de raíz
+            
+        # Manejar el directorio home del usuario
+        if directory == '~':
+            try:
+                # Intentar obtener el directorio home real
+                directory = sftp.normalize('.')
+                logger.info(f"Directorio home resuelto como: {directory}")
+            except Exception as e:
+                logger.warning(f"No se pudo resolver el directorio home: {str(e)}")
+                directory = '/'  # Si hay un error, volver a la raíz
         
         # Normalizar la ruta para que siempre comience con /
         if not directory.startswith('/'):
@@ -199,7 +209,7 @@ if __name__ == "__main__":
     username = sys.argv[3]
     password = sys.argv[4] if len(sys.argv) > 4 else None
     key_path = sys.argv[5] if len(sys.argv) > 5 else None
-    directory = sys.argv[6] if len(sys.argv) > 6 else "/"
+    directory = sys.argv[6] if len(sys.argv) > 6 else "~"  # Usar home por defecto
     
     result = list_sftp_directory(host, port, username, password, key_path, directory)
     

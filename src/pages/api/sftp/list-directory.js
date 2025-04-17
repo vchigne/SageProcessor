@@ -30,7 +30,8 @@ export default async function handler(req, res) {
     }
     
     const targetPort = port || 22;
-    const targetPath = sftpPath || '/';
+    // Usar home "~" en lugar de raíz "/" como directorio por defecto
+    const targetPath = sftpPath || '~';
     
     console.log(`[SFTP] Conectando a ${host}:${targetPort} como ${username}, path: ${targetPath}`);
     
