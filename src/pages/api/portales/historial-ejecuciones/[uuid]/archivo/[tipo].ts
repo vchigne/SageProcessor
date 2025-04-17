@@ -95,8 +95,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     switch (String(tipo)) {
       case 'log':
         filePath = path.join(execDir, 'output.log');
-        contentType = 'text/html';
-        fileName = `ejecucion_${uuid}_log.html`;
+        contentType = 'text/plain'; // Cambiado de text/html a text/plain para archivos log
+        fileName = `ejecucion_${uuid}_log.txt`; // Cambiado de .html a .txt para mejor compatibilidad
         break;
       case 'yaml':
         filePath = path.join(execDir, ejecucion.nombre_yaml || 'input.yaml');
