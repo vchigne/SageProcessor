@@ -623,24 +623,52 @@ async function downloadFile(client, remotePath, localPath) {
   // Imprimir para depuración lo que estamos recibiendo
   console.log(`[S3] RUTA REMOTA ORIGINAL RECIBIDA: ${JSON.stringify(remotePath)}`);
   
-  if (typeof remotePath === 'string') {
-    // AQUÍ PARECE QUE TENEMOS UN PROBLEMA CON LA RUTA
-    // Verificar si la ruta contiene "testExecutions2" y reemplazar con el valor correcto
-    if (remotePath === 'testExecutions2') {
-      console.error('[S3] ⚠️ HARDCODED PATH DETECTED! Replacing with real path');
-      // Usar el valor correcto que debería ser la ruta completa
-      normalizedRemotePath = remotePath;
+  try {
+    if (typeof remotePath === 'string') {
+      // Detectar la posible ruta hardcodeada y mostrar información clara y precisa
+      if (remotePath === 'testExecutions2') {
+        console.error('[S3] ⚠️ ERROR CRÍTICO: Se está intentando acceder a un recurso hardcodeado como "testExecutions2"');
+        
+        // Obtener información detallada para el mensaje de error
+        const bucket = credentials.bucket || '[BUCKET NO ESPECIFICADO]';
+        const region = credentials.region || client.region || '[REGIÓN NO ESPECIFICADA]';
+        
+        // IMPORTANTE: Mantener el mismo valor para poder detectar el origen de este error
+        normalizedRemotePath = remotePath;
+        
+        // Mostrar información extendida y precisa sobre qué recurso se está intentando acceder
+        console.error(`
+        ============================================
+        ERROR DE ACCESO A CLOUD STORAGE (S3)
+        ============================================
+        Se está intentando acceder a:
+          Recurso solicitado: "${remotePath}" (valor literalmente hardcodeado)
+          Bucket configurado: "${bucket}"
+          Región configurada: "${region}"
+          
+        Esta ruta parece estar hardcodeada en alguna parte del código.
+        Se esperaba una ruta completa al archivo, no un valor fijo.
+        
+        La ruta correcta debería ser algo como:
+          "executions/123e4567-e89b-12d3-a456-426614174000/archivo.log"
+        ============================================
+        `)
+      } else {
+        // Procesamiento normal para rutas bien formadas
+        normalizedRemotePath = removeLeadingSlash(remotePath);
+        console.log(`[S3] Ruta normalizada correctamente: ${normalizedRemotePath}`);
+      }
+    } else if (remotePath && remotePath.prefix) {
+      // Manejar el caso donde remotePath es un objeto con propiedad prefix
+      normalizedRemotePath = removeLeadingSlash(remotePath.prefix);
+      console.log(`[S3] Formato de ruta remota corregido desde objeto: ${normalizedRemotePath}`);
     } else {
-      normalizedRemotePath = removeLeadingSlash(remotePath);
-      console.log(`[S3] Ruta normalizada correctamente: ${normalizedRemotePath}`);
+      console.error(`[S3] Formato de ruta remota inválido:`, remotePath);
+      normalizedRemotePath = '';
     }
-  } else if (remotePath && remotePath.prefix) {
-    // Manejar el caso donde remotePath es un objeto con propiedad prefix
-    normalizedRemotePath = removeLeadingSlash(remotePath.prefix);
-    console.log(`[S3] Formato de ruta remota corregido desde objeto: ${normalizedRemotePath}`);
-  } else {
-    console.error(`[S3] Formato de ruta remota inválido:`, remotePath);
-    normalizedRemotePath = '';
+  } catch (error) {
+    console.error(`[S3] Error procesando ruta remota:`, error);
+    normalizedRemotePath = remotePath && typeof remotePath === 'string' ? remotePath : '';
   }
   
   // Extraer el bucket y la clave del cliente o credenciales

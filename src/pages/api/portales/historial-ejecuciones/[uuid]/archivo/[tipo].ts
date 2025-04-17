@@ -275,23 +275,42 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         // 2. Extraer la ruta real después del primer slash (ignorando el nombre del proveedor)
         const rutaReal = primerSlash !== -1 ? uriSinProtocolo.substring(primerSlash + 1) : '';
         
+        // 3. Verificar si cloudPath ya está incluido en la configuración (podría estar en bucket)
+        const bucket = credentials.bucket || '';
+        
         console.log(`ANÁLISIS DE RUTA:
           - URI original: ${execDir}
           - Nombre descriptivo: ${uriSinProtocolo.substring(0, primerSlash)}
           - Ruta real: ${rutaReal}
-          - Bucket real según credenciales: ${credentials.bucket || 'No disponible'}
+          - Bucket real según credenciales: ${bucket}
           - Archivo solicitado: ${relativePath}
         `);
         
         // Combinar la ruta real con el nombre del archivo solicitado
         let remoteFilePath;
-        if (rutaReal.endsWith('/')) {
+        
+        // Construcción de ruta inteligente
+        if (rutaReal.includes(bucket)) {
+          // Si rutaReal ya contiene el bucket, extraer solo la parte después
+          const bucketPos = rutaReal.indexOf(bucket) + bucket.length;
+          const rutaSinBucket = rutaReal.substring(bucketPos).replace(/^\/+/, '');
+          
+          if (rutaSinBucket) {
+            remoteFilePath = `${rutaSinBucket}/${relativePath}`.replace(/\/+/g, '/');
+          } else {
+            remoteFilePath = relativePath;
+          }
+          
+          console.log(`Ruta real ya contiene bucket, extrayendo: ${remoteFilePath}`);
+        } else if (rutaReal.endsWith('/')) {
           remoteFilePath = `${rutaReal}${relativePath}`;
         } else if (rutaReal) {
           remoteFilePath = `${rutaReal}/${relativePath}`;
         } else {
           remoteFilePath = relativePath;
         }
+        
+        console.log(`RUTA REMOTA CONSTRUIDA: ${remoteFilePath}`);
         
         console.log(`RUTA REMOTA FINAL: ${remoteFilePath}`);
         

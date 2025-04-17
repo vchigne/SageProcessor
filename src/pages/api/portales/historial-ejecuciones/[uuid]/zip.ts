@@ -201,9 +201,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           const tempFilePath = path.join(tempDir, fileName);
           
           try {
-            const rutaCompleta = `${cloudPath}/${file.path}`.replace(/\/+/g, '/');
-            console.log(`Descargando archivo para ZIP desde proveedor ${tipo}: ${file.path}`);
-            console.log(`RUTA COMPLETA DEL ARCHIVO: ${rutaCompleta}`);
+            // Verificar si la ruta del archivo ya incluye el prefijo completo o necesita concatenarse
+            let rutaEfectiva;
+            if (file.path.includes(cloudPath)) {
+              // La ruta ya contiene el prefijo completo, solo asegurarse de que no haya barras dobles
+              rutaEfectiva = file.path.replace(/\/+/g, '/');
+            } else {
+              // Concatenar el cloudPath con la ruta del archivo y normalizar barras
+              rutaEfectiva = `${cloudPath}/${file.path}`.replace(/\/+/g, '/');
+            }
+            
+            console.log(`Descargando archivo para ZIP desde proveedor ${tipo}:`);
+            console.log(`- Archivo solicitado: ${file.name}`);
+            console.log(`- Ruta base en nube: ${cloudPath}`);
+            console.log(`- Ruta en archivo:   ${file.path}`);
+            console.log(`- RUTA EFECTIVA:     ${rutaEfectiva}`);
             
             // Normalizar las credenciales y la configuración
             let credentials = provider.credenciales;
@@ -233,19 +245,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               secret_key: credentials.secret_key ? '***' : undefined
             }, null, 2));
             
-            console.log(`Intentando acceder a: Bucket=${credentials.bucket}, Región=${credentials.region || config.region}, Archivo=${file.path}`);
+            console.log(`Intentando acceder a: Bucket=${credentials.bucket}, Región=${credentials.region || config.region}, Archivo=${rutaEfectiva}`);
             
             // Descargar el archivo de la nube usando el adaptador correcto según el tipo
             if (tipo === 's3') {
-              await s3Adapter.downloadFile(credentials, config, file.path, tempFilePath);
+              await s3Adapter.downloadFile(credentials, config, rutaEfectiva, tempFilePath);
             } else if (tipo === 'azure') {
-              await azureAdapter.downloadFile(credentials, config, file.path, tempFilePath);
+              await azureAdapter.downloadFile(credentials, config, rutaEfectiva, tempFilePath);
             } else if (tipo === 'gcp') {
-              await gcpAdapter.downloadFile(credentials, config, file.path, tempFilePath);
+              await gcpAdapter.downloadFile(credentials, config, rutaEfectiva, tempFilePath);
             } else if (tipo === 'sftp') {
-              await sftpAdapter.downloadFile(credentials, config, file.path, tempFilePath);
+              await sftpAdapter.downloadFile(credentials, config, rutaEfectiva, tempFilePath);
             } else if (tipo === 'minio') {
-              await minioAdapter.downloadFile(credentials, config, file.path, tempFilePath);
+              await minioAdapter.downloadFile(credentials, config, rutaEfectiva, tempFilePath);
             }
             
             if (fs.existsSync(tempFilePath)) {
