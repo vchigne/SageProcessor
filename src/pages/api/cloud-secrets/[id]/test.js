@@ -81,7 +81,7 @@ async function testCloudSecret(req, res, id) {
         // Actualizar fecha de última prueba
         await client.query(
           `UPDATE cloud_secrets 
-           SET actualizado_en = NOW()
+           SET modificado_en = NOW()
            WHERE id = $1`,
           [id]
         );
