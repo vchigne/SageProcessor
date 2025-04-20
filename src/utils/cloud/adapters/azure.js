@@ -222,6 +222,8 @@ export async function testConnection(credentials, config = {}) {
     
     const container = credentials.container_name;
     
+    let isSasUrl = false;
+    
     // Verificar si la connection string es una URL directa con SAS token
     if (credentials.connection_string && credentials.connection_string.startsWith('http')) {
       try {
@@ -239,6 +241,7 @@ export async function testConnection(credentials, config = {}) {
           sasToken = url.search.substring(1); // Quitar el ? inicial
           console.log('[Azure] SAS token extraído de URL directa (longitud):', sasToken.length);
           useSasToken = true;
+          isSasUrl = true;
         }
         
         // Configurar el BlobEndpoint
@@ -339,9 +342,55 @@ export async function testConnection(credentials, config = {}) {
       };
     } else {
       // Autenticación tradicional con Shared Key
+      // Si es una URL directa SAS pero no se pudo extraer el SAS token, intentar nuevamente
+      if (isSasUrl) {
+        console.log('[Azure] Detectada URL directa sin token SAS extraíble, intentando extraerlo nuevamente');
+        try {
+          const url = new URL(credentials.connection_string);
+          if (url.search && url.search.length > 1) {
+            sasToken = url.search;
+            useSasToken = true;
+            console.log('[Azure] SAS token extraído en segundo intento (longitud):', sasToken.length);
+            
+            // Usar token SAS directamente de la URL completa
+            const response = await fetch(credentials.connection_string, {
+              method: 'GET'
+            });
+            
+            if (!response.ok) {
+              throw new Error(`Error HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            // Procesamiento exitoso con URL SAS directa
+            const xmlResponse = await response.text();
+            console.log('[Azure SAS] Respuesta exitosa usando URL directa:', xmlResponse.substring(0, 150) + '...');
+            
+            return {
+              success: true,
+              message: 'Conexión a Azure Blob Storage exitosa (usando URL SAS directa)',
+              details: {
+                container: credentials.container_name,
+                account: accountName,
+                authMethod: 'SAS URL'
+              }
+            };
+          }
+        } catch (error) {
+          console.warn('[Azure] Error al intentar usar la URL directa:', error);
+          // Continuar con el flujo normal
+        }
+      }
+      
+      // Verificación estándar para Shared Key
       if (!accountName || !accountKey) {
-        console.error('[Azure] No se pudieron extraer credenciales. AccountName presente:', !!accountName, 'AccountKey presente:', !!accountKey);
-        throw new Error('No se pudieron extraer las credenciales necesarias. Asegúrese de que la connection string incluya AccountName= y AccountKey=, o proporcione account_name y account_key directamente. El formato correcto es: DefaultEndpointsProtocol=https;AccountName=nombredelacuenta;AccountKey=clavedelacuenta;EndpointSuffix=core.windows.net');
+        // Si es una URL directa, mostrar un mensaje más específico
+        if (credentials.connection_string && credentials.connection_string.startsWith('http')) {
+          console.error('[Azure] URL directa detectada pero no se pudo extraer el token SAS');
+          throw new Error('La URL proporcionada no contiene un token SAS válido o no tiene el formato correcto. Asegúrese de incluir el token SAS en la URL o proporcione una connection string válida.');
+        } else {
+          console.error('[Azure] No se pudieron extraer credenciales. AccountName presente:', !!accountName, 'AccountKey presente:', !!accountKey);
+          throw new Error('No se pudieron extraer las credenciales necesarias. Asegúrese de que la connection string incluya AccountName= y AccountKey=, o proporcione account_name y account_key directamente. El formato correcto es: DefaultEndpointsProtocol=https;AccountName=nombredelacuenta;AccountKey=clavedelacuenta;EndpointSuffix=core.windows.net');
+        }
       }
 
       // Construir la URL para listar el contenedor
