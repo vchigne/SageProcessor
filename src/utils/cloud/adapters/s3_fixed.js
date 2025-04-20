@@ -479,11 +479,13 @@ async function listContents(credentials, config = {}, path = '') {
     const text = await response.text();
     console.log(`[S3] Respuesta de buckets (${text.length} bytes)`);
     
-    // Extraer prefijos comunes (carpetas) y contenidos (archivos)
+    // Extraer prefijos comunes (carpetas), contenidos (archivos) y directorios implícitos
     const prefixMatches = text.match(/<CommonPrefix><Prefix>(.*?)<\/Prefix><\/CommonPrefix>/g) || [];
     const contentMatches = text.match(/<Contents>.*?<\/Contents>/gs) || [];
     
-    // Procesar carpetas
+    console.log('[S3] Número de CommonPrefix encontrados:', prefixMatches.length);
+    
+    // Primero, procesamos los prefijos explícitos (CommonPrefixes)
     const folders = prefixMatches.map(match => {
       const prefix = match.replace(/<CommonPrefix><Prefix>(.*?)<\/Prefix><\/CommonPrefix>/, '$1');
       const name = prefix.split('/').filter(p => p).pop() || '';
@@ -494,6 +496,58 @@ async function listContents(credentials, config = {}, path = '') {
         type: 'folder'
       };
     });
+    
+    // Si no hay prefijos explícitos (subdirectorios) en el resultado, 
+    // intentamos extraer subdirectorios implícitos de las claves de los archivos
+    if (folders.length === 0) {
+      // Extraer directorios del nivel siguiente a partir de las rutas de los archivos
+      const keyMatches = Array.from(text.matchAll(/<Key>(.*?)<\/Key>/g))
+        .map(match => match[1])
+        .filter(key => {
+          // Si estamos en un directorio, buscamos claves que estén en subdirectorios del directorio actual
+          if (path) {
+            return key.startsWith(path) && 
+                  key.slice(path.length).includes('/') && 
+                  key !== path;
+          }
+          // Si estamos en la raíz, buscamos cualquier clave con directorio
+          return key.includes('/');
+        });
+      
+      // Obtener la parte del directorio de cada clave
+      const dirs = new Set();
+      for (const key of keyMatches) {
+        if (path) {
+          // Si estamos en un directorio, extraer el siguiente nivel
+          // Ejemplo: si path es "docs/" y la clave es "docs/images/file.txt", extraer "docs/images/"
+          const relativePath = key.slice(path.length);
+          const nextDir = relativePath.split('/')[0];
+          if (nextDir) {
+            dirs.add(path + nextDir + '/');
+          }
+        } else {
+          // Si estamos en la raíz, extraer el primer nivel
+          // Ejemplo: si la clave es "docs/file.txt", extraer "docs/"
+          const parts = key.split('/');
+          if (parts.length > 1) {
+            dirs.add(parts[0] + '/');
+          }
+        }
+      }
+      
+      // Agregar los directorios implícitos encontrados
+      dirs.forEach(dir => {
+        // Extraer solo el nombre del directorio (última parte)
+        const dirName = dir.split('/').filter(p => p).pop() || '';
+        folders.push({
+          name: dirName,
+          path: dir,
+          type: 'folder'
+        });
+      });
+      
+      console.log('[S3] Directorios implícitos encontrados:', dirs.size);
+    }
     
     // Procesar archivos
     const files = contentMatches.map(match => {
@@ -513,8 +567,15 @@ async function listContents(credentials, config = {}, path = '') {
       };
     }).filter(file => {
       const filePath = file.path;
-      // Filtrar archivos que están en subcarpetas excepto los que están exactamente en la carpeta actual
-      return filePath !== prefix && !filePath.slice(prefix.length).includes('/');
+      
+      // Si estamos en la raíz, solo mostrar archivos que no están en carpetas
+      if (path === '') {
+        return !filePath.includes('/');
+      }
+      
+      // Si estamos en una carpeta, mostrar solo los archivos directos de esa carpeta
+      const relativePath = filePath.startsWith(path) ? filePath.slice(path.length) : filePath;
+      return !relativePath.includes('/') && filePath.startsWith(path);
     });
     
     // Construir y devolver resultado
@@ -1039,16 +1100,39 @@ async function createBucket(credentials, config = {}, bucketName) {
       headers['x-amz-bucket-region'] = region;
     }
     
+    // Crear el XML de configuración para especificar la región
+    let body = '';
+    
+    // Para regiones distintas a us-east-1, necesitamos especificar explícitamente la región
+    if (region !== 'us-east-1') {
+      body = `<?xml version="1.0" encoding="UTF-8"?>
+<CreateBucketConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+  <LocationConstraint>${region}</LocationConstraint>
+</CreateBucketConfiguration>`;
+    }
+    
     // Paso 1: Crear solicitud canónica
     const canonicalUri = `/${bucketName}`;
     const canonicalQueryString = '';
     
-    // Construir los headers canónicos
+    // Calcular el hash del payload (cuerpo de la solicitud)
+    let payloadHash = '';
+    if (body) {
+      payloadHash = await sha256(body);
+      // Actualizar el hash en los headers
+      headers['x-amz-content-sha256'] = payloadHash;
+      // Añadir headers para el cuerpo XML si existe
+      headers['content-type'] = 'application/xml';
+      headers['content-length'] = body.length.toString();
+    } else {
+      payloadHash = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'; // hash de cuerpo vacío
+      headers['x-amz-content-sha256'] = payloadHash;
+    }
+    
+    // Construir los headers canónicos después de añadir todos los headers
     const sortedHeaders = Object.keys(headers).sort();
     const canonicalHeaders = sortedHeaders.map(key => `${key}:${headers[key]}\n`).join('');
     const signedHeaders = sortedHeaders.join(';');
-    
-    const payloadHash = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'; // hash de cuerpo vacío
     
     const canonicalRequest = [
       'PUT',
@@ -1107,7 +1191,8 @@ async function createBucket(credentials, config = {}, bucketName) {
       headers: {
         ...headers,
         'Authorization': authorizationHeader
-      }
+      },
+      body: body || undefined
     });
     
     // Procesar la respuesta

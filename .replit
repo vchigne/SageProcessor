@@ -52,15 +52,6 @@ task = "shell.exec"
 args = "python run_sage_daemon2.py"
 
 [[workflows.workflow]]
-name = "Cleanup Temporales"
-author = 39710120
-mode = "sequential"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "python scripts/procesamiento/cleanup_executions.py"
-
-[[workflows.workflow]]
 name = "Janitor Daemon"
 author = "agent"
 
@@ -73,15 +64,6 @@ task = "packager.installForAll"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "cd /home/runner/$REPL_SLUG && python janitor_daemon.py"
-
-[[workflows.workflow]]
-name = "Run"
-author = 39710120
-mode = "sequential"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "npm run dev"
 
 [[workflows.workflow]]
 name = "Janitor Manual Run"
