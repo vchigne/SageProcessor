@@ -1070,6 +1070,15 @@ function CloudProviders() {
                         <Button
                           size="xs"
                           variant="secondary"
+                          color="purple"
+                          onClick={() => listBuckets(provider)}
+                          icon={FolderIcon}
+                        >
+                          Buckets
+                        </Button>
+                        <Button
+                          size="xs"
+                          variant="secondary"
                           color="cyan"
                           onClick={() => inspectProvider(provider)}
                           icon={MagnifyingGlassIcon}
@@ -1248,6 +1257,17 @@ function CloudProviders() {
                       <div className="flex-1 text-sm text-gray-700 truncate">
                         {explorerData.bucket}/{currentPath || '/'}
                       </div>
+                      
+                      {/* Botón para crear bucket si estamos en la vista de buckets */}
+                      {explorerData.isBucketList && (
+                        <button
+                          className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs rounded flex items-center"
+                          onClick={createNewBucket}
+                        >
+                          <PlusCircleIcon className="h-4 w-4 mr-1" />
+                          Crear Bucket
+                        </button>
+                      )}
                     </div>
                     
                     {/* Lista de carpetas */}
