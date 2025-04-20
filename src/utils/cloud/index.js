@@ -150,17 +150,28 @@ export async function createCloudClient(providerId) {
 }
 
 /**
- * Obtiene el adaptador para un tipo de proveedor específico
- * @param {string} type Tipo de proveedor (s3, azure, etc.)
+ * Obtiene el adaptador para un tipo de proveedor específico o un objeto proveedor
+ * @param {string|Object} typeOrProvider Tipo de proveedor (s3, azure, etc.) o un objeto proveedor
  * @param {Object} config Configuración combinada (credenciales + configuración)
  * @returns {Object} Adaptador para el tipo de proveedor
  */
-export async function getCloudAdapter(type, config = {}) {
+export async function getCloudAdapter(typeOrProvider, config = {}) {
   try {
+    let type;
+    
+    // Determinar si el parámetro es un tipo o un objeto proveedor
+    if (typeof typeOrProvider === 'string') {
+      type = typeOrProvider;
+    } else if (typeOrProvider && typeof typeOrProvider === 'object' && typeOrProvider.tipo) {
+      type = typeOrProvider.tipo;
+    } else {
+      throw new Error('Se debe proporcionar un tipo de proveedor válido o un objeto proveedor');
+    }
+    
     const adapter = await loadAdapter(type);
     return adapter;
   } catch (error) {
-    console.error(`Error al obtener adaptador para ${type}:`, error);
+    console.error(`Error al obtener adaptador:`, error);
     throw error;
   }
 }
