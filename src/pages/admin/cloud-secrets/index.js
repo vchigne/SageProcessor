@@ -206,14 +206,30 @@ export default function CloudSecrets() {
   };
 
   // Editar un secreto
-  const editSecret = (secret) => {
-    setCurrentSecret({
-      ...secret,
-      // Asegurarse de que los secretos sean un objeto
-      secretos: secret.secretos || {}
-    });
-    setIsEditing(true);
-    setShowForm(true);
+  const editSecret = async (secret) => {
+    try {
+      // Cargar los detalles completos del secreto desde la API
+      const response = await fetch(`/api/cloud-secrets/${secret.id}`);
+      if (!response.ok) throw new Error('Error al cargar detalles del secreto');
+      
+      const secretoCompleto = await response.json();
+      
+      // Asegurarse de que las credenciales sean un objeto
+      const secretos = typeof secretoCompleto.secretos === 'string'
+        ? JSON.parse(secretoCompleto.secretos)
+        : (secretoCompleto.secretos || {});
+      
+      setCurrentSecret({
+        ...secretoCompleto,
+        secretos: secretos
+      });
+      
+      setIsEditing(true);
+      setShowForm(true);
+    } catch (error) {
+      console.error('Error al obtener detalles del secreto:', error);
+      toast.error(`Error al editar: ${error.message}`);
+    }
   };
 
   // Eliminar un secreto
