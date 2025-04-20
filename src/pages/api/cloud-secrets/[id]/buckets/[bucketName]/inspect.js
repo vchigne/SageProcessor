@@ -1,5 +1,8 @@
 /**
  * API para inspeccionar contenido de un bucket específico de un secreto de nube
+ * 
+ * Esta API utiliza la misma implementación que la API de inspección en SAGE CLOUDS
+ * para garantizar consistencia en el comportamiento, especialmente para Azure.
  */
 import { pool } from '@/utils/db';
 import { getAdapter } from '@/utils/cloud';
@@ -71,32 +74,32 @@ export default async function handler(req, res) {
       });
     }
     
-    // Configurar opciones adicionales según el tipo de proveedor
+    let credentials = { ...secreto.credentials };
     let config = {};
+    
+    // Configurar credenciales y configuración según el tipo de proveedor
     if (secreto.tipo_proveedor === 'minio') {
       config = {
         endpoint: secreto.credentials.endpoint,
         port: secreto.credentials.port,
         secure: secreto.credentials.secure !== false
       };
-    }
-    
-    // Para S3, Azure, GCP: asegurarnos que el bucketName esté en las credenciales
-    const credentials = { ...secreto.credentials };
-    
-    // Configurar el bucket en las credenciales para inspección
-    if (secreto.tipo_proveedor === 's3' || secreto.tipo_proveedor === 'minio') {
+      credentials.bucket = bucketName;
+    } else if (secreto.tipo_proveedor === 's3') {
       credentials.bucket = bucketName;
     } else if (secreto.tipo_proveedor === 'azure') {
-      credentials.container = bucketName;
+      // Para Azure, usar container_name en lugar de container para mantener compatibilidad con el adaptador
+      credentials.container_name = bucketName;
     } else if (secreto.tipo_proveedor === 'gcp') {
       credentials.bucket = bucketName;
     }
     
-    // Listar contenido del bucket
+    console.log(`[API] Inspeccionando bucket ${bucketName} para secreto tipo ${secreto.tipo_proveedor}`);
+    
+    // Ejecutar la función de listado de contenido con las credenciales configuradas
     const contents = await adapter.listContents(credentials, config, path);
     
-    // Incluir información adicional
+    // Incluir información adicional en la respuesta
     return res.status(200).json({
       ...contents,
       details: {
@@ -108,9 +111,20 @@ export default async function handler(req, res) {
     });
   } catch (error) {
     console.error(`[API] Error al inspeccionar bucket ${bucketName} para secreto ID ${secretoId}:`, error);
-    return res.status(500).json({
-      success: false,
-      message: `Error al inspeccionar bucket: ${error.message}`
+    
+    // Incluir detalles del error y mantener el formato consistente con exploradores funcionales
+    return res.status(200).json({
+      error: true,
+      errorMessage: error.message,
+      path: path || '/',
+      files: [],
+      folders: [],
+      details: {
+        secreto_id: secretoId,
+        secreto_nombre: secreto ? secreto.nombre : 'Desconocido',
+        tipo_proveedor: secreto ? secreto.tipo_proveedor : 'Desconocido',
+        bucket_name: bucketName
+      }
     });
   }
 }
