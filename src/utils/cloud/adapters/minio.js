@@ -42,18 +42,18 @@ function getDateStamp() {
 }
 
 /**
- * Prueba la conexión a MinIO verificando si se puede acceder a un bucket
+ * Prueba la conexión a MinIO verificando si es posible la autenticación
  * 
- * @param {object} credentials - Credenciales MinIO (access_key, secret_key, bucket, etc.)
+ * @param {object} credentials - Credenciales MinIO (access_key, secret_key, etc.)
  * @param {object} config - Configuración para el bucket (endpoint, secure, etc.)
  * @returns {Promise<object>} - Resultado de la prueba con estado y mensaje
  */
 async function testConnection(credentials, config = {}) {
   // Validar credenciales mínimas requeridas
-  if (!credentials.access_key || !credentials.secret_key || !credentials.bucket) {
+  if (!credentials.access_key || !credentials.secret_key) {
     return {
       success: false,
-      message: 'Faltan credenciales requeridas (access_key, secret_key, bucket)'
+      message: 'Faltan credenciales requeridas (access_key, secret_key)'
     };
   }
   
@@ -89,8 +89,8 @@ async function testConnection(credentials, config = {}) {
     const port = config.port ? `:${config.port}` : '';
     const baseUrl = `${endpoint}${port}`;
     
-    // Construir URL del bucket 
-    const url = `${baseUrl}/${credentials.bucket}?max-keys=1`;
+    // Construir URL para listar buckets en lugar de acceder a uno específico
+    const url = `${baseUrl}`;
     
     // Fecha y timestamp para la firma
     const amzDate = getAmzDate();
@@ -104,8 +104,8 @@ async function testConnection(credentials, config = {}) {
     };
     
     // Paso 1: Crear solicitud canónica
-    const canonicalUri = `/${credentials.bucket}`;
-    const canonicalQueryString = 'max-keys=1';
+    const canonicalUri = "/";
+    const canonicalQueryString = '';
     
     // Construir los headers canónicos
     const sortedHeaders = Object.keys(headers).sort();
@@ -226,12 +226,17 @@ async function testConnection(credentials, config = {}) {
     }
     
     // En caso de éxito
+    // Intentar extraer información de buckets disponibles del XML si existe
+    const responseText = await response.text();
+    const bucketMatches = Array.from(responseText.matchAll(/<Name>(.*?)<\/Name>/g));
+    const buckets = bucketMatches.map(match => match[1]);
+    
     return {
       success: true,
-      message: `Conexión exitosa al bucket ${credentials.bucket}`,
+      message: `Conexión exitosa a MinIO (${endpoint})`,
       details: {
-        bucketName: credentials.bucket,
-        endpoint: endpoint
+        endpoint: endpoint,
+        buckets: buckets.length > 0 ? buckets : 'Buckets disponibles no detectados'
       }
     };
   } catch (error) {
