@@ -910,9 +910,13 @@ async function createBucket(credentials, config = {}, bucketName) {
   }
 }
 
-module.exports = {
+// Exportar como default para compatibilidad con el sistema de adaptadores
+const minioAdapter = {
   testConnection,
   listContents,
   listBuckets,
   createBucket
 };
+
+module.exports = minioAdapter;
+module.exports.default = minioAdapter;
