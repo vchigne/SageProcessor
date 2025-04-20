@@ -745,13 +745,6 @@ function CloudProviders() {
           </div>
           <div className="flex space-x-3">
             <Button 
-              icon={ArrowPathIcon} 
-              onClick={() => router.push('/admin/clouds/migrations')}
-              color="cyan"
-            >
-              Migraciones
-            </Button>
-            <Button 
               icon={KeyIcon} 
               onClick={() => router.push('/admin/cloud-secrets')}
               color="blue"
@@ -1067,15 +1060,7 @@ function CloudProviders() {
                         >
                           {testingId === provider.id ? 'Probando...' : 'Probar'}
                         </Button>
-                        <Button
-                          size="xs"
-                          variant="secondary"
-                          color="purple"
-                          onClick={() => listBuckets(provider)}
-                          icon={FolderIcon}
-                        >
-                          Buckets
-                        </Button>
+
                         <Button
                           size="xs"
                           variant="secondary"
