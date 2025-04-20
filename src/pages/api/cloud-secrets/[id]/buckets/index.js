@@ -29,9 +29,9 @@ export default async function handler(req, res) {
       const secret = secretResult.rows[0];
       
       // Parsear credenciales
-      const credentials = typeof secret.credenciales === 'string'
-        ? JSON.parse(secret.credenciales)
-        : secret.credenciales;
+      const credentials = typeof secret.secretos === 'string'
+        ? JSON.parse(secret.secretos)
+        : secret.secretos;
       
       // Determinar el tipo de proveedor
       if (!secret.tipo) {
@@ -82,7 +82,7 @@ export default async function handler(req, res) {
       
       // Obtener el secreto
       const secretResult = await pool.query(`
-        SELECT id, nombre, tipo, credenciales
+        SELECT id, nombre, tipo, secretos
         FROM cloud_secrets
         WHERE id = $1
       `, [secretId]);
@@ -94,9 +94,9 @@ export default async function handler(req, res) {
       const secret = secretResult.rows[0];
       
       // Parsear credenciales
-      const credentials = typeof secret.credenciales === 'string'
-        ? JSON.parse(secret.credenciales)
-        : secret.credenciales;
+      const credentials = typeof secret.secretos === 'string'
+        ? JSON.parse(secret.secretos)
+        : secret.secretos;
       
       // Determinar el tipo de proveedor
       if (!secret.tipo) {
