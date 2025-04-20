@@ -1,151 +1,149 @@
-import { Pool } from 'pg';
-import { pool } from '../../../../../lib/db';
-import { getCloudAdapter } from '../../../../../utils/cloud';
+/**
+ * API para gestionar buckets asociados a un cloud-secret específico
+ * 
+ * GET: Listar buckets disponibles
+ * POST: Crear un nuevo bucket
+ */
+import { pool } from '../../../../../utils/db';
+import { getAdapter } from '../../../../../utils/cloud';
 
 export default async function handler(req, res) {
-  const { method } = req;
   const { id } = req.query;
   
   if (!id || isNaN(parseInt(id))) {
-    return res.status(400).json({ error: 'ID de secreto inválido' });
+    return res.status(400).json({
+      success: false,
+      message: 'ID de secreto de nube inválido'
+    });
   }
   
-  const secretId = parseInt(id);
+  const secretoId = parseInt(id);
   
   try {
-    // Obtener buckets para este secreto
-    if (method === 'GET') {
-      // Obtener el secreto desde la base de datos
-      const secretResult = await pool.query(`
-        SELECT id, nombre, tipo, secretos
-        FROM cloud_secrets
-        WHERE id = $1
-      `, [secretId]);
+    // Obtener detalles del secreto
+    const client = await pool.connect();
+    let secreto = null;
+    
+    try {
+      const result = await client.query(
+        `SELECT id, nombre, descripcion, tipo as tipo_proveedor, secretos as credentials, activo, creado_en, modificado_en
+         FROM cloud_secrets
+         WHERE id = $1`,
+        [secretoId]
+      );
       
-      if (secretResult.rows.length === 0) {
-        return res.status(404).json({ error: 'Secreto no encontrado' });
-      }
-      
-      const secret = secretResult.rows[0];
-      
-      // Parsear credenciales
-      const credentials = typeof secret.secretos === 'string'
-        ? JSON.parse(secret.secretos)
-        : secret.secretos;
-      
-      // Determinar el tipo de proveedor
-      if (!secret.tipo) {
-        return res.status(400).json({ error: 'El secreto no tiene un tipo de proveedor definido' });
-      }
-      
-      // Cargar el adaptador para el tipo de proveedor
-      const adapter = await getCloudAdapter(secret.tipo);
-      
-      if (!adapter || !adapter.listBuckets) {
-        return res.status(400).json({
-          error: `El proveedor ${secret.tipo} no soporta la función de listar buckets`
+      if (result.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: 'Secreto de nube no encontrado'
         });
       }
       
-      // Configuración por defecto para este tipo de proveedor
-      const config = {};
+      secreto = result.rows[0];
       
-      // Si hay endpoint en credentials, moverlo a config
-      if (credentials.endpoint) {
-        config.endpoint = credentials.endpoint;
+      // Convertir credenciales de JSON string a objeto
+      if (typeof secreto.credentials === 'string') {
+        secreto.credentials = JSON.parse(secreto.credentials);
       }
-      
-      // Si hay port en credentials, moverlo a config
-      if (credentials.port) {
-        config.port = credentials.port;
-      }
-      
-      // Si hay secure en credentials, moverlo a config
-      if (credentials.secure !== undefined) {
-        config.secure = credentials.secure;
-      }
-      
-      // Ejecutar la función para listar buckets
-      const result = await adapter.listBuckets(credentials, config);
-      
-      // Devolver la lista de buckets
-      return res.status(200).json(result);
+    } finally {
+      client.release();
     }
     
-    // Crear un nuevo bucket
-    else if (method === 'POST') {
-      const { bucketName, options } = req.body;
-      
-      if (!bucketName) {
-        return res.status(400).json({ error: 'Se requiere el nombre del bucket' });
-      }
-      
-      // Obtener el secreto
-      const secretResult = await pool.query(`
-        SELECT id, nombre, tipo, secretos
-        FROM cloud_secrets
-        WHERE id = $1
-      `, [secretId]);
-      
-      if (secretResult.rows.length === 0) {
-        return res.status(404).json({ error: 'Secreto no encontrado' });
-      }
-      
-      const secret = secretResult.rows[0];
-      
-      // Parsear credenciales
-      const credentials = typeof secret.secretos === 'string'
-        ? JSON.parse(secret.secretos)
-        : secret.secretos;
-      
-      // Determinar el tipo de proveedor
-      if (!secret.tipo) {
-        return res.status(400).json({ error: 'El secreto no tiene un tipo de proveedor definido' });
-      }
-      
-      // Cargar el adaptador para el tipo de proveedor
-      const adapter = await getCloudAdapter(secret.tipo);
-      
-      if (!adapter || !adapter.createBucket) {
-        return res.status(400).json({
-          error: `El proveedor ${secret.tipo} no soporta la función de crear buckets`
+    // Determinar qué adaptador usar según el tipo de proveedor
+    const adapter = getAdapter(secreto.tipo_proveedor);
+    
+    if (!adapter) {
+      return res.status(400).json({
+        success: false,
+        message: `Tipo de proveedor no soportado: ${secreto.tipo_proveedor}`
+      });
+    }
+    
+    // Extraer credenciales del secreto
+    const credentials = secreto.credentials;
+    
+    // Configurar opciones adicionales según el tipo de proveedor
+    let config = {};
+    if (secreto.tipo_proveedor === 'minio') {
+      config = {
+        endpoint: credentials.endpoint,
+        port: credentials.port,
+        secure: credentials.secure !== false
+      };
+    }
+    
+    // Manejar diferentes métodos HTTP
+    if (req.method === 'GET') {
+      try {
+        console.log(`[API] Listando buckets para secreto ID ${secretoId} (${secreto.tipo_proveedor})`);
+        
+        // Obtener lista de buckets
+        const buckets = await adapter.listBuckets(credentials, config);
+        
+        return res.status(200).json({
+          success: true,
+          data: buckets,
+          details: {
+            secreto_id: secretoId,
+            secreto_nombre: secreto.nombre,
+            tipo_proveedor: secreto.tipo_proveedor
+          }
+        });
+      } catch (error) {
+        console.error(`[API] Error al listar buckets para secreto ID ${secretoId}:`, error);
+        return res.status(500).json({
+          success: false,
+          message: `Error al listar buckets: ${error.message}`
         });
       }
-      
-      // Configuración por defecto para este tipo de proveedor
-      const config = {};
-      
-      // Si hay endpoint en credentials, moverlo a config
-      if (credentials.endpoint) {
-        config.endpoint = credentials.endpoint;
+    } else if (req.method === 'POST') {
+      try {
+        const { bucketName } = req.body;
+        
+        if (!bucketName) {
+          return res.status(400).json({
+            success: false,
+            message: 'El nombre del bucket es requerido'
+          });
+        }
+        
+        console.log(`[API] Creando bucket "${bucketName}" para secreto ID ${secretoId} (${secreto.tipo_proveedor})`);
+        
+        // Crear el bucket
+        const result = await adapter.createBucket(credentials, config, bucketName);
+        
+        if (!result.success) {
+          return res.status(400).json(result);
+        }
+        
+        return res.status(201).json({
+          success: true,
+          message: `Bucket "${bucketName}" creado con éxito`,
+          details: {
+            bucketName,
+            secreto_id: secretoId,
+            secreto_nombre: secreto.nombre,
+            tipo_proveedor: secreto.tipo_proveedor
+          }
+        });
+      } catch (error) {
+        console.error(`[API] Error al crear bucket para secreto ID ${secretoId}:`, error);
+        return res.status(500).json({
+          success: false,
+          message: `Error al crear bucket: ${error.message}`
+        });
       }
-      
-      // Si hay port en credentials, moverlo a config
-      if (credentials.port) {
-        config.port = credentials.port;
-      }
-      
-      // Si hay secure en credentials, moverlo a config
-      if (credentials.secure !== undefined) {
-        config.secure = credentials.secure;
-      }
-      
-      // Ejecutar la función para crear el bucket
-      const result = await adapter.createBucket(credentials, config, bucketName, options || {});
-      
-      // Devolver el resultado
-      return res.status(201).json(result);
-    }
-    
-    // Método no permitido
-    else {
-      return res.status(405).json({ error: 'Método no permitido' });
+    } else {
+      return res.status(405).json({
+        success: false,
+        message: 'Método no permitido'
+      });
     }
   } catch (error) {
-    console.error(`Error al procesar solicitud de buckets para secreto ${secretId}:`, error);
+    console.error(`[API] Error en endpoint de buckets para secreto ID ${id}:`, error);
     return res.status(500).json({
-      error: 'Error interno del servidor',
-      details: error.message
+      success: false,
+      message: `Error inesperado: ${error.message}`
     });
   }
 }
