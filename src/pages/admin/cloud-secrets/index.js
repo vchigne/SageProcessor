@@ -303,7 +303,8 @@ export default function CloudSecrets() {
       }
       
       const data = await response.json();
-      setBuckets(data.buckets || []);
+      console.log('Buckets recibidos:', data);
+      setBuckets(data.data || []);
     } catch (error) {
       console.error('Error al obtener buckets:', error);
       toast.error(`Error al obtener buckets: ${error.message}`);
@@ -552,15 +553,16 @@ export default function CloudSecrets() {
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <div className="flex justify-end space-x-3">
                           {secret.tipo === 'minio' && (
-                            <Button 
-                              icon={CloudIcon}
-                              variant="light"
-                              color="blue"
-                              onClick={() => showBucketsManager(secret.id)}
-                              size="xs"
-                            >
-                              Buckets
-                            </Button>
+                            <Link href={`/admin/cloud-secrets/${secret.id}/buckets`}>
+                              <Button 
+                                icon={CloudIcon}
+                                variant="light"
+                                color="blue"
+                                size="xs"
+                              >
+                                Buckets
+                              </Button>
+                            </Link>
                           )}
                           <Button 
                             icon={CheckCircleIcon}
