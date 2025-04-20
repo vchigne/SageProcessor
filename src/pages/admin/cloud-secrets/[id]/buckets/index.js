@@ -215,9 +215,10 @@ export default function AdminCloudSecretBuckets() {
                             <Button 
                               size="xs" 
                               variant="secondary"
+                              color="blue"
                               onClick={() => router.push(`/admin/cloud-secrets/${id}/buckets/${encodeURIComponent(bucket.name)}`)}
                             >
-                              Ver contenido
+                              Examinar bucket
                             </Button>
                           </TableCell>
                         </TableRow>

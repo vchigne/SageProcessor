@@ -5,7 +5,7 @@ channel = "stable-24_05"
 packages = ["cacert", "glibcLocales", "libyaml"]
 
 [workflows]
-runButton = "Run"
+runButton = "Project"
 
 [[workflows.workflow]]
 name = "UI Dev Server"
@@ -113,7 +113,7 @@ task = "packager.installForAll"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd /home/runner/workspace && curl -s http://localhost:3000/api/cloud-secrets/1/buckets | jq"
+args = "cd /home/runner/workspace && curl -s http://localhost:3000/admin/cloud-secrets/1/buckets | grep -A 20 \"Examinar bucket\""
 
 [[workflows.workflow]]
 name = "Next.js Development Server with Turbopack"
