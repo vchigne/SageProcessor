@@ -327,6 +327,97 @@ function CloudProviders() {
   };
   
   // Inspeccionar contenido del proveedor
+  // Listar buckets de un proveedor
+  const listBuckets = async (provider) => {
+    setExplorerProvider(provider);
+    setExplorerLoading(true);
+    setShowExplorer(true);
+    setCurrentPath('');
+    
+    try {
+      const response = await fetch(`/api/clouds/${provider.id}/buckets`);
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || error.message || 'Error al listar buckets');
+      }
+      
+      const data = await response.json();
+      
+      // Mostrar los buckets en el explorador
+      setExplorerData({
+        path: '/',
+        bucket: 'Buckets',
+        folders: data.buckets?.map(bucket => ({
+          name: bucket.name || bucket,
+          path: bucket.name || bucket
+        })) || [],
+        files: [],
+        isBucketList: true // Indicador para mostrar el botón de crear bucket
+      });
+    } catch (error) {
+      console.error('Error al listar buckets:', error);
+      toast.error(`Error al listar buckets: ${error.message}`);
+      
+      setExplorerData({
+        error: true,
+        errorMessage: error.message,
+        path: '/',
+        bucket: 'Buckets',
+        folders: [],
+        files: [],
+        isBucketList: true
+      });
+    } finally {
+      setExplorerLoading(false);
+    }
+  };
+  
+  // Crear un nuevo bucket
+  const createNewBucket = async () => {
+    // Verificar que tenemos un proveedor activo
+    if (!explorerProvider) {
+      toast.error('No hay un proveedor seleccionado');
+      return;
+    }
+    
+    // Mostrar prompt para el nombre del bucket
+    const bucketName = prompt('Ingrese el nombre del nuevo bucket:');
+    
+    if (!bucketName) return; // Cancelado por el usuario
+    
+    // Validar el nombre del bucket (solo letras minúsculas, números, puntos y guiones)
+    if (!/^[a-z0-9.-]+$/.test(bucketName)) {
+      toast.error('Nombre de bucket inválido. Use solo letras minúsculas, números, puntos y guiones.');
+      return;
+    }
+    
+    try {
+      toast.info(`Creando bucket "${bucketName}"...`);
+      
+      const response = await fetch(`/api/clouds/${explorerProvider.id}/buckets`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bucketName })
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || error.message || 'Error al crear bucket');
+      }
+      
+      const result = await response.json();
+      
+      toast.success(`Bucket "${bucketName}" creado exitosamente`);
+      
+      // Refrescar la lista de buckets
+      await listBuckets(explorerProvider);
+    } catch (error) {
+      console.error('Error al crear bucket:', error);
+      toast.error(`Error al crear bucket: ${error.message}`);
+    }
+  };
+  
   const inspectProvider = async (provider, path = '') => {
     setExplorerProvider(provider);
     setExplorerLoading(true);
@@ -541,7 +632,22 @@ function CloudProviders() {
         ? JSON.parse(data.configuracion) 
         : data.configuracion;
       
-      setCurrentProvider(data);
+      // Verificar si el proveedor usa un secreto
+      const usandoSecreto = !!data.secreto_id;
+      
+      // Si el proveedor usa un secreto, cargar la lista de secretos disponibles si aún no están cargados
+      if (usandoSecreto && cloudSecrets.length === 0) {
+        await fetchCloudSecrets();
+      }
+      
+      // Actualizar el proveedor con la información de si usa secreto
+      setCurrentProvider({
+        ...data,
+        credenciales: data.credenciales || {},
+        configuracion: data.configuracion || {},
+        usando_secreto: usandoSecreto
+      });
+      
       setIsEditing(true);
       setShowForm(true);
     } catch (error) {
