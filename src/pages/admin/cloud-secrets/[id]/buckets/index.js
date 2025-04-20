@@ -8,7 +8,7 @@ import {
 import { ArrowLeftIcon, PlusIcon, CheckCircleIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import { toast } from 'react-toastify';
-import AdminLayout from '@/components/layouts/AdminLayout';
+
 
 /**
  * Página para administrar buckets asociados a un Cloud Secret específico
@@ -158,137 +158,135 @@ export default function AdminCloudSecretBuckets() {
   };
   
   return (
-    <AdminLayout>
-      <Card className="mt-4">
-        <div className="flex justify-between items-center mb-4">
-          <Link href="/admin/cloud-secrets" className="flex items-center text-blue-600 hover:text-blue-800">
-            <ArrowLeftIcon className="h-4 w-4 mr-1" />
-            <span>Volver a Cloud Secrets</span>
-          </Link>
-          
-          {secreto && (
-            <Badge color={getProviderColor(secreto.tipo)}>
-              {formatProviderType(secreto.tipo)}
-            </Badge>
-          )}
-        </div>
+    <Card className="mt-4">
+      <div className="flex justify-between items-center mb-4">
+        <Link href="/admin/cloud-secrets" className="flex items-center text-blue-600 hover:text-blue-800">
+          <ArrowLeftIcon className="h-4 w-4 mr-1" />
+          <span>Volver a Cloud Secrets</span>
+        </Link>
         
-        <Title>Gestión de Buckets</Title>
         {secreto && (
-          <Text className="mt-2 mb-4">
-            Secreto: <span className="font-semibold">{secreto.nombre}</span>
-          </Text>
+          <Badge color={getProviderColor(secreto.tipo)}>
+            {formatProviderType(secreto.tipo)}
+          </Badge>
         )}
-        
-        <Divider />
-        
-        <Grid numItems={1} numItemsMd={2} className="gap-6 mt-6">
-          <Col>
-            <Card decoration="top" decorationColor="blue">
-              <Title className="text-xl">Buckets Existentes</Title>
-              
-              {loading ? (
-                <div className="py-4 text-center">Cargando buckets...</div>
-              ) : error ? (
-                <div className="py-4 text-center text-red-500 flex items-center justify-center">
-                  <ExclamationCircleIcon className="h-5 w-5 mr-2" />
-                  {error}
-                </div>
-              ) : (
-                <div className="mt-4">
-                  {buckets.length === 0 ? (
-                    <div className="py-4 text-center text-gray-500">
-                      No se encontraron buckets
-                    </div>
-                  ) : (
-                    <Table>
-                      <TableHead>
-                        <TableRow>
-                          <TableHeaderCell>Nombre del Bucket</TableHeaderCell>
-                          <TableHeaderCell>Acciones</TableHeaderCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {buckets.map((bucket, index) => (
-                          <TableRow key={bucket.name || index}>
-                            <TableCell>{bucket.name}</TableCell>
-                            <TableCell>
-                              <Button 
-                                size="xs" 
-                                variant="secondary"
-                                onClick={() => router.push(`/admin/cloud-secrets/${id}/buckets/${encodeURIComponent(bucket.name)}`)}
-                              >
-                                Ver contenido
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  )}
-                  
-                  <div className="mt-4 flex justify-end">
-                    <Button 
-                      size="sm"
-                      variant="light"
-                      color="blue"
-                      icon={CheckCircleIcon}
-                      onClick={loadBuckets}
-                      loading={loading}
-                      disabled={loading}
-                    >
-                      Actualizar lista
-                    </Button>
+      </div>
+      
+      <Title>Gestión de Buckets</Title>
+      {secreto && (
+        <Text className="mt-2 mb-4">
+          Secreto: <span className="font-semibold">{secreto.nombre}</span>
+        </Text>
+      )}
+      
+      <Divider />
+      
+      <Grid numItems={1} numItemsMd={2} className="gap-6 mt-6">
+        <Col>
+          <Card decoration="top" decorationColor="blue">
+            <Title className="text-xl">Buckets Existentes</Title>
+            
+            {loading ? (
+              <div className="py-4 text-center">Cargando buckets...</div>
+            ) : error ? (
+              <div className="py-4 text-center text-red-500 flex items-center justify-center">
+                <ExclamationCircleIcon className="h-5 w-5 mr-2" />
+                {error}
+              </div>
+            ) : (
+              <div className="mt-4">
+                {buckets.length === 0 ? (
+                  <div className="py-4 text-center text-gray-500">
+                    No se encontraron buckets
                   </div>
-                </div>
-              )}
-            </Card>
-          </Col>
-          
-          <Col>
-            <Card decoration="top" decorationColor="green">
-              <Title className="text-xl">Crear Nuevo Bucket</Title>
-              
-              <form onSubmit={handleCreateBucket} className="mt-4">
-                <div className="mb-4">
-                  <Text className="mb-2">Nombre del bucket</Text>
-                  <TextInput
-                    placeholder="Escriba el nombre del bucket"
-                    value={newBucketName}
-                    onChange={(e) => setNewBucketName(e.target.value)}
-                    disabled={creatingBucket}
-                    required
-                  />
-                  <Text className="mt-1 text-xs text-gray-500">
-                    El nombre del bucket debe ser único y no contener caracteres especiales.
-                  </Text>
-                </div>
+                ) : (
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableHeaderCell>Nombre del Bucket</TableHeaderCell>
+                        <TableHeaderCell>Acciones</TableHeaderCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {buckets.map((bucket, index) => (
+                        <TableRow key={bucket.name || index}>
+                          <TableCell>{bucket.name}</TableCell>
+                          <TableCell>
+                            <Button 
+                              size="xs" 
+                              variant="secondary"
+                              onClick={() => router.push(`/admin/cloud-secrets/${id}/buckets/${encodeURIComponent(bucket.name)}`)}
+                            >
+                              Ver contenido
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
                 
-                <div className="flex justify-between">
-                  <Button
-                    variant="secondary"
+                <div className="mt-4 flex justify-end">
+                  <Button 
                     size="sm"
-                    onClick={() => setNewBucketName('rawmondelezperustrategiotradicional')}
-                    disabled={creatingBucket}
+                    variant="light"
+                    color="blue"
+                    icon={CheckCircleIcon}
+                    onClick={loadBuckets}
+                    loading={loading}
+                    disabled={loading}
                   >
-                    Usar bucket predefinido
-                  </Button>
-                  
-                  <Button
-                    type="submit"
-                    color="green"
-                    icon={PlusIcon}
-                    loading={creatingBucket}
-                    disabled={creatingBucket || !newBucketName.trim()}
-                  >
-                    Crear Bucket
+                    Actualizar lista
                   </Button>
                 </div>
-              </form>
-            </Card>
-          </Col>
-        </Grid>
-      </Card>
-    </AdminLayout>
+              </div>
+            )}
+          </Card>
+        </Col>
+        
+        <Col>
+          <Card decoration="top" decorationColor="green">
+            <Title className="text-xl">Crear Nuevo Bucket</Title>
+            
+            <form onSubmit={handleCreateBucket} className="mt-4">
+              <div className="mb-4">
+                <Text className="mb-2">Nombre del bucket</Text>
+                <TextInput
+                  placeholder="Escriba el nombre del bucket"
+                  value={newBucketName}
+                  onChange={(e) => setNewBucketName(e.target.value)}
+                  disabled={creatingBucket}
+                  required
+                />
+                <Text className="mt-1 text-xs text-gray-500">
+                  El nombre del bucket debe ser único y no contener caracteres especiales.
+                </Text>
+              </div>
+              
+              <div className="flex justify-between">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setNewBucketName('rawmondelezperustrategiotradicional')}
+                  disabled={creatingBucket}
+                >
+                  Usar bucket predefinido
+                </Button>
+                
+                <Button
+                  type="submit"
+                  color="green"
+                  icon={PlusIcon}
+                  loading={creatingBucket}
+                  disabled={creatingBucket || !newBucketName.trim()}
+                >
+                  Crear Bucket
+                </Button>
+              </div>
+            </form>
+          </Card>
+        </Col>
+      </Grid>
+    </Card>
   );
 }
