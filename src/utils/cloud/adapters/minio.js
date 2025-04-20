@@ -3,6 +3,12 @@
  * 
  * Implementa las operaciones básicas para interactuar con servidores MinIO
  * implementando las funciones necesarias directamente sin depender de otros adaptadores.
+ * 
+ * Incluye funciones para:
+ * - Probar conexión (testConnection)
+ * - Listar contenidos (listContents)
+ * - Listar buckets (listBuckets)
+ * - Crear buckets (createBucket)
  */
 
 /**
@@ -993,6 +999,369 @@ async function fileExists(client, remotePath) {
   }
 }
 
+/**
+ * Lista todos los buckets disponibles
+ * 
+ * @param {object} credentials - Credenciales MinIO (access_key, secret_key)
+ * @param {object} config - Configuración para la conexión (endpoint, secure, etc.)
+ * @returns {Promise<Array>} - Lista de buckets disponibles
+ */
+async function listBuckets(credentials, config = {}) {
+  try {
+    // Validar credenciales mínimas requeridas
+    if (!credentials.access_key || !credentials.secret_key) {
+      throw new Error('Faltan credenciales requeridas (access_key, secret_key)');
+    }
+    
+    // Verificar si el endpoint está en credenciales en lugar de config
+    if (!config.endpoint) {
+      if (credentials.endpoint) {
+        // Mover el endpoint a la configuración
+        config.endpoint = credentials.endpoint;
+        console.log("[MinIO] listBuckets: Se encontró endpoint en credenciales, movido a config:", config.endpoint);
+      } else {
+        throw new Error('Falta la configuración del endpoint para MinIO');
+      }
+    }
+    
+    // Determinar si el endpoint incluye el protocolo
+    let endpoint = config.endpoint;
+    if (!endpoint.startsWith('http://') && !endpoint.startsWith('https://')) {
+      // Agregar el protocolo según la configuración de secure
+      const protocol = config.secure !== false ? 'https://' : 'http://';
+      endpoint = protocol + endpoint;
+    }
+    
+    // Extraer el host sin el protocolo
+    const host = endpoint.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    
+    // Utilizar la opción de puerto si está especificada
+    const port = config.port ? `:${config.port}` : '';
+    const baseUrl = `${endpoint}${port}`;
+    
+    // URL para listar buckets
+    const url = `${baseUrl}/?list-type=2`;
+    
+    // Fecha y timestamp para la firma
+    const amzDate = getAmzDate();
+    const dateStamp = getDateStamp();
+    
+    // Headers a firmar
+    const headers = {
+      'host': host + port,
+      'x-amz-date': amzDate,
+      'x-amz-content-sha256': 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855' // hash de cadena vacía
+    };
+    
+    // Paso 1: Crear solicitud canónica
+    const canonicalUri = '/';
+    const canonicalQueryString = 'list-type=2';
+    
+    // Construir los headers canónicos
+    const sortedHeaders = Object.keys(headers).sort();
+    const canonicalHeaders = sortedHeaders.map(key => `${key}:${headers[key]}\n`).join('');
+    const signedHeaders = sortedHeaders.join(';');
+    
+    const payloadHash = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'; // hash de cuerpo vacío
+    
+    const canonicalRequest = [
+      'GET',
+      canonicalUri,
+      canonicalQueryString,
+      canonicalHeaders,
+      signedHeaders,
+      payloadHash
+    ].join('\n');
+    
+    // Paso 2: Crear el string to sign
+    const algorithm = 'AWS4-HMAC-SHA256';
+    const region = 'us-east-1'; // MinIO suele usar esto como valor predeterminado
+    const scope = `${dateStamp}/${region}/s3/aws4_request`;
+    const stringToSign = [
+      algorithm,
+      amzDate,
+      scope,
+      await sha256(canonicalRequest)
+    ].join('\n');
+    
+    // Paso 3: Calcular la firma
+    async function sign(key, msg) {
+      const msgBuffer = new TextEncoder().encode(msg);
+      const keyBuffer = await crypto.subtle.importKey(
+        'raw',
+        key,
+        { name: 'HMAC', hash: { name: 'SHA-256' } },
+        false,
+        ['sign']
+      );
+      const signBuffer = await crypto.subtle.sign(
+        { name: 'HMAC', hash: { name: 'SHA-256' } },
+        keyBuffer,
+        msgBuffer
+      );
+      return new Uint8Array(signBuffer);
+    }
+    
+    const kSecret = new TextEncoder().encode(`AWS4${credentials.secret_key}`);
+    const kDate = await sign(kSecret, dateStamp);
+    const kRegion = await sign(kDate, region);
+    const kService = await sign(kRegion, 's3');
+    const kSigning = await sign(kService, 'aws4_request');
+    
+    const signature = await sign(kSigning, stringToSign);
+    const signatureHex = Array.from(signature)
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+    
+    // Paso 4: Crear el header de autorización
+    const authorizationHeader = `${algorithm} Credential=${credentials.access_key}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signatureHex}`;
+    
+    // Hacer la solicitud
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        ...headers,
+        'Authorization': authorizationHeader
+      }
+    });
+    
+    // Verificar respuesta
+    if (!response.ok) {
+      // Extraer mensaje de error para más detalles
+      const errorText = await response.text();
+      
+      // Intentar extraer el mensaje de error del XML
+      let errorMessage = `Error HTTP ${response.status}: ${response.statusText}`;
+      
+      // Buscar el mensaje de error en la respuesta XML
+      const codeMatch = errorText.match(/<Code>(.*?)<\/Code>/);
+      const messageMatch = errorText.match(/<Message>(.*?)<\/Message>/);
+      
+      if (codeMatch && messageMatch) {
+        const errorCode = codeMatch[1];
+        const errorDetail = messageMatch[1];
+        errorMessage = `Error MinIO (${errorCode}): ${errorDetail}`;
+      }
+      
+      throw new Error(errorMessage);
+    }
+    
+    // Procesar la respuesta XML para extraer los buckets
+    const responseText = await response.text();
+    
+    // Extraer nombres de buckets
+    const bucketMatches = Array.from(responseText.matchAll(/<Name>(.*?)<\/Name>/g));
+    
+    // Extraer información adicional si está disponible
+    const buckets = bucketMatches.map(match => {
+      const name = match[1];
+      
+      // Intentar extraer información adicional
+      const creationDateMatch = responseText.match(new RegExp(`<CreationDate>(.*?)<\\/CreationDate>`, 'g'));
+      
+      return {
+        name,
+        // añadir información adicional si está disponible
+        creationDate: creationDateMatch ? new Date(creationDateMatch[0].replace(/<\/?CreationDate>/g, '')) : null
+      };
+    });
+    
+    return buckets;
+  } catch (error) {
+    console.error('Error al listar buckets MinIO:', error);
+    throw error;
+  }
+}
+
+/**
+ * Crea un nuevo bucket
+ * 
+ * @param {object} credentials - Credenciales MinIO (access_key, secret_key)
+ * @param {object} config - Configuración para la conexión (endpoint, secure, etc.)
+ * @param {string} bucketName - Nombre del bucket a crear
+ * @param {object} options - Opciones adicionales (región, acceso público/privado)
+ * @returns {Promise<object>} - Información sobre el bucket creado
+ */
+async function createBucket(credentials, config = {}, bucketName, options = {}) {
+  console.log('[MinIO] Creando bucket:', bucketName);
+  
+  try {
+    // Validar credenciales y parámetros
+    if (!credentials.access_key || !credentials.secret_key) {
+      throw new Error('Faltan credenciales requeridas (access_key, secret_key)');
+    }
+    
+    if (!bucketName) {
+      throw new Error('Se requiere un nombre para el bucket');
+    }
+    
+    // Verificar si el endpoint está en credenciales en lugar de config
+    if (!config.endpoint) {
+      if (credentials.endpoint) {
+        // Mover el endpoint a la configuración
+        config.endpoint = credentials.endpoint;
+        console.log("[MinIO] createBucket: Se encontró endpoint en credenciales, movido a config:", config.endpoint);
+      } else {
+        throw new Error('Falta la configuración del endpoint para MinIO');
+      }
+    }
+    
+    // Determinar si el endpoint incluye el protocolo
+    let endpoint = config.endpoint;
+    if (!endpoint.startsWith('http://') && !endpoint.startsWith('https://')) {
+      // Agregar el protocolo según la configuración de secure
+      const protocol = config.secure !== false ? 'https://' : 'http://';
+      endpoint = protocol + endpoint;
+    }
+    
+    // Extraer el host sin el protocolo
+    const host = endpoint.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    
+    // Utilizar la opción de puerto si está especificada
+    const port = config.port ? `:${config.port}` : '';
+    const baseUrl = `${endpoint}${port}`;
+    
+    // URL para crear bucket
+    const url = `${baseUrl}/${bucketName}`;
+    
+    // Fecha y timestamp para la firma
+    const amzDate = getAmzDate();
+    const dateStamp = getDateStamp();
+    
+    // Configurar el ACL del bucket (por defecto privado)
+    const acl = options.access === 'public' ? 'public-read' : 'private';
+    
+    // Headers a firmar
+    const headers = {
+      'host': host + port,
+      'x-amz-date': amzDate,
+      'x-amz-acl': acl,
+      'x-amz-content-sha256': 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855' // hash de cadena vacía
+    };
+    
+    // Paso 1: Crear solicitud canónica
+    const canonicalUri = `/${bucketName}`;
+    const canonicalQueryString = '';
+    
+    // Construir los headers canónicos
+    const sortedHeaders = Object.keys(headers).sort();
+    const canonicalHeaders = sortedHeaders.map(key => `${key}:${headers[key]}\n`).join('');
+    const signedHeaders = sortedHeaders.join(';');
+    
+    const payloadHash = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'; // hash de cuerpo vacío
+    
+    const canonicalRequest = [
+      'PUT',
+      canonicalUri,
+      canonicalQueryString,
+      canonicalHeaders,
+      signedHeaders,
+      payloadHash
+    ].join('\n');
+    
+    // Paso 2: Crear el string to sign
+    const algorithm = 'AWS4-HMAC-SHA256';
+    const region = options.region || 'us-east-1'; // Usar región proporcionada o la predeterminada
+    const scope = `${dateStamp}/${region}/s3/aws4_request`;
+    const stringToSign = [
+      algorithm,
+      amzDate,
+      scope,
+      await sha256(canonicalRequest)
+    ].join('\n');
+    
+    // Paso 3: Calcular la firma
+    async function sign(key, msg) {
+      const msgBuffer = new TextEncoder().encode(msg);
+      const keyBuffer = await crypto.subtle.importKey(
+        'raw',
+        key,
+        { name: 'HMAC', hash: { name: 'SHA-256' } },
+        false,
+        ['sign']
+      );
+      const signBuffer = await crypto.subtle.sign(
+        { name: 'HMAC', hash: { name: 'SHA-256' } },
+        keyBuffer,
+        msgBuffer
+      );
+      return new Uint8Array(signBuffer);
+    }
+    
+    const kSecret = new TextEncoder().encode(`AWS4${credentials.secret_key}`);
+    const kDate = await sign(kSecret, dateStamp);
+    const kRegion = await sign(kDate, region);
+    const kService = await sign(kRegion, 's3');
+    const kSigning = await sign(kService, 'aws4_request');
+    
+    const signature = await sign(kSigning, stringToSign);
+    const signatureHex = Array.from(signature)
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+    
+    // Paso 4: Crear el header de autorización
+    const authorizationHeader = `${algorithm} Credential=${credentials.access_key}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signatureHex}`;
+    
+    // Hacer la solicitud para crear el bucket
+    const response = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        ...headers,
+        'Authorization': authorizationHeader
+      }
+    });
+    
+    // Verificar respuesta
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[MinIO] Error al crear bucket:', errorText);
+      
+      // Intentar extraer el mensaje de error del XML
+      let errorMessage = `Error HTTP ${response.status}: ${response.statusText}`;
+      
+      // Buscar el mensaje de error en la respuesta XML
+      const codeMatch = errorText.match(/<Code>(.*?)<\/Code>/);
+      const messageMatch = errorText.match(/<Message>(.*?)<\/Message>/);
+      
+      if (codeMatch && messageMatch) {
+        const errorCode = codeMatch[1];
+        const errorDetail = messageMatch[1];
+        
+        if (errorCode === 'BucketAlreadyExists') {
+          errorMessage = `El bucket "${bucketName}" ya existe.`;
+        } else if (errorCode === 'BucketAlreadyOwnedByYou') {
+          // Para MinIO, esto no es un error, es un éxito
+          return {
+            name: bucketName,
+            region: region,
+            access: acl,
+            message: `El bucket "${bucketName}" ya existe y te pertenece.`,
+            existed: true
+          };
+        } else if (errorCode === 'AccessDenied') {
+          errorMessage = `Acceso denegado. No tienes permisos para crear buckets.`;
+        } else {
+          errorMessage = `Error MinIO (${errorCode}): ${errorDetail}`;
+        }
+      }
+      
+      throw new Error(errorMessage);
+    }
+    
+    // Bucket creado exitosamente
+    return {
+      name: bucketName,
+      region: region,
+      access: acl,
+      message: `Bucket "${bucketName}" creado exitosamente.`,
+      created: true
+    };
+  } catch (error) {
+    console.error('[MinIO] Error creando bucket:', error);
+    throw error;
+  }
+}
+
 // Exportar el adaptador para MinIO
 export default {
   testConnection,
@@ -1001,5 +1370,7 @@ export default {
   downloadFile,
   deleteFile,
   fileExists,
-  createClient
+  createClient,
+  listBuckets,
+  createBucket
 };
