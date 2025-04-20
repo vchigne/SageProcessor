@@ -40,7 +40,7 @@ async function testCloudSecret(req, res, id) {
     try {
       // Obtener el secreto por ID
       const secretResult = await client.query(
-        `SELECT id, nombre, tipo, secretos
+        `SELECT id, nombre, tipo, credenciales
          FROM cloud_secrets
          WHERE id = $1`,
         [id]
@@ -56,17 +56,22 @@ async function testCloudSecret(req, res, id) {
       const secret = secretResult.rows[0];
       
       // Crear un proveedor temporal para probar la conexión
+      // Parsear credenciales si es necesario
+      let credenciales = typeof secret.credenciales === 'string' 
+        ? JSON.parse(secret.credenciales) 
+        : secret.credenciales;
+      
       const tempProvider = {
         id: 0,
         nombre: `Test de ${secret.nombre}`,
         tipo: secret.tipo,
-        credenciales: secret.secretos,
+        credenciales: credenciales,
         configuracion: {}
       };
       
       // Obtener adaptador y probar la conexión
       try {
-        const adapter = getCloudAdapter(tempProvider);
+        const adapter = await getCloudAdapter(tempProvider.tipo);
         
         if (!adapter) {
           return res.status(400).json({ 
@@ -75,8 +80,15 @@ async function testCloudSecret(req, res, id) {
           });
         }
         
-        // Probar conexión
-        const result = await adapter.testConnection();
+        if (!adapter.testConnection) {
+          return res.status(400).json({ 
+            success: false, 
+            message: `El proveedor ${secret.tipo} no implementa el método testConnection` 
+          });
+        }
+        
+        // Probar conexión pasando credenciales y configuración
+        const result = await adapter.testConnection(tempProvider.credenciales, tempProvider.configuracion);
         
         // Actualizar fecha de última prueba
         await client.query(
@@ -86,10 +98,18 @@ async function testCloudSecret(req, res, id) {
           [id]
         );
         
-        return res.status(200).json({
-          success: true,
-          message: `Conexión exitosa a ${secret.nombre}`
-        });
+        // Usar el resultado devuelto por el adaptador o uno por defecto
+        if (result && typeof result === 'object') {
+          return res.status(200).json({
+            ...result,
+            message: result.message || `Conexión exitosa a ${secret.nombre}`
+          });
+        } else {
+          return res.status(200).json({
+            success: true,
+            message: `Conexión exitosa a ${secret.nombre}`
+          });
+        }
       } catch (error) {
         console.error('Error al probar conexión:', error);
         return res.status(200).json({
