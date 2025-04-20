@@ -516,10 +516,33 @@ async function listContents(credentials, config = {}, path = '') {
     const sortedFolders = folders.sort((a, b) => a.name.localeCompare(b.name));
     const sortedFiles = files.sort((a, b) => a.name.localeCompare(b.name));
     
+    // Calcular la ruta padre para navegación
+    let parentPath = '';
+    if (path) {
+      if (path.endsWith('/')) {
+        // Si la ruta termina con /, quitar el último segmento
+        const segments = path.split('/').filter(Boolean);
+        if (segments.length > 0) {
+          // Quitar el último segmento y mantener formato con / al final
+          parentPath = segments.slice(0, -1).join('/');
+          if (parentPath) parentPath += '/';
+        }
+      } else {
+        // Si no termina con /, quitar todo después del último /
+        const lastSlashIndex = path.lastIndexOf('/');
+        if (lastSlashIndex > 0) {
+          parentPath = path.substring(0, lastSlashIndex + 1);
+        }
+      }
+    }
+    
+    console.log(`[MinIO] Path: "${path}", calculando parentPath: "${parentPath}"`);
+    
     return {
       folders: sortedFolders,
       files: sortedFiles,
-      path: path
+      path: path,
+      parentPath: parentPath
     };
   } catch (error) {
     console.error('[MinIO] Error al listar contenido:', error);

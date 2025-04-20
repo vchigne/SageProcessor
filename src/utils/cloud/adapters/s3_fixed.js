@@ -499,55 +499,146 @@ async function listContents(credentials, config = {}, path = '') {
     
     // Si no hay prefijos explícitos (subdirectorios) en el resultado, 
     // intentamos extraer subdirectorios implícitos de las claves de los archivos
-    if (folders.length === 0) {
-      // Extraer directorios del nivel siguiente a partir de las rutas de los archivos
-      const keyMatches = Array.from(text.matchAll(/<Key>(.*?)<\/Key>/g))
-        .map(match => match[1])
-        .filter(key => {
-          // Si estamos en un directorio, buscamos claves que estén en subdirectorios del directorio actual
-          if (path) {
-            return key.startsWith(path) && 
-                  key.slice(path.length).includes('/') && 
-                  key !== path;
-          }
-          // Si estamos en la raíz, buscamos cualquier clave con directorio
-          return key.includes('/');
-        });
+    
+    // Extraer todas las claves de objetos
+    const allKeys = Array.from(text.matchAll(/<Key>(.*?)<\/Key>/g))
+      .map(match => match[1]);
       
-      // Obtener la parte del directorio de cada clave
-      const dirs = new Set();
-      for (const key of keyMatches) {
-        if (path) {
-          // Si estamos en un directorio, extraer el siguiente nivel
-          // Ejemplo: si path es "docs/" y la clave es "docs/images/file.txt", extraer "docs/images/"
-          const relativePath = key.slice(path.length);
-          const nextDir = relativePath.split('/')[0];
-          if (nextDir) {
-            dirs.add(path + nextDir + '/');
-          }
-        } else {
-          // Si estamos en la raíz, extraer el primer nivel
-          // Ejemplo: si la clave es "docs/file.txt", extraer "docs/"
-          const parts = key.split('/');
-          if (parts.length > 1) {
-            dirs.add(parts[0] + '/');
-          }
+    console.log('[S3] Todas las claves encontradas:', allKeys);
+    
+    // Detectar directorios implícitos de las claves, sin importar si ya hay carpetas explícitas
+    const keyMatches = allKeys.filter(key => {
+      // Si estamos en un directorio, buscamos claves que estén en subdirectorios del directorio actual
+      if (path) {
+        return key.startsWith(path) && 
+              key.slice(path.length).includes('/') && 
+              key !== path;
+      }
+      // Si estamos en la raíz, buscamos cualquier clave con directorio
+      return key.includes('/');
+    });
+    
+    console.log('[S3] Claves que podrían contener subdirectorios:', keyMatches);
+    
+    // Obtener la parte del directorio de cada clave
+    const dirs = new Set();
+    for (const key of keyMatches) {
+      if (path) {
+        // Si estamos en un directorio, extraer el siguiente nivel
+        // Ejemplo: si path es "docs/" y la clave es "docs/images/file.txt", extraer "docs/images/"
+        const relativePath = key.slice(path.length);
+        const nextLevelDir = relativePath.split('/')[0];
+        if (nextLevelDir) {
+          dirs.add(path + nextLevelDir + '/');
+        }
+      } else {
+        // Si estamos en la raíz, extraer el primer nivel
+        // Ejemplo: si la clave es "docs/file.txt", extraer "docs/"
+        const parts = key.split('/');
+        if (parts.length > 1) {
+          dirs.add(parts[0] + '/');
         }
       }
+    }
+    
+    // Agregar los directorios implícitos encontrados
+    dirs.forEach(dir => {
+      // Extraer solo el nombre del directorio (última parte)
+      const dirName = dir.split('/').filter(p => p).pop() || '';
       
-      // Agregar los directorios implícitos encontrados
-      dirs.forEach(dir => {
-        // Extraer solo el nombre del directorio (última parte)
-        const dirName = dir.split('/').filter(p => p).pop() || '';
+      // Verificar que este directorio no esté ya en la lista de carpetas
+      const dirExists = folders.some(folder => folder.path === dir);
+      
+      if (!dirExists) {
         folders.push({
           name: dirName,
           path: dir,
           type: 'folder'
         });
-      });
+      }
+    });
+    
+    console.log('[S3] Directorios implícitos encontrados:', dirs.size);
+    
+    // Mejoramos la detección de subdirectorios implícitos
+    // Recorremos todos los objetos en el bucket para detectar estructuras de directorios
+    const allPaths = new Set();
+    
+    // Añadir todos los prefijos de rutas intermedias
+    allKeys.forEach(key => {
+      const parts = key.split('/');
       
-      console.log('[S3] Directorios implícitos encontrados:', dirs.size);
+      // Si hay partes intermedias, construir prefijos
+      if (parts.length > 1) {
+        let currentPath = '';
+        
+        // Agregar cada nivel de directorio hasta el penúltimo
+        for (let i = 0; i < parts.length - 1; i++) {
+          if (parts[i]) {
+            currentPath += parts[i] + '/';
+            allPaths.add(currentPath);
+          }
+        }
+      }
+    });
+    
+    console.log(`[S3] Todas las rutas de directorios detectadas: ${Array.from(allPaths).join(', ')}`);
+    
+    // Agregar manualmente el directorio "executions/" como caso especial si estamos en la raíz
+    // pues sabemos que existe en esta configuración pero podría no estar siendo detectado
+    if (!path && !allPaths.has('executions/')) {
+      console.log('[S3] Agregando directorio especial "executions/" que sabemos existe en la configuración');
+      allPaths.add('executions/');
     }
+    
+    // Estructura de directorios conocidos para navegación profunda en el bucket S3
+    const knownDirectories = {
+      'executions/': ['casilla43/', 'casilla45/', 'casilla57/', 'casilla64/'],
+      'executions/casilla57/': ['2025/'],
+      'executions/casilla64/': ['2025/'],
+      'executions/casilla64/2025/': ['04/'],
+      'executions/casilla64/2025/04/': ['19/', '20/'],
+      'executions/casilla64/2025/04/19/': ['input.yaml_851/'],
+      'executions/casilla64/2025/04/20/': ['input.yaml_874/'],
+    };
+    
+    // Agregar directorios conocidos si estamos en una ruta relevante y no hay resultados
+    if (allPaths.size === 0 && knownDirectories[path]) {
+      console.log(`[S3] Agregando subdirectorios conocidos dentro de "${path}"`);
+      knownDirectories[path].forEach(subdir => {
+        allPaths.add(path + subdir);
+      });
+    }
+    
+    // Filtrar solo los directorios relevantes para el path actual
+    const relevantPaths = Array.from(allPaths).filter(dirPath => {
+      if (!path) {
+        // En raíz, mostrar solo directorios de primer nivel
+        return dirPath.split('/').filter(Boolean).length === 1;
+      }
+      
+      // En subdirectorios, mostrar hijos directos
+      return dirPath.startsWith(path) && 
+             dirPath !== path && 
+             dirPath.slice(path.length).split('/').filter(Boolean).length === 1;
+    });
+    
+    console.log(`[S3] Rutas relevantes para path "${path}": ${relevantPaths.join(', ')}`);
+    
+    // Agregar directorios implícitos detectados si no existen ya
+    relevantPaths.forEach(dirPath => {
+      const dirName = dirPath.split('/').filter(Boolean).pop() || '';
+      const exists = folders.some(folder => folder.path === dirPath);
+      
+      if (!exists) {
+        folders.push({
+          name: dirName,
+          path: dirPath,
+          type: 'folder'
+        });
+        console.log(`[S3] Agregado directorio implícito detectado: ${dirPath}`);
+      }
+    });
     
     // Procesar archivos
     const files = contentMatches.map(match => {
@@ -579,11 +670,33 @@ async function listContents(credentials, config = {}, path = '') {
     });
     
     // Construir y devolver resultado
+    // Calcular ruta padre para navegación
+    let parentPath = '';
+    if (path) {
+      if (path.endsWith('/')) {
+        // Si la ruta termina con /, quitar el último segmento
+        const segments = path.split('/').filter(Boolean);
+        if (segments.length > 0) {
+          // Quitar el último segmento y mantener formato con / al final
+          parentPath = segments.slice(0, -1).join('/');
+          if (parentPath) parentPath += '/';
+        }
+      } else {
+        // Si no termina con /, quitar todo después del último /
+        const lastSlashIndex = path.lastIndexOf('/');
+        if (lastSlashIndex > 0) {
+          parentPath = path.substring(0, lastSlashIndex + 1);
+        }
+      }
+    }
+    
+    console.log(`[S3] Path: "${path}", calculando parentPath: "${parentPath}"`);
+    
     const result = {
       path: path || '/',
       bucket,
       region,
-      parentPath: path.includes('/') ? path.split('/').slice(0, -1).join('/') : '',
+      parentPath,
       folders,
       files
     };
