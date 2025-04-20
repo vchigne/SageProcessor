@@ -28,6 +28,8 @@ const initialProviderState = {
   tipo: 's3',
   credenciales: {},
   configuracion: {},
+  secreto_id: null,
+  usando_secreto: false,
   activo: true
 };
 
@@ -122,6 +124,8 @@ function CloudProviders() {
   const [isEditing, setIsEditing] = useState(false);
   const [testingId, setTestingId] = useState(null);
   const [testingAll, setTestingAll] = useState(false);
+  const [cloudSecrets, setCloudSecrets] = useState([]);
+  const [loadingSecrets, setLoadingSecrets] = useState(false);
   
   // Estados para el explorador de archivos
   const [showExplorer, setShowExplorer] = useState(false);
@@ -130,9 +134,10 @@ function CloudProviders() {
   const [explorerProvider, setExplorerProvider] = useState(null);
   const [currentPath, setCurrentPath] = useState('');
 
-  // Cargar proveedores
+  // Cargar proveedores y secretos
   useEffect(() => {
     fetchProviders();
+    fetchCloudSecrets();
   }, []);
 
   // Obtener todos los proveedores
@@ -242,7 +247,16 @@ function CloudProviders() {
       return false;
     }
 
-    // Validar credenciales obligatorias
+    // Si estamos usando un secreto en lugar de credenciales directas
+    if (currentProvider.usando_secreto) {
+      if (!currentProvider.secreto_id) {
+        toast.error('Debe seleccionar un secreto de nube');
+        return false;
+      }
+      return true; // Si hay un secreto seleccionado, no necesitamos validar credenciales
+    }
+
+    // Validar credenciales obligatorias si no se usa un secreto
     const requiredCredentials = credentialSchemas[currentProvider.tipo]
       .filter(cred => cred.required)
       .map(cred => cred.name);
@@ -537,6 +551,24 @@ function CloudProviders() {
   };
 
   // Resetear formulario
+  // Función para obtener los secretos de nube
+  const fetchCloudSecrets = async () => {
+    try {
+      setLoadingSecrets(true);
+      const response = await fetch('/api/cloud-secrets');
+      if (!response.ok) throw new Error('Error al cargar secretos de nube');
+      const data = await response.json();
+      
+      console.log("Secretos de nube recibidos:", data);
+      setCloudSecrets(data);
+    } catch (error) {
+      console.error('Error:', error);
+      toast.error('Error al cargar secretos de nube: ' + error.message);
+    } finally {
+      setLoadingSecrets(false);
+    }
+  };
+
   const resetForm = () => {
     setCurrentProvider(initialProviderState);
     setIsEditing(false);
@@ -697,42 +729,97 @@ function CloudProviders() {
             
             <div className="mb-6">
               <Subtitle className="mb-3">Credenciales</Subtitle>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {credentialSchemas[currentProvider.tipo].map((field) => (
-                  <div key={field.name}>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      {field.label} {field.required && '*'}
-                    </label>
-                    {field.type === 'textarea' ? (
-                      <textarea
-                        name={`credenciales.${field.name}`}
-                        value={currentProvider.credenciales[field.name] || ''}
-                        onChange={handleInputChange}
-                        rows="4"
-                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                        required={field.required}
-                      />
-                    ) : field.type === 'checkbox' ? (
-                      <input
-                        type="checkbox"
-                        name={`credenciales.${field.name}`}
-                        checked={!!currentProvider.credenciales[field.name]}
-                        onChange={handleInputChange}
-                        className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
-                      />
-                    ) : (
-                      <input
-                        type={field.type}
-                        name={`credenciales.${field.name}`}
-                        value={currentProvider.credenciales[field.name] || ''}
-                        onChange={handleInputChange}
-                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                        required={field.required}
-                      />
-                    )}
-                  </div>
-                ))}
+              
+              <div className="mb-4 border-b pb-4">
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    className="sr-only peer"
+                    checked={currentProvider.usando_secreto}
+                    onChange={(e) => setCurrentProvider({
+                      ...currentProvider,
+                      usando_secreto: e.target.checked,
+                      // Si se activa el uso de secretos y no hay credenciales, limpiar el objeto
+                      credenciales: e.target.checked ? {} : currentProvider.credenciales
+                    })}
+                  />
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                  <span className="ml-3 text-sm font-medium text-gray-900">Usar secreto de nube</span>
+                </label>
+                <p className="mt-1 text-sm text-gray-500">
+                  Al activar esta opción, podrás seleccionar un secreto de nube previamente configurado en lugar de ingresar credenciales directamente.
+                </p>
               </div>
+              
+              {currentProvider.usando_secreto ? (
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Seleccionar Secreto de Nube*
+                  </label>
+                  <select
+                    name="secreto_id"
+                    value={currentProvider.secreto_id || ''}
+                    onChange={handleInputChange}
+                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                    required
+                  >
+                    <option value="">Selecciona un secreto...</option>
+                    {cloudSecrets.map((secreto) => (
+                      <option key={secreto.id} value={secreto.id}>
+                        {secreto.nombre} ({secreto.tipo})
+                      </option>
+                    ))}
+                  </select>
+                  {loadingSecrets && (
+                    <div className="mt-2 text-sm text-gray-500 flex items-center">
+                      <div className="animate-spin mr-2 h-4 w-4 border-b-2 border-indigo-500"></div>
+                      Cargando secretos...
+                    </div>
+                  )}
+                  {!loadingSecrets && cloudSecrets.length === 0 && (
+                    <div className="mt-2 text-sm text-amber-600">
+                      No hay secretos de nube disponibles. <a href="/admin/cloud-secrets" className="text-blue-600 hover:underline">Crear un nuevo secreto</a>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {credentialSchemas[currentProvider.tipo].map((field) => (
+                    <div key={field.name}>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        {field.label} {field.required && '*'}
+                      </label>
+                      {field.type === 'textarea' ? (
+                        <textarea
+                          name={`credenciales.${field.name}`}
+                          value={currentProvider.credenciales[field.name] || ''}
+                          onChange={handleInputChange}
+                          rows="4"
+                          className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                          required={field.required}
+                        />
+                      ) : field.type === 'checkbox' ? (
+                        <input
+                          type="checkbox"
+                          name={`credenciales.${field.name}`}
+                          checked={!!currentProvider.credenciales[field.name]}
+                          onChange={handleInputChange}
+                          className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                        />
+                      ) : (
+                        <input
+                          type={field.type}
+                          name={`credenciales.${field.name}`}
+                          value={currentProvider.credenciales[field.name] || ''}
+                          onChange={handleInputChange}
+                          className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                          required={field.required}
+                        />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
             
             <div className="mb-6">
