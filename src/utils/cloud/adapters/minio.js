@@ -228,7 +228,7 @@ async function testConnection(credentials, config = {}) {
     // En caso de éxito
     // Intentar extraer información de buckets disponibles del XML si existe
     const responseText = await response.text();
-    const bucketMatches = Array.from(responseText.matchAll(/<n>(.*?)<\/n>/g));
+    const bucketMatches = Array.from(responseText.matchAll(/<Name>(.*?)<\/Name>/g));
     const buckets = bucketMatches.map(match => match[1]);
     
     return {

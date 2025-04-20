@@ -1,40 +1,32 @@
+/**
+ * Pequeño script para corregir las expresiones regulares en el adaptador MinIO
+ */
+
 const fs = require('fs');
 const path = require('path');
 
+// Ruta al archivo del adaptador MinIO
 const filePath = path.join(__dirname, 'src', 'utils', 'cloud', 'adapters', 'minio.js');
-console.log(`Procesando archivo: ${filePath}`);
 
-// Leer el archivo
-let content = fs.readFileSync(filePath, 'utf8');
-
-// Buscar y reemplazar
-const oldRegex = /<n>\(.*?\)<\/Name>/g;
-const newRegex = '<Name>$1</Name>';
-
-// Definir patrones de búsqueda y reemplazo
-const patterns = [
-  {
-    search: "Array.from(responseText.matchAll(/<n>(.*?)<\\/Name>/g))",
-    replace: "Array.from(responseText.matchAll(/<Name>(.*?)<\\/Name>/g))"
+// Leer el contenido del archivo
+fs.readFile(filePath, 'utf8', (err, data) => {
+  if (err) {
+    console.error('Error al leer el archivo:', err);
+    return;
   }
-];
 
-// Realizar reemplazos
-let modified = false;
-patterns.forEach(pattern => {
-  if (content.includes(pattern.search)) {
-    content = content.replace(new RegExp(pattern.search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), pattern.replace);
-    modified = true;
-    console.log(`Reemplazado: ${pattern.search} -> ${pattern.replace}`);
-  } else {
-    console.log(`No se encontró el patrón: ${pattern.search}`);
-  }
+  // Reemplazar todas las ocurrencias de /<n>(.*?)<\/Name>/g por /<Name>(.*?)<\/Name>/g
+  let updatedContent = data.replace(/<n>\(.*?\)<\/Name>/g, '<Name>$1</Name>');
+  
+  // Reemplazar todas las ocurrencias de /<n>(.*?)<\/n>/g por /<Name>(.*?)<\/Name>/g
+  updatedContent = updatedContent.replace(/<n>\(.*?\)<\/n>/g, '<Name>$1</Name>');
+
+  // Guardar el archivo actualizado
+  fs.writeFile(filePath, updatedContent, 'utf8', (err) => {
+    if (err) {
+      console.error('Error al escribir el archivo:', err);
+      return;
+    }
+    console.log('¡Archivo actualizado correctamente!');
+  });
 });
-
-if (modified) {
-  // Guardar archivo modificado
-  fs.writeFileSync(filePath, content, 'utf8');
-  console.log('Archivo actualizado correctamente');
-} else {
-  console.log('No se realizaron cambios en el archivo');
-}
