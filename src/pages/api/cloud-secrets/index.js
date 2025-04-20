@@ -32,7 +32,7 @@ async function getCloudSecrets(req, res) {
     
     try {
       const result = await client.query(`
-        SELECT id, nombre, descripcion, tipo, activo, creado_en, actualizado_en
+        SELECT id, nombre, descripcion, tipo, activo, creado_en, modificado_en
         FROM cloud_secrets
         ORDER BY nombre ASC
       `);
@@ -84,7 +84,7 @@ async function createCloudSecret(req, res) {
       const result = await client.query(
         `INSERT INTO cloud_secrets (nombre, descripcion, tipo, secretos, activo) 
          VALUES ($1, $2, $3, $4, $5)
-         RETURNING id, nombre, descripcion, tipo, activo, creado_en, actualizado_en`,
+         RETURNING id, nombre, descripcion, tipo, activo, creado_en, modificado_en`,
         [nombre, descripcion || null, tipo, JSON.stringify(secretos), activo]
       );
       

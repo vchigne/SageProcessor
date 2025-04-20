@@ -42,7 +42,7 @@ async function getCloudSecret(req, res, id) {
     
     try {
       const result = await client.query(
-        `SELECT id, nombre, descripcion, tipo, secretos, activo, creado_en, actualizado_en
+        `SELECT id, nombre, descripcion, tipo, secretos, activo, creado_en, modificado_en
          FROM cloud_secrets
          WHERE id = $1`,
         [id]
@@ -108,9 +108,9 @@ async function updateCloudSecret(req, res, id) {
       // Actualizar el secreto
       const result = await client.query(
         `UPDATE cloud_secrets 
-         SET nombre = $1, descripcion = $2, tipo = $3, secretos = $4, activo = $5, actualizado_en = NOW()
+         SET nombre = $1, descripcion = $2, tipo = $3, secretos = $4, activo = $5, modificado_en = NOW()
          WHERE id = $6
-         RETURNING id, nombre, descripcion, tipo, activo, creado_en, actualizado_en`,
+         RETURNING id, nombre, descripcion, tipo, activo, creado_en, modificado_en`,
         [nombre, descripcion || null, tipo, JSON.stringify(secretos), activo, id]
       );
       
