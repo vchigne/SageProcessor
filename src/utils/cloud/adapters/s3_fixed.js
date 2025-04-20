@@ -304,11 +304,12 @@ async function listContents(credentials, config = {}, path = '') {
   // No usamos datos simulados en producción
   
   try {
-    // Construir la URL para listar el contenido con prefijo y delimitador
-    // Usamos delimitador '/' para simular carpetas y path-style para mejor compatibilidad
+    // Construir la URL para listar el contenido 
+    // Para una navegación completa, primero obtendremos todos los objetos con este prefijo,
+    // sin usar delimitador para poder ver contenido en todas las profundidades
     const host = `s3.${region}.amazonaws.com`;
     const prefix = path ? encodeURIComponent(path + (path.endsWith('/') ? '' : '/')) : '';
-    const url = `https://${host}/${bucket}?delimiter=%2F&list-type=2&max-keys=50&prefix=${prefix}`;
+    const url = `https://${host}/${bucket}?list-type=2&max-keys=1000&prefix=${prefix}`;
     
     // Fecha y timestamp para la firma
     const amzDate = getAmzDate();
@@ -323,7 +324,7 @@ async function listContents(credentials, config = {}, path = '') {
     
     // Construir la solicitud canónica
     const canonicalUri = `/${bucket}`;
-    const canonicalQueryString = `delimiter=%2F&list-type=2&max-keys=50&prefix=${prefix}`;
+    const canonicalQueryString = `list-type=2&max-keys=1000&prefix=${prefix}`;
     
     const sortedHeaders = Object.keys(headers).sort();
     const canonicalHeaders = sortedHeaders.map(key => `${key}:${headers[key]}\n`).join('');
@@ -635,7 +636,7 @@ async function listContents(credentials, config = {}, path = '') {
       .filter(entry => {
         const filePath = entry.key;
         
-        // No incluir directorios (keys que terminan en /)
+        // No incluir objetos que son directorios (keys que terminan en /)
         if (filePath.endsWith('/')) return false;
         
         // Si estamos en la raíz, solo mostrar archivos que no están en carpetas
@@ -643,11 +644,16 @@ async function listContents(credentials, config = {}, path = '') {
           return !filePath.includes('/');
         }
         
-        // Si estamos en una carpeta, mostrar solo los archivos directos de esa carpeta
+        // Si estamos en una carpeta, verificar que el archivo pertenece a esta carpeta directa
         if (path && !filePath.startsWith(path)) return false;
         
-        const relativePath = filePath.startsWith(path) ? filePath.slice(path.length) : filePath;
-        return !relativePath.includes('/');
+        // Calcular la ruta relativa para determinar si está en el nivel actual
+        const relativePath = filePath.substring(path.length);
+        
+        // No incluir archivos en subcarpetas
+        if (relativePath.includes('/')) return false;
+        
+        return true;
       })
       .map(entry => {
         const name = entry.key.split('/').pop() || '';

@@ -30,12 +30,28 @@ export default function EmailConfigNotifier() {
         setIsLoading(true);
         const response = await fetch('/api/email/configuraciones/stats');
         if (!response.ok) {
-          throw new Error('Error al cargar estadísticas');
+          // En lugar de fallar, usamos una estadística vacía
+          setEstadisticas({
+            por_estado: { pendiente: 0, activo: 0, error: 0 },
+            por_proposito: { recepcion: 0, envio: 0, admin: 0, multiple: 0 },
+            casillas_sin_configuracion: 0,
+            total: 0
+          });
+          setError('Estadísticas no disponibles');
+          console.warn('Estadísticas no disponibles:', response.status);
+        } else {
+          const data = await response.json();
+          setEstadisticas(data);
+          setError(null);
         }
-        const data = await response.json();
-        setEstadisticas(data);
-        setError(null);
       } catch (err: any) {
+        // En caso de error, usar estadísticas vacías
+        setEstadisticas({
+          por_estado: { pendiente: 0, activo: 0, error: 0 },
+          por_proposito: { recepcion: 0, envio: 0, admin: 0, multiple: 0 },
+          casillas_sin_configuracion: 0,
+          total: 0
+        });
         setError(err.message || 'Error desconocido');
         console.error('Error al cargar estadísticas:', err);
       } finally {
