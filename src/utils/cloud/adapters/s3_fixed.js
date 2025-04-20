@@ -435,117 +435,69 @@ async function listContents(credentials, config = {}, path = '') {
           errorMessage += `\n\nLas credenciales proporcionadas no tienen permiso para acceder al bucket '${bucket}'. Verifica:\n` +
             `1. Que la clave de acceso tenga permisos suficientes (s3:ListBucket)\n` +
             `2. Que la política del bucket permita el acceso a este usuario`;
-        } else if (errorCode === 'InvalidAccessKeyId') {
-          errorMessage += `\n\nLa clave de acceso AWS proporcionada no existe. Verifica:\n` +
-            `1. Que la clave de acceso sea correcta\n` +
-            `2. Que la clave no haya sido eliminada o desactivada en la consola de AWS IAM`;
-        } else if (errorCode === 'PermanentRedirect') {
-          errorMessage += `\n\nEl bucket '${bucket}' está en una región diferente a la especificada (${region}). Verifica la región correcta en la consola de AWS.`;
-          
-          // Intentar extraer la región correcta si está disponible en el mensaje de error
-          const endpointMatch = errorDetail.match(/specified endpoint/i);
-          if (endpointMatch) {
-            errorMessage += ` Por favor, usa la región correcta para acceder a este bucket.`;
-          }
         }
       }
       
-      console.log('[S3] Error al listar contenido:', errorMessage);
-      
-      // En lugar de lanzar un error, devolvemos un objeto con información del error
-      return {
-        error: true,
-        errorMessage: errorMessage,
-        code: response.status,
-        path: path || '/',
-        bucket: bucket,
-        region: region,
-        folders: [],
-        files: []
-      };
+      throw new Error(errorMessage);
     }
     
-    // Parsear la respuesta XML
+    // Procesar respuesta XML
     const text = await response.text();
+    console.log(`[S3] Respuesta de buckets (${text.length} bytes)`);
     
-    // Parsear la respuesta XML para extraer datos reales
-    console.log('[S3] Respuesta XML del bucket completa:', text);
+    // Extraer prefijos comunes (carpetas) y contenidos (archivos)
+    const prefixMatches = text.match(/<CommonPrefix><Prefix>(.*?)<\/Prefix><\/CommonPrefix>/g) || [];
+    const contentMatches = text.match(/<Contents>.*?<\/Contents>/gs) || [];
     
-    // Extraer prefijos comunes (carpetas)
-    const commonPrefixes = [];
-    const commonPrefixesRegex = /<CommonPrefixes>\s*<Prefix>([^<]+)<\/Prefix>\s*<\/CommonPrefixes>/g;
-    let prefixMatch;
-    while ((prefixMatch = commonPrefixesRegex.exec(text)) !== null) {
-      commonPrefixes.push({ Prefix: prefixMatch[1] });
-    }
-    
-    // Extraer contenido (archivos) - Ajustado para manejar diferentes formatos de XML de S3
-    const contents = [];
-    
-    // Intentar con una expresión regular más flexible para extraer archivos
-    // Esto debería funcionar con la mayoría de las respuestas de S3, incluso si varían ligeramente
-    const contentsMatches = text.match(/<Contents>[\s\S]*?<\/Contents>/g) || [];
-    
-    contentsMatches.forEach(match => {
-      const keyMatch = match.match(/<Key>([^<]+)<\/Key>/);
-      const sizeMatch = match.match(/<Size>(\d+)<\/Size>/);
-      const lastModifiedMatch = match.match(/<LastModified>([^<]+)<\/LastModified>/);
-      const eTagMatch = match.match(/<ETag>([^<]+)<\/ETag>/);
-      const storageClassMatch = match.match(/<StorageClass>([^<]+)<\/StorageClass>/);
+    // Procesar carpetas
+    const folders = prefixMatches.map(match => {
+      const prefix = match.replace(/<CommonPrefix><Prefix>(.*?)<\/Prefix><\/CommonPrefix>/, '$1');
+      const name = prefix.split('/').filter(p => p).pop() || '';
       
-      if (keyMatch) {
-        contents.push({
-          Key: keyMatch[1],
-          LastModified: lastModifiedMatch ? new Date(lastModifiedMatch[1]) : new Date(),
-          ETag: eTagMatch ? eTagMatch[1] : '',
-          Size: sizeMatch ? parseInt(sizeMatch[1], 10) : 0,
-          StorageClass: storageClassMatch ? storageClassMatch[1] : 'STANDARD'
-        });
-      }
+      return {
+        name,
+        path: prefix,
+        type: 'folder'
+      };
     });
     
-    // Convertimos la respuesta a un formato más amigable
-    const formattedResponse = {
+    // Procesar archivos
+    const files = contentMatches.map(match => {
+      const key = match.match(/<Key>(.*?)<\/Key>/)?.[1] || '';
+      const size = parseInt(match.match(/<Size>(.*?)<\/Size>/)?.[1] || '0', 10);
+      const lastModified = new Date(match.match(/<LastModified>(.*?)<\/LastModified>/)?.[1] || '');
+      const name = key.split('/').pop() || '';
+      const extension = name.includes('.') ? name.split('.').pop() : '';
+      
+      return {
+        name,
+        path: key,
+        size,
+        lastModified,
+        extension,
+        type: 'file'
+      };
+    }).filter(file => {
+      const filePath = file.path;
+      // Filtrar archivos que están en subcarpetas excepto los que están exactamente en la carpeta actual
+      return filePath !== prefix && !filePath.slice(prefix.length).includes('/');
+    });
+    
+    // Construir y devolver resultado
+    const result = {
       path: path || '/',
-      bucket: bucket,
-      region: region,
+      bucket,
+      region,
       parentPath: path.includes('/') ? path.split('/').slice(0, -1).join('/') : '',
-      folders: commonPrefixes.map(prefix => {
-        const folderName = prefix.Prefix.split('/').filter(Boolean).pop() || '';
-        return {
-          name: folderName,
-          path: prefix.Prefix,
-          type: 'folder'
-        };
-      }),
-      files: contents.map(item => {
-        const fileName = item.Key.split('/').pop();
-        const extension = fileName.includes('.') ? fileName.split('.').pop() : '';
-        return {
-          name: fileName,
-          path: item.Key,
-          size: item.Size,
-          lastModified: item.LastModified,
-          extension: extension,
-          type: 'file'
-        };
-      })
+      folders,
+      files
     };
     
-    return formattedResponse;
+    console.log(`[S3] Resultado: ${folders.length} carpetas, ${files.length} archivos`);
+    return result;
   } catch (error) {
-    console.error('[S3] Error al listar contenido:', error);
-    
-    // En lugar de propagar el error, devolvemos un objeto con información del error
-    return {
-      error: true,
-      errorMessage: `Error al listar contenido: ${error.message}`,
-      path: path || '/',
-      bucket: bucket,
-      region: region,
-      folders: [],
-      files: []
-    };
+    console.error(`[S3] Error al listar contenido:`, error);
+    throw error;
   }
 }
 
@@ -555,17 +507,23 @@ async function listContents(credentials, config = {}, path = '') {
  * @param {Object} config Configuración adicional (region, etc.)
  * @returns {Object} Cliente configurado para Amazon S3
  */
-function createClient(credentials, config = {}) {
-  // Extraer la región o usar el valor por defecto
-  const region = config.region || credentials.region || 'us-east-1';
+export function createClient(credentials, config = {}) {
+  // En una implementación real, crearíamos un cliente S3 real
+  // const client = new S3Client({
+  //   region: config.region || 'us-east-1',
+  //   credentials: {
+  //     accessKeyId: credentials.access_key,
+  //     secretAccessKey: credentials.secret_key
+  //   }
+  // });
   
-  // Crear un objeto cliente con toda la información necesaria
+  // Por ahora, devolvemos un objeto simulado para desarrollo
   return {
     type: 's3',
     credentials,
     config,
     bucket: credentials.bucket,
-    region: region
+    region: config.region || 'us-east-1'
   };
 }
 
@@ -576,11 +534,18 @@ function createClient(credentials, config = {}) {
  * @param {string} remotePath Ruta remota en S3
  * @returns {Promise<Object>} Información sobre la subida
  */
-async function uploadFile(client, localPath, remotePath) {
-  console.log(`[S3] Subiendo ${localPath} a s3://${client.bucket}/${remotePath}`);
+export async function uploadFile(client, localPath, remotePath) {
+  console.log(`[S3] Simulando subida de ${localPath} a s3://${client.bucket}/${remotePath}`);
   
-  // Esta implementación necesitaría usar el SDK de AWS 
-  // Por ahora devolvemos una simulación
+  // En implementación real:
+  // const command = new PutObjectCommand({
+  //   Bucket: client.bucket,
+  //   Key: remotePath,
+  //   Body: fs.createReadStream(localPath)
+  // });
+  // const response = await client.send(command);
+  
+  // Simulamos respuesta exitosa
   return {
     success: true,
     path: `s3://${client.bucket}/${remotePath}`,
@@ -590,167 +555,32 @@ async function uploadFile(client, localPath, remotePath) {
 }
 
 /**
- * Elimina barras al principio si existen
- * @param {string} path Ruta para normalizar
- * @returns {string} Ruta sin barra al principio
- */
-function removeLeadingSlash(path) {
-  // Verificar que path sea un string
-  if (typeof path !== 'string') {
-    console.warn('removeLeadingSlash: path no es un string:', path);
-    return path;
-  }
-  if (path.startsWith('/')) {
-    return path.slice(1);
-  }
-  return path;
-}
-
-/**
  * Descarga un archivo desde Amazon S3
  * @param {Object} client Cliente S3
  * @param {string} remotePath Ruta remota en S3
  * @param {string} localPath Ruta local donde guardar
  * @returns {Promise<Object>} Información sobre la descarga
  */
-async function downloadFile(client, config, remotePath, localPath) {
-  // Normalizar la estructura del cliente para asegurar que las credenciales estén en el formato correcto
-  const credentials = client.credentials || client;
-
-  // Normalizar la ruta remota para eliminar barras iniciales y asegurar que es un string
-  let normalizedRemotePath;
-  
-  // Imprimir para depuración lo que estamos recibiendo
-  console.log(`[S3] RUTA REMOTA ORIGINAL RECIBIDA: ${JSON.stringify(remotePath)}`);
+export async function downloadFile(client, remotePath, localPath) {
+  console.log(`[S3] Descargando s3://${client.bucket}/${remotePath} a ${localPath}`);
   
   try {
-    if (typeof remotePath === 'string') {
-      // CORRECCIÓN CRÍTICA: Cuando se recibe 'testExecutions2', es porque hay un problema
-      // con la manipulación de la ruta cloud://. Debemos usar la ruta real en su lugar.
-      if (remotePath === 'testExecutions2') {
-        // Este es el error que estábamos buscando!
-        console.error('[S3] ⚠️ CORRIGIENDO ERROR: Se detectó uso del valor hardcodeado "testExecutions2"');
-        
-        // Obtener la información del bucket desde las credenciales
-        const bucket = credentials.bucket || '[BUCKET NO ESPECIFICADO]';
-        const region = credentials.region || client.region || '[REGIÓN NO ESPECIFICADA]';
-        
-        // CORRECCIÓN: En lugar de usar el valor hardcodeado, vamos a usar una ruta real basada en el bucket
-        // Por ejemplo "executions/archivo.log"
-        if (client && client.fileInfo && client.fileInfo.realPath) {
-          // Si tenemos la ruta real guardada en el cliente, usamos esa
-          normalizedRemotePath = client.fileInfo.realPath;
-          console.log(`[S3] Usando ruta real almacenada: ${normalizedRemotePath}`);
-        } else {
-          // IMPORTANTE: Verificar si hay una ruta alternativa proporcionada
-          let alternativePath = config && config.realPath ? config.realPath : null;
-          
-          if (alternativePath) {
-            console.log(`[S3] Usando ruta alternativa desde config.realPath: ${alternativePath}`);
-            normalizedRemotePath = removeLeadingSlash(alternativePath);
-          } else {
-            // Si no tenemos la ruta real, usamos una ruta genérica basada en el formato que esperamos
-            // Extrayendo el path después del nombre descriptivo del cloud://
-            console.log(`[S3] Usando ruta de las credenciales con formato correcto`);
-            normalizedRemotePath = remotePath; // Por defecto, mantener el mismo valor
-            
-            // Registrar el problema para facilitar la depuración y futura corrección
-            console.error(`
-            ============================================
-            ERROR CORREGIDO - ACCESO A CLOUD STORAGE (S3)
-            ============================================
-            Se ha detectado y corregido un problema en la construcción de la ruta:
-              - Se recibió: "testExecutions2"
-              - Bucket configurado: "${bucket}"
-              - Región configurada: "${region}"
-              
-            Este problema ha sido parcialmente corregido. Revise el archivo:
-            src/pages/api/portales/historial-ejecuciones/[uuid]/archivo/[tipo].ts
-            
-            El valor correcto debería ser una ruta de ejecución completa.
-            ============================================
-            `);
-          }
-        }
-      } else {
-        // Procesamiento normal para rutas bien formadas
-        normalizedRemotePath = removeLeadingSlash(remotePath);
-        console.log(`[S3] Ruta normalizada correctamente: ${normalizedRemotePath}`);
-      }
-    } else if (remotePath && remotePath.prefix) {
-      // CORRECCIÓN: Si el remotePath es un objeto con prefix='testExecutions2', tratarlo igual
-      if (remotePath.prefix === 'testExecutions2') {
-        console.error('[S3] ⚠️ CORRIGIENDO ERROR: Se detectó objeto con prefix="testExecutions2"');
-        
-        const bucket = credentials.bucket || '[BUCKET NO ESPECIFICADO]';
-        
-        // IMPORTANTE: Verificar si hay una ruta alternativa proporcionada
-        let alternativePath = config && config.realPath ? config.realPath : null;
-        
-        if (alternativePath) {
-          console.log(`[S3] Usando ruta alternativa desde config.realPath: ${alternativePath}`);
-          normalizedRemotePath = removeLeadingSlash(alternativePath);
-        } else {
-          normalizedRemotePath = remotePath.prefix;
-          
-          console.error(`
-          ============================================
-          ERROR CORREGIDO - OBJETO PREFIX INCORRECTO
-          ============================================
-          Se ha detectado un objeto con prefix incorrecta:
-            - Prefix recibido: "testExecutions2"
-            - Bucket configurado: "${bucket}"
-            
-          Revise cómo se está construyendo la ruta.
-          ============================================
-          `);
-        }
-      } else {
-        // Manejar el caso donde remotePath es un objeto con propiedad prefix
-        normalizedRemotePath = removeLeadingSlash(remotePath.prefix);
-        console.log(`[S3] Formato de ruta remota corregido desde objeto: ${normalizedRemotePath}`);
-      }
-    } else {
-      console.error(`[S3] Formato de ruta remota inválido:`, remotePath);
-      normalizedRemotePath = '';
-    }
-  } catch (error) {
-    console.error(`[S3] Error procesando ruta remota:`, error);
-    normalizedRemotePath = remotePath && typeof remotePath === 'string' ? remotePath : '';
-  }
-  
-  // Extraer el bucket y la clave del cliente o credenciales
-  const bucket = credentials.bucket || client.bucket || client.config?.bucket;
-  
-  console.log(`[S3] Descargando s3://${bucket}/${normalizedRemotePath} a ${localPath}`);
-  console.log('Cliente S3:', JSON.stringify(client, null, 2));
-  console.log('Credenciales normalizadas:', JSON.stringify({
-    ...credentials,
-    secret_key: credentials.secret_key ? '***' : undefined
-  }, null, 2));
-  
-  console.log(`[S3] RUTA ORIGINAL: ${remotePath}`);
-  console.log(`[S3] RUTA NORMALIZADA FINAL: ${normalizedRemotePath}`);
-  console.log(`[S3] URL DE DESCARGA: https://s3.${credentials.region || 'us-east-1'}.amazonaws.com/${bucket}/${normalizedRemotePath}`);
-  
-  try {
+    // Extraer el bucket y la clave del cliente
+    const bucket = client.bucket || client.config?.bucket;
     if (!bucket) {
       throw new Error('Bucket no especificado en la configuración');
     }
     
     // Asegurarse de que tenemos todas las credenciales necesarias
-    if (!credentials.access_key || !credentials.secret_key) {
+    if (!client.credentials?.access_key || !client.credentials?.secret_key) {
       throw new Error('Credenciales incompletas para AWS S3');
     }
     
     // Extraer la región o usar el valor por defecto
-    const region = client.region || client.config?.region || client.credentials?.region || 'us-east-1';
+    const region = client.region || client.config?.region || 'us-east-1';
     
-    // Construir la URL para acceder al objeto correctamente formateada 
-    // Formato correcto: https://s3.REGION.amazonaws.com/BUCKET/KEY
-    const objectUrl = `https://s3.${region}.amazonaws.com/${bucket}/${normalizedRemotePath}`;
-    console.log(`[S3] URL del objeto: ${objectUrl}`);
-    console.log(`[S3] Detalles de acceso: Región=${region}, Bucket=${bucket}, Path=${normalizedRemotePath}`);
+    // Construir la URL para acceder al objeto
+    const objectUrl = `https://${bucket}.s3.${region}.amazonaws.com/${remotePath}`;
     
     // Calcular la fecha en formato AWS
     const date = new Date();
@@ -759,14 +589,13 @@ async function downloadFile(client, config, remotePath, localPath) {
     
     // Crear los encabezados necesarios para la autenticación
     const headers = {
-      'host': `s3.${region}.amazonaws.com`,
+      'host': `${bucket}.s3.${region}.amazonaws.com`,
       'x-amz-date': amzDate,
       'x-amz-content-sha256': 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855' // Hash para cuerpo vacío
     };
     
     // Crear la cadena canónica
-    // En el formato de dirección virtual-hosted-style, debemos incluir el bucket en la URI canónica
-    const canonicalUri = `/${bucket}/${normalizedRemotePath}`;
+    const canonicalUri = `/${remotePath}`;
     const canonicalQueryString = '';
     const canonicalHeaders = Object.keys(headers)
       .sort()
@@ -787,20 +616,16 @@ async function downloadFile(client, config, remotePath, localPath) {
       payloadHash
     ].join('\n');
     
-    // Calcular la firma
-    const canonicalRequestHash = await sha256(canonicalRequest);
+    // Función para crear un hash SHA-256
+    async function sha256(message) {
+      const msgBuffer = new TextEncoder().encode(message);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+      return Array.from(new Uint8Array(hashBuffer))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+    }
     
-    const algorithm = 'AWS4-HMAC-SHA256';
-    const scope = `${dateStamp}/${region}/s3/aws4_request`;
-    
-    const stringToSign = [
-      algorithm,
-      amzDate,
-      scope,
-      canonicalRequestHash
-    ].join('\n');
-    
-    // Derivar la clave de firma
+    // Función para firmar
     async function sign(key, msg) {
       const msgBuffer = new TextEncoder().encode(msg);
       const keyBuffer = await crypto.subtle.importKey(
@@ -818,7 +643,21 @@ async function downloadFile(client, config, remotePath, localPath) {
       return new Uint8Array(signBuffer);
     }
     
-    const kSecret = new TextEncoder().encode(`AWS4${credentials.secret_key}`);
+    // Calcular la firma
+    const canonicalRequestHash = await sha256(canonicalRequest);
+    
+    const algorithm = 'AWS4-HMAC-SHA256';
+    const scope = `${dateStamp}/${region}/s3/aws4_request`;
+    
+    const stringToSign = [
+      algorithm,
+      amzDate,
+      scope,
+      canonicalRequestHash
+    ].join('\n');
+    
+    // Derivar la clave de firma
+    const kSecret = new TextEncoder().encode(`AWS4${client.credentials.secret_key}`);
     const kDate = await sign(kSecret, dateStamp);
     const kRegion = await sign(kDate, region);
     const kService = await sign(kRegion, 's3');
@@ -831,9 +670,7 @@ async function downloadFile(client, config, remotePath, localPath) {
       .join('');
     
     // Crear el header de autorización
-    const authorizationHeader = `${algorithm} Credential=${credentials.access_key}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signatureHex}`;
-    
-    console.log('[S3] Enviando solicitud a AWS...');
+    const authorizationHeader = `${algorithm} Credential=${client.credentials.access_key}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signatureHex}`;
     
     // Realizar la petición para descargar el objeto
     const response = await fetch(objectUrl, {
@@ -860,8 +697,6 @@ async function downloadFile(client, config, remotePath, localPath) {
       throw new Error(errorMessage);
     }
     
-    console.log('[S3] Descarga exitosa, procesando respuesta...');
-    
     // Obtener el contenido del objeto
     const fileBuffer = await response.arrayBuffer();
     const fs = require('fs');
@@ -873,8 +708,6 @@ async function downloadFile(client, config, remotePath, localPath) {
     
     // Escribir el archivo en disco
     fs.writeFileSync(localPath, Buffer.from(fileBuffer));
-    
-    console.log(`[S3] Archivo descargado exitosamente en ${localPath} (${fileBuffer.byteLength} bytes)`);
     
     return {
       success: true,
@@ -893,10 +726,204 @@ async function downloadFile(client, config, remotePath, localPath) {
  * @param {string} remotePath Prefijo para listar
  * @returns {Promise<Array<Object>>} Lista de objetos
  */
-async function listFiles(client, remotePath) {
-  // Aprovechar la función listContents que ya existe
-  const result = await listContents(client.credentials, client.config, remotePath);
-  return [...result.folders, ...result.files];
+export async function listFiles(client, remotePath) {
+  console.log(`[S3] Simulando listado de s3://${client.bucket}/${remotePath}`);
+  
+  // En implementación real:
+  // const command = new ListObjectsV2Command({
+  //   Bucket: client.bucket,
+  //   Prefix: remotePath
+  // });
+  // const response = await client.send(command);
+  // return response.Contents;
+  
+  // Devolvemos una lista simulada
+  return [
+    {
+      Key: `${remotePath}/archivo1.txt`,
+      Size: 1024,
+      LastModified: new Date(),
+      ETag: '"abcdef1234567890"'
+    },
+    {
+      Key: `${remotePath}/archivo2.csv`,
+      Size: 2048,
+      LastModified: new Date(),
+      ETag: '"1234567890abcdef"'
+    }
+  ];
+}
+
+/**
+ * Lista los buckets disponibles en la cuenta de AWS S3
+ * @param {object} credentials - Credenciales S3 (access_key, secret_key)
+ * @param {object} config - Configuración opcional para la conexión (región, etc.)
+ * @returns {Promise<Array>} - Lista de buckets disponibles
+ */
+async function listBuckets(credentials, config = {}) {
+  console.log('[S3] Listando buckets disponibles');
+  
+  // Validar credenciales mínimas requeridas
+  if (!credentials.access_key || !credentials.secret_key) {
+    throw new Error('Faltan credenciales requeridas (access_key, secret_key)');
+  }
+  
+  if (USE_MOCK_DATA) {
+    // Para pruebas, simulamos una respuesta
+    await new Promise(resolve => setTimeout(resolve, 800)); // Simular demora
+    return [
+      {
+        name: 'mybucket1',
+        path: 'mybucket1'
+      },
+      {
+        name: 'mybucket2',
+        path: 'mybucket2'
+      },
+      {
+        name: 'logs-backup',
+        path: 'logs-backup'
+      }
+    ];
+  }
+  
+  try {
+    // Asegurarnos de tomar la región de las credenciales si no está en config
+    const region = config.region || credentials.region || 'us-east-1';
+    console.log('[S3] Usando región:', region);
+    
+    // Construir URL del servicio S3 usando el formato de servicio
+    const host = `s3.${region}.amazonaws.com`;
+    const url = `https://${host}/`;
+    
+    // Fecha y timestamp para la firma
+    const amzDate = getAmzDate();
+    const dateStamp = getDateStamp();
+    
+    // Headers a firmar
+    const headers = {
+      'host': host,
+      'x-amz-date': amzDate,
+      'x-amz-content-sha256': 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855' // hash de cadena vacía
+    };
+    
+    // Paso 1: Crear solicitud canónica
+    const canonicalUri = '/';
+    const canonicalQueryString = '';
+    
+    // Construir los headers canónicos
+    const sortedHeaders = Object.keys(headers).sort();
+    const canonicalHeaders = sortedHeaders.map(key => `${key}:${headers[key]}\n`).join('');
+    const signedHeaders = sortedHeaders.join(';');
+    
+    const payloadHash = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'; // hash de cuerpo vacío
+    
+    const canonicalRequest = [
+      'GET',
+      canonicalUri,
+      canonicalQueryString,
+      canonicalHeaders,
+      signedHeaders,
+      payloadHash
+    ].join('\n');
+    
+    // Paso 2: Crear el string to sign
+    const algorithm = 'AWS4-HMAC-SHA256';
+    const scope = `${dateStamp}/${region}/s3/aws4_request`;
+    const stringToSign = [
+      algorithm,
+      amzDate,
+      scope,
+      await sha256(canonicalRequest)
+    ].join('\n');
+    
+    // Paso 3: Calcular la firma
+    async function sign(key, msg) {
+      const msgBuffer = new TextEncoder().encode(msg);
+      const keyBuffer = await crypto.subtle.importKey(
+        'raw',
+        key,
+        { name: 'HMAC', hash: { name: 'SHA-256' } },
+        false,
+        ['sign']
+      );
+      const signBuffer = await crypto.subtle.sign(
+        { name: 'HMAC', hash: { name: 'SHA-256' } },
+        keyBuffer,
+        msgBuffer
+      );
+      return new Uint8Array(signBuffer);
+    }
+    
+    const kSecret = new TextEncoder().encode(`AWS4${credentials.secret_key}`);
+    const kDate = await sign(kSecret, dateStamp);
+    const kRegion = await sign(kDate, region);
+    const kService = await sign(kRegion, 's3');
+    const kSigning = await sign(kService, 'aws4_request');
+    
+    const signature = await sign(kSigning, stringToSign);
+    const signatureHex = Array.from(signature)
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+    
+    // Paso 4: Crear el header de autorización
+    const authorizationHeader = `${algorithm} Credential=${credentials.access_key}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signatureHex}`;
+    
+    // Hacer la solicitud
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        ...headers,
+        'Authorization': authorizationHeader
+      }
+    });
+    
+    // Procesar la respuesta
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[S3] Error obteniendo buckets:', errorText);
+      
+      // Intentar extraer el mensaje de error del XML
+      let errorMessage = `Error HTTP ${response.status}: ${response.statusText}`;
+      
+      // Buscar el mensaje de error en la respuesta XML
+      const codeMatch = errorText.match(/<Code>(.*?)<\/Code>/);
+      const messageMatch = errorText.match(/<Message>(.*?)<\/Message>/);
+      
+      if (codeMatch && messageMatch) {
+        errorMessage = `Error AWS S3 (${codeMatch[1]}): ${messageMatch[1]}`;
+      }
+      
+      throw new Error(errorMessage);
+    }
+    
+    // Parsear la respuesta XML para extraer los buckets
+    const text = await response.text();
+    console.log('[S3] Respuesta de listado de buckets:', text.substring(0, 100) + '...');
+    
+    // Extraer los nombres de bucket del XML
+    const bucketNameMatches = text.match(/<Name>(.*?)<\/Name>/g);
+    
+    if (!bucketNameMatches) {
+      console.log('[S3] No se encontraron buckets en la respuesta');
+      return [];
+    }
+    
+    // Extraer los nombres limpios y crear objetos de bucket
+    const buckets = bucketNameMatches.map(match => {
+      const name = match.replace(/<Name>(.*?)<\/Name>/, '$1');
+      return {
+        name,
+        path: name
+      };
+    });
+    
+    console.log(`[S3] Se encontraron ${buckets.length} buckets:`, buckets.map(b => b.name).join(', '));
+    return buckets;
+  } catch (error) {
+    console.error('[S3] Error al listar buckets:', error);
+    throw error;
+  }
 }
 
 /**
@@ -915,6 +942,180 @@ async function getSignedUrl(client, remotePath, options = {}) {
   return `https://${client.bucket}.s3.${client.region}.amazonaws.com/${remotePath}?X-Amz-Expires=${expiresIn}&X-Amz-Date=${Date.now()}&expiry=${expiry}`;
 }
 
+/**
+ * Crea un nuevo bucket en S3
+ * @param {object} credentials - Credenciales S3 (access_key, secret_key)
+ * @param {object} config - Configuración opcional (región, etc.)
+ * @param {string} bucketName - Nombre del bucket a crear
+ * @returns {Promise<object>} - Resultado de la operación
+ */
+async function createBucket(credentials, config = {}, bucketName) {
+  console.log(`[S3] Creando bucket: ${bucketName}`);
+  
+  // Validar credenciales mínimas requeridas
+  if (!credentials.access_key || !credentials.secret_key) {
+    return {
+      success: false,
+      message: 'Faltan credenciales requeridas (access_key, secret_key)'
+    };
+  }
+  
+  if (!bucketName) {
+    return {
+      success: false,
+      message: 'El nombre del bucket es requerido'
+    };
+  }
+  
+  if (USE_MOCK_DATA) {
+    // Para pruebas, simulamos una respuesta exitosa
+    await new Promise(resolve => setTimeout(resolve, 1000)); // Simular demora
+    return {
+      success: true,
+      message: `Bucket ${bucketName} creado con éxito`,
+      details: {
+        bucketName,
+        region: config.region || credentials.region || 'us-east-1'
+      }
+    };
+  }
+  
+  try {
+    // Asegurarnos de tomar la región de las credenciales si no está en config
+    const region = config.region || credentials.region || 'us-east-1';
+    console.log('[S3] Usando región:', region);
+    
+    // Construir URL para crear el bucket
+    const host = `s3.${region}.amazonaws.com`;
+    const url = `https://${host}/${bucketName}`;
+    
+    // Fecha y timestamp para la firma
+    const amzDate = getAmzDate();
+    const dateStamp = getDateStamp();
+    
+    // Headers a firmar
+    const headers = {
+      'host': host,
+      'x-amz-date': amzDate,
+      'x-amz-content-sha256': 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855' // hash de cadena vacía
+    };
+    
+    // Añadir región si no es us-east-1 (la predeterminada)
+    if (region !== 'us-east-1') {
+      headers['x-amz-bucket-region'] = region;
+    }
+    
+    // Paso 1: Crear solicitud canónica
+    const canonicalUri = `/${bucketName}`;
+    const canonicalQueryString = '';
+    
+    // Construir los headers canónicos
+    const sortedHeaders = Object.keys(headers).sort();
+    const canonicalHeaders = sortedHeaders.map(key => `${key}:${headers[key]}\n`).join('');
+    const signedHeaders = sortedHeaders.join(';');
+    
+    const payloadHash = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'; // hash de cuerpo vacío
+    
+    const canonicalRequest = [
+      'PUT',
+      canonicalUri,
+      canonicalQueryString,
+      canonicalHeaders,
+      signedHeaders,
+      payloadHash
+    ].join('\n');
+    
+    // Paso 2: Crear el string to sign
+    const algorithm = 'AWS4-HMAC-SHA256';
+    const scope = `${dateStamp}/${region}/s3/aws4_request`;
+    const stringToSign = [
+      algorithm,
+      amzDate,
+      scope,
+      await sha256(canonicalRequest)
+    ].join('\n');
+    
+    // Paso 3: Calcular la firma
+    async function sign(key, msg) {
+      const msgBuffer = new TextEncoder().encode(msg);
+      const keyBuffer = await crypto.subtle.importKey(
+        'raw',
+        key,
+        { name: 'HMAC', hash: { name: 'SHA-256' } },
+        false,
+        ['sign']
+      );
+      const signBuffer = await crypto.subtle.sign(
+        { name: 'HMAC', hash: { name: 'SHA-256' } },
+        keyBuffer,
+        msgBuffer
+      );
+      return new Uint8Array(signBuffer);
+    }
+    
+    const kSecret = new TextEncoder().encode(`AWS4${credentials.secret_key}`);
+    const kDate = await sign(kSecret, dateStamp);
+    const kRegion = await sign(kDate, region);
+    const kService = await sign(kRegion, 's3');
+    const kSigning = await sign(kService, 'aws4_request');
+    
+    const signature = await sign(kSigning, stringToSign);
+    const signatureHex = Array.from(signature)
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+    
+    // Paso 4: Crear el header de autorización
+    const authorizationHeader = `${algorithm} Credential=${credentials.access_key}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signatureHex}`;
+    
+    // Hacer la solicitud
+    const response = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        ...headers,
+        'Authorization': authorizationHeader
+      }
+    });
+    
+    // Procesar la respuesta
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[S3] Error creando bucket:', errorText);
+      
+      // Intentar extraer el mensaje de error del XML
+      let errorMessage = `Error HTTP ${response.status}: ${response.statusText}`;
+      
+      // Buscar el mensaje de error en la respuesta XML
+      const codeMatch = errorText.match(/<Code>(.*?)<\/Code>/);
+      const messageMatch = errorText.match(/<Message>(.*?)<\/Message>/);
+      
+      if (codeMatch && messageMatch) {
+        errorMessage = `Error AWS S3 (${codeMatch[1]}): ${messageMatch[1]}`;
+      }
+      
+      return {
+        success: false,
+        message: errorMessage
+      };
+    }
+    
+    // Éxito al crear el bucket
+    return {
+      success: true,
+      message: `Bucket ${bucketName} creado con éxito`,
+      details: {
+        bucketName,
+        region
+      }
+    };
+  } catch (error) {
+    console.error('[S3] Error al crear bucket:', error);
+    return {
+      success: false,
+      message: `Error al crear bucket: ${error.message}`
+    };
+  }
+}
+
 // Exportar funciones del adaptador
 export default {
   createClient,
@@ -923,5 +1124,7 @@ export default {
   downloadFile,
   listFiles,
   listContents,
-  getSignedUrl
+  getSignedUrl,
+  listBuckets,   // Agregamos la nueva función para listar buckets
+  createBucket   // Agregamos la función para crear buckets
 };
