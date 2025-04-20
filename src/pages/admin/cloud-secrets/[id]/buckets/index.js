@@ -35,7 +35,10 @@ export default function AdminCloudSecretBuckets() {
   // Cargar detalles del secreto
   const loadSecretDetails = async () => {
     try {
-      const response = await fetch(`/api/cloud-secrets/${id}`);
+      // Usar la API interna
+      const apiUrl = `/api/cloud-secrets/${id}`;
+      
+      const response = await fetch(apiUrl);
       const data = await response.json();
       
       if (!response.ok) {
@@ -57,7 +60,10 @@ export default function AdminCloudSecretBuckets() {
     
     setLoading(true);
     try {
-      const response = await fetch(`/api/cloud-secrets/${id}/buckets`);
+      // Usar la API interna para todos los entornos
+      const apiUrl = `/api/cloud-secrets/${id}/buckets`;
+      
+      const response = await fetch(apiUrl);
       const data = await response.json();
       
       if (!response.ok) {
@@ -67,7 +73,14 @@ export default function AdminCloudSecretBuckets() {
       }
       
       console.log('Buckets recibidos:', data);
-      setBuckets(data.data || []);
+      // Asegurarnos de que data.data sea un array
+      if (data.data && Array.isArray(data.data)) {
+        setBuckets(data.data);
+      } else {
+        console.error('Error: data.data no es un array:', data);
+        setBuckets([]);
+        setError('Formato de respuesta incorrecto');
+      }
       setError(null);
     } catch (error) {
       console.error('Error al cargar buckets:', error);
@@ -89,7 +102,10 @@ export default function AdminCloudSecretBuckets() {
     
     setCreatingBucket(true);
     try {
-      const response = await fetch(`/api/cloud-secrets/${id}/buckets`, {
+      // Usar la API interna para todos los entornos
+      const apiUrl = `/api/cloud-secrets/${id}/buckets`;
+      
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
