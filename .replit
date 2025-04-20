@@ -2,9 +2,10 @@ modules = ["python-3.11", "nodejs-20", "postgresql-16", "python3"]
 
 [nix]
 channel = "stable-24_05"
+packages = ["cacert", "glibcLocales", "libyaml"]
 
 [workflows]
-runButton = "Project"
+runButton = "Run"
 
 [[workflows.workflow]]
 name = "UI Dev Server"
