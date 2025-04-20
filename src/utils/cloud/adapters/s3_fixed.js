@@ -5,8 +5,8 @@
  * usando fetch y autenticación AWS SigV4 implementada manualmente.
  */
 
-// Zona para simular operaciones y datos para pruebas
-const USE_MOCK_DATA = false;
+// Implementación real para operaciones S3 sin simulaciones
+const USE_MOCK_DATA = false; // Siempre debe estar en false para uso en producción
 
 /**
  * Calcula el hash SHA-256 de una cadena
@@ -301,44 +301,7 @@ async function listContents(credentials, config = {}, path = '') {
   const region = config.region || credentials.region || 'us-east-1';
   console.log('[S3] Listando bucket:', bucket, 'en región:', region);
   
-  if (USE_MOCK_DATA) {
-    // Simulamos una respuesta para pruebas
-    await new Promise(resolve => setTimeout(resolve, 1000)); // Simular demora
-    
-    const now = new Date();
-    const yesterday = new Date(now);
-    yesterday.setDate(yesterday.getDate() - 1);
-    
-    return {
-      path: path || '/',
-      bucket: bucket,
-      region: region,
-      parentPath: path.includes('/') ? path.split('/').slice(0, -1).join('/') : '',
-      folders: [
-        { name: 'docs', path: `${path ? path + '/' : ''}docs`, type: 'folder' },
-        { name: 'images', path: `${path ? path + '/' : ''}images`, type: 'folder' },
-        { name: 'backups', path: `${path ? path + '/' : ''}backups`, type: 'folder' }
-      ],
-      files: [
-        { 
-          name: 'readme.txt', 
-          path: `${path ? path + '/' : ''}readme.txt`, 
-          size: 2048, 
-          lastModified: now,
-          extension: 'txt',
-          type: 'file'
-        },
-        { 
-          name: 'data.csv', 
-          path: `${path ? path + '/' : ''}data.csv`, 
-          size: 15360, 
-          lastModified: yesterday,
-          extension: 'csv',
-          type: 'file'
-        }
-      ]
-    };
-  }
+  // No usamos datos simulados en producción
   
   try {
     // Construir la URL para listar el contenido con prefijo y delimitador
@@ -640,34 +603,65 @@ async function listContents(credentials, config = {}, path = '') {
       }
     });
     
-    // Procesar archivos
-    const files = contentMatches.map(match => {
-      const key = match.match(/<Key>(.*?)<\/Key>/)?.[1] || '';
-      const size = parseInt(match.match(/<Size>(.*?)<\/Size>/)?.[1] || '0', 10);
-      const lastModified = new Date(match.match(/<LastModified>(.*?)<\/LastModified>/)?.[1] || '');
-      const name = key.split('/').pop() || '';
-      const extension = name.includes('.') ? name.split('.').pop() : '';
+    // Extraer todos los archivos del contenido XML
+    // Primero probamos con el formato completo que incluye tamaño y fecha
+    let fileEntries = [];
+    
+    // Extraer cada bloque <Contents> completo para un procesamiento más preciso
+    const contentEntriesMatch = text.match(/<Contents>[\s\S]*?<\/Contents>/g) || [];
+    
+    contentEntriesMatch.forEach(contentBlock => {
+      const keyMatch = contentBlock.match(/<Key>(.*?)<\/Key>/);
+      const sizeMatch = contentBlock.match(/<Size>(.*?)<\/Size>/);
+      const dateMatch = contentBlock.match(/<LastModified>(.*?)<\/LastModified>/);
       
-      return {
-        name,
-        path: key,
-        size,
-        lastModified,
-        extension,
-        type: 'file'
-      };
-    }).filter(file => {
-      const filePath = file.path;
-      
-      // Si estamos en la raíz, solo mostrar archivos que no están en carpetas
-      if (path === '') {
-        return !filePath.includes('/');
+      if (keyMatch) {
+        const key = keyMatch[1];
+        const size = sizeMatch ? parseInt(sizeMatch[1], 10) : 0;
+        const lastModified = dateMatch ? new Date(dateMatch[1]) : new Date();
+        
+        fileEntries.push({
+          key,
+          size,
+          lastModified
+        });
       }
-      
-      // Si estamos en una carpeta, mostrar solo los archivos directos de esa carpeta
-      const relativePath = filePath.startsWith(path) ? filePath.slice(path.length) : filePath;
-      return !relativePath.includes('/') && filePath.startsWith(path);
     });
+    
+    console.log(`[S3] Encontrados ${fileEntries.length} archivos en la respuesta XML`);
+    
+    // Procesar archivos
+    const files = fileEntries
+      .filter(entry => {
+        const filePath = entry.key;
+        
+        // No incluir directorios (keys que terminan en /)
+        if (filePath.endsWith('/')) return false;
+        
+        // Si estamos en la raíz, solo mostrar archivos que no están en carpetas
+        if (path === '') {
+          return !filePath.includes('/');
+        }
+        
+        // Si estamos en una carpeta, mostrar solo los archivos directos de esa carpeta
+        if (path && !filePath.startsWith(path)) return false;
+        
+        const relativePath = filePath.startsWith(path) ? filePath.slice(path.length) : filePath;
+        return !relativePath.includes('/');
+      })
+      .map(entry => {
+        const name = entry.key.split('/').pop() || '';
+        const extension = name.includes('.') ? name.split('.').pop() : '';
+        
+        return {
+          name,
+          path: entry.key,
+          size: entry.size,
+          lastModified: entry.lastModified,
+          extension,
+          type: 'file'
+        };
+      });
     
     // Construir y devolver resultado
     // Calcular ruta padre para navegación
@@ -716,22 +710,22 @@ async function listContents(credentials, config = {}, path = '') {
  * @returns {Object} Cliente configurado para Amazon S3
  */
 export function createClient(credentials, config = {}) {
-  // En una implementación real, crearíamos un cliente S3 real
-  // const client = new S3Client({
-  //   region: config.region || 'us-east-1',
-  //   credentials: {
-  //     accessKeyId: credentials.access_key,
-  //     secretAccessKey: credentials.secret_key
-  //   }
-  // });
+  // Validar credenciales antes de crear el cliente
+  if (!credentials.access_key || !credentials.secret_key) {
+    throw new Error('Se requieren access_key y secret_key para crear un cliente S3');
+  }
   
-  // Por ahora, devolvemos un objeto simulado para desarrollo
+  if (!credentials.bucket) {
+    console.warn('[S3] Creando cliente sin especificar bucket. Asegúrate de especificar el bucket en las operaciones.');
+  }
+  
+  // Devolver objeto cliente con referencias a las credenciales y configuración
   return {
     type: 's3',
     credentials,
     config,
     bucket: credentials.bucket,
-    region: config.region || 'us-east-1'
+    region: config.region || credentials.region || 'us-east-1'
   };
 }
 
@@ -743,23 +737,165 @@ export function createClient(credentials, config = {}) {
  * @returns {Promise<Object>} Información sobre la subida
  */
 export async function uploadFile(client, localPath, remotePath) {
-  console.log(`[S3] Simulando subida de ${localPath} a s3://${client.bucket}/${remotePath}`);
+  try {
+    console.log(`[S3] Subiendo archivo desde ${localPath} a s3://${client.bucket}/${remotePath}`);
+    
+    // Validar que el cliente tenga toda la información necesaria
+    if (!client.bucket) {
+      throw new Error('Se requiere un bucket para subir archivos');
+    }
+    
+    if (!client.credentials?.access_key || !client.credentials?.secret_key) {
+      throw new Error('Credenciales incompletas para AWS S3');
+    }
+    
+    // Leer el archivo
+    const fs = require('fs');
+    if (!fs.existsSync(localPath)) {
+      throw new Error(`El archivo local no existe: ${localPath}`);
+    }
+    
+    const fileBuffer = fs.readFileSync(localPath);
+    const fileSize = fs.statSync(localPath).size;
+    
+    // Extraer región
+    const region = client.region || client.config?.region || 'us-east-1';
+    
+    // Construir URL para la operación PUT
+    const host = `${client.bucket}.s3.${region}.amazonaws.com`;
+    const url = `https://${host}/${remotePath}`;
+    
+    // Fecha y timestamp para la firma
+    const date = new Date();
+    const amzDate = date.toISOString().replace(/[:-]|\.\d{3}/g, '');
+    const dateStamp = amzDate.slice(0, 8);
+    
+    // Calcular hash SHA-256 del contenido del archivo
+    const crypto = require('crypto');
+    const fileHash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+    
+    // Headers a firmar
+    const contentType = determineContentType(localPath);
+    const headers = {
+      'host': host,
+      'x-amz-date': amzDate,
+      'x-amz-content-sha256': fileHash,
+      'content-type': contentType,
+      'content-length': fileSize.toString()
+    };
+    
+    // Construir la solicitud canónica
+    const canonicalUri = `/${remotePath}`;
+    const canonicalQueryString = '';
+    
+    const sortedHeaders = Object.keys(headers).sort();
+    const canonicalHeaders = sortedHeaders.map(key => `${key.toLowerCase()}:${headers[key]}\n`).join('');
+    const signedHeaders = sortedHeaders.join(';');
+    
+    const canonicalRequest = [
+      'PUT',
+      canonicalUri,
+      canonicalQueryString,
+      canonicalHeaders,
+      signedHeaders,
+      fileHash
+    ].join('\n');
+    
+    // Construir la cadena a firmar
+    const algorithm = 'AWS4-HMAC-SHA256';
+    const scope = `${dateStamp}/${region}/s3/aws4_request`;
+    
+    const stringToSign = [
+      algorithm,
+      amzDate,
+      scope,
+      crypto.createHash('sha256').update(canonicalRequest).digest('hex')
+    ].join('\n');
+    
+    // Calcular la firma
+    function sign(key, msg) {
+      return crypto.createHmac('sha256', key).update(msg).digest();
+    }
+    
+    const kSecret = `AWS4${client.credentials.secret_key}`;
+    const kDate = sign(kSecret, dateStamp);
+    const kRegion = sign(kDate, region);
+    const kService = sign(kRegion, 's3');
+    const kSigning = sign(kService, 'aws4_request');
+    
+    const signature = sign(kSigning, stringToSign).toString('hex');
+    
+    // Crear el header de autorización
+    const authorizationHeader = `${algorithm} Credential=${client.credentials.access_key}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+    
+    // Realizar la petición para subir el archivo
+    const response = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        ...headers,
+        'Authorization': authorizationHeader
+      },
+      body: fileBuffer
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[S3] Error subiendo archivo:', errorText);
+      
+      // Intentar extraer el mensaje de error del XML
+      const codeMatch = errorText.match(/<Code>(.*?)<\/Code>/);
+      const messageMatch = errorText.match(/<Message>(.*?)<\/Message>/);
+      
+      let errorMessage = `Error HTTP ${response.status}: ${response.statusText}`;
+      if (codeMatch && messageMatch) {
+        errorMessage = `Error S3 (${codeMatch[1]}): ${messageMatch[1]}`;
+      }
+      
+      throw new Error(errorMessage);
+    }
+    
+    // Extraer ETag de la respuesta
+    const etag = response.headers.get('etag');
+    
+    return {
+      success: true,
+      path: `s3://${client.bucket}/${remotePath}`,
+      size: fileSize,
+      etag: etag ? etag.replace(/"/g, '') : null
+    };
+  } catch (error) {
+    console.error(`[S3] Error subiendo archivo a S3:`, error);
+    throw new Error(`Error subiendo archivo a S3: ${error.message}`);
+  }
+}
+
+// Función auxiliar para determinar el tipo de contenido
+function determineContentType(filepath) {
+  const path = require('path');
+  const extension = path.extname(filepath).toLowerCase();
   
-  // En implementación real:
-  // const command = new PutObjectCommand({
-  //   Bucket: client.bucket,
-  //   Key: remotePath,
-  //   Body: fs.createReadStream(localPath)
-  // });
-  // const response = await client.send(command);
-  
-  // Simulamos respuesta exitosa
-  return {
-    success: true,
-    path: `s3://${client.bucket}/${remotePath}`,
-    size: 1024, // Tamaño simulado
-    etag: '12345678abcdef' // ETag simulado
+  const mimeTypes = {
+    '.html': 'text/html',
+    '.css': 'text/css',
+    '.js': 'application/javascript',
+    '.json': 'application/json',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.gif': 'image/gif',
+    '.svg': 'image/svg+xml',
+    '.pdf': 'application/pdf',
+    '.txt': 'text/plain',
+    '.csv': 'text/csv',
+    '.xml': 'application/xml',
+    '.zip': 'application/zip',
+    '.doc': 'application/msword',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    '.xls': 'application/vnd.ms-excel',
+    '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
   };
+  
+  return mimeTypes[extension] || 'application/octet-stream';
 }
 
 /**
@@ -976,24 +1112,7 @@ async function listBuckets(credentials, config = {}) {
     throw new Error('Faltan credenciales requeridas (access_key, secret_key)');
   }
   
-  if (USE_MOCK_DATA) {
-    // Para pruebas, simulamos una respuesta
-    await new Promise(resolve => setTimeout(resolve, 800)); // Simular demora
-    return [
-      {
-        name: 'mybucket1',
-        path: 'mybucket1'
-      },
-      {
-        name: 'mybucket2',
-        path: 'mybucket2'
-      },
-      {
-        name: 'logs-backup',
-        path: 'logs-backup'
-      }
-    ];
-  }
+  // No usamos datos simulados en producción
   
   try {
     // Asegurarnos de tomar la región de las credenciales si no está en config
@@ -1175,18 +1294,7 @@ async function createBucket(credentials, config = {}, bucketName) {
     };
   }
   
-  if (USE_MOCK_DATA) {
-    // Para pruebas, simulamos una respuesta exitosa
-    await new Promise(resolve => setTimeout(resolve, 1000)); // Simular demora
-    return {
-      success: true,
-      message: `Bucket ${bucketName} creado con éxito`,
-      details: {
-        bucketName,
-        region: config.region || credentials.region || 'us-east-1'
-      }
-    };
-  }
+  // No usamos datos simulados en producción
   
   try {
     // Asegurarnos de tomar la región de las credenciales si no está en config
