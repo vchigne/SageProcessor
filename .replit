@@ -35,10 +35,6 @@ args = "Janitor Manual Run"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Web Server Proxy"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
 args = "Next.js Development Server with Turbopack"
 
 [[workflows.workflow]]
@@ -100,20 +96,6 @@ task = "packager.installForAll"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "cd /home/runner/workspace && python janitor_daemon.py"
-
-[[workflows.workflow]]
-name = "Web Server Proxy"
-author = "agent"
-
-[workflows.workflow.metadata]
-agentRequireRestartOnSave = false
-
-[[workflows.workflow.tasks]]
-task = "packager.installForAll"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd /home/runner/workspace && curl -s http://localhost:3000/admin/cloud-secrets/1/buckets | grep -A 20 \"Examinar bucket\""
 
 [[workflows.workflow]]
 name = "Next.js Development Server with Turbopack"

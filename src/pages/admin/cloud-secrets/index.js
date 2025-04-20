@@ -553,7 +553,7 @@ export default function CloudSecrets() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <div className="flex justify-end space-x-3">
-                          {secret.tipo === 'minio' && (
+                          {['minio', 's3'].includes(secret.tipo) && (
                             <Link href={`/admin/cloud-secrets/${secret.id}/buckets`}>
                               <Button 
                                 icon={CloudIcon}

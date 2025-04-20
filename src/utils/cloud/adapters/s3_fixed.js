@@ -39,41 +39,75 @@ function getDateStamp() {
 }
 
 /**
- * Prueba la conexión a S3 verificando si se puede acceder a un bucket
+ * Prueba la conexión a S3 verificando si se pueden obtener los buckets o acceder a un bucket específico
  * 
- * @param {object} credentials - Credenciales S3 (access_key, secret_key, bucket, etc.)
+ * @param {object} credentials - Credenciales S3 (access_key, secret_key, bucket opcional)
  * @param {object} config - Configuración opcional para el bucket (región, etc.)
  * @returns {Promise<object>} - Resultado de la prueba con estado y mensaje
  */
 async function testConnection(credentials, config = {}) {
   // Validar credenciales mínimas requeridas
-  if (!credentials.access_key || !credentials.secret_key || !credentials.bucket) {
+  if (!credentials.access_key || !credentials.secret_key) {
     return {
       success: false,
-      message: 'Faltan credenciales requeridas (access_key, secret_key, bucket)'
+      message: 'Faltan credenciales requeridas (access_key, secret_key)'
     };
   }
   
   if (USE_MOCK_DATA) {
     // Para pruebas, simulamos una respuesta positiva
     await new Promise(resolve => setTimeout(resolve, 800)); // Simular demora
+    const bucketInfo = credentials.bucket ? 
+      { bucketName: credentials.bucket } : 
+      { message: 'Conexión establecida, pero no se especificó bucket' };
+    
     return {
       success: true,
-      message: `Conexión exitosa al bucket ${credentials.bucket}`,
+      message: credentials.bucket ? 
+        `Conexión exitosa al bucket ${credentials.bucket}` : 
+        'Credenciales de AWS válidas',
       details: {
-        bucketName: credentials.bucket,
-        region: config.region || 'us-east-1'
+        ...bucketInfo,
+        region: config.region || credentials.region || 'us-east-1'
       }
     };
   }
   
   try {
-    console.log('Configuración recibida en S3 adapter:', JSON.stringify(config, null, 2));
+    console.log('[S3] Probando conexión con credenciales:', 
+      `access_key=${credentials.access_key?.substring(0, 4)}***, ` +
+      `secret_key=*****, ` + 
+      `bucket=${credentials.bucket || 'no especificado'}`
+    );
+    
     // Asegurarnos de tomar la región de las credenciales si no está en config
     const region = config.region || credentials.region || 'us-east-1';
-    console.log('Usando región:', region);
+    console.log('[S3] Usando región:', region);
     
-    // Construir URL del bucket usando el formato path-style (más compatible)
+    // Si no hay bucket, probamos listando los buckets en su lugar
+    if (!credentials.bucket) {
+      try {
+        console.log('[S3] No se especificó bucket, probando listar buckets');
+        const buckets = await listBuckets(credentials, config);
+        return {
+          success: true,
+          message: `Conexión exitosa. Se encontraron ${buckets.length} buckets.`,
+          details: {
+            bucketCount: buckets.length,
+            region,
+            buckets: buckets.slice(0, 5).map(b => b.name) // Solo mostramos los primeros 5 para no saturar
+          }
+        };
+      } catch (error) {
+        console.error('[S3] Error al listar buckets:', error);
+        return {
+          success: false,
+          message: `Error al listar buckets: ${error.message}`
+        };
+      }
+    }
+    
+    // Si hay bucket especificado, continuamos con la prueba de acceso al bucket
     const host = `s3.${region}.amazonaws.com`;
     const url = `https://${host}/${credentials.bucket}?max-keys=1`;
     
