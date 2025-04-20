@@ -8,9 +8,13 @@ export default async function handler(req, res) {
     // Obtener todos los proveedores
     if (method === 'GET') {
       const result = await pool.query(`
-        SELECT id, nombre, descripcion, tipo, estado, ultimo_chequeo, activo, creado_en 
-        FROM cloud_providers 
-        ORDER BY nombre ASC
+        SELECT cp.id, cp.nombre, cp.descripcion, cp.tipo, cp.estado, 
+               cp.ultimo_chequeo, cp.activo, cp.creado_en, cp.secreto_id,
+               CASE WHEN cp.secreto_id IS NOT NULL THEN cs.nombre ELSE NULL END AS secreto_nombre,
+               CASE WHEN cp.secreto_id IS NOT NULL THEN TRUE ELSE FALSE END AS usando_secreto
+        FROM cloud_providers cp
+        LEFT JOIN cloud_secrets cs ON cp.secreto_id = cs.id
+        ORDER BY cp.nombre ASC
       `);
       
       return res.status(200).json(result.rows);

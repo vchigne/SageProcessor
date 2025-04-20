@@ -17,9 +17,9 @@ export default async function handler(req, res) {
   const providerId = parseInt(id);
   
   try {
-    // Obtener los datos del proveedor desde la base de datos
+    // Obtener los datos del proveedor desde la base de datos, ahora incluyendo secreto_id
     const result = await pool.query(`
-      SELECT id, nombre, tipo, credenciales, configuracion 
+      SELECT id, nombre, tipo, credenciales, configuracion, secreto_id
       FROM cloud_providers 
       WHERE id = $1
     `, [providerId]);
@@ -30,10 +30,32 @@ export default async function handler(req, res) {
     
     const provider = result.rows[0];
     
-    // Parsear credenciales
-    const credentials = typeof provider.credenciales === 'string' 
-      ? JSON.parse(provider.credenciales) 
-      : provider.credenciales;
+    // Si hay un secreto_id, obtener las credenciales del secreto
+    let credentials;
+    
+    if (provider.secreto_id) {
+      // Obtener credenciales desde el secreto
+      const secretResult = await pool.query(`
+        SELECT credenciales
+        FROM cloud_secrets
+        WHERE id = $1
+      `, [provider.secreto_id]);
+      
+      if (secretResult.rows.length === 0) {
+        return res.status(400).json({ error: 'El secreto asociado no existe' });
+      }
+      
+      credentials = typeof secretResult.rows[0].credenciales === 'string'
+        ? JSON.parse(secretResult.rows[0].credenciales)
+        : secretResult.rows[0].credenciales;
+        
+      console.log(`Usando credenciales del secreto #${provider.secreto_id} para proveedor ${providerId}`);
+    } else {
+      // Usar credenciales directas del proveedor
+      credentials = typeof provider.credenciales === 'string' 
+        ? JSON.parse(provider.credenciales) 
+        : provider.credenciales;
+    }
     
     // Cargar el adaptador para este tipo de proveedor
     const adapter = await getCloudAdapter(provider.tipo);

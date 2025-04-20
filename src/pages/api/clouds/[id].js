@@ -15,7 +15,11 @@ export default async function handler(req, res) {
     // Obtener un proveedor específico
     if (method === 'GET') {
       const result = await pool.query(`
-        SELECT * FROM cloud_providers WHERE id = $1
+        SELECT cp.*, 
+               CASE WHEN cp.secreto_id IS NOT NULL THEN cs.nombre ELSE NULL END AS secreto_nombre
+        FROM cloud_providers cp
+        LEFT JOIN cloud_secrets cs ON cp.secreto_id = cs.id
+        WHERE cp.id = $1
       `, [providerId]);
       
       if (result.rows.length === 0) {
@@ -26,8 +30,9 @@ export default async function handler(req, res) {
       const provider = result.rows[0];
       
       // Solo mostramos información parcial de las credenciales para mostrar en UI
+      // si estamos usando credenciales directas (no un secreto)
       let maskedCredentials = {};
-      if (provider.credenciales) {
+      if (provider.credenciales && !provider.secreto_id) {
         const creds = typeof provider.credenciales === 'string' 
           ? JSON.parse(provider.credenciales) 
           : provider.credenciales;
@@ -51,13 +56,15 @@ export default async function handler(req, res) {
       
       return res.status(200).json({
         ...provider,
-        credenciales: maskedCredentials
+        credenciales: provider.secreto_id ? null : maskedCredentials,
+        // Incluir información sobre si está usando un secreto
+        usando_secreto: provider.secreto_id ? true : false
       });
     }
     
     // Actualizar un proveedor
     else if (method === 'PUT') {
-      const { nombre, descripcion, tipo, credenciales, configuracion, activo } = req.body;
+      const { nombre, descripcion, tipo, credenciales, configuracion, secreto_id, activo } = req.body;
       
       // Validación básica
       if (!nombre || !tipo) {
@@ -65,62 +72,80 @@ export default async function handler(req, res) {
       }
       
       // Verificar si el proveedor existe
-      const checkResult = await pool.query('SELECT id FROM cloud_providers WHERE id = $1', [providerId]);
+      const checkResult = await pool.query('SELECT id, secreto_id FROM cloud_providers WHERE id = $1', [providerId]);
       if (checkResult.rows.length === 0) {
         return res.status(404).json({ error: 'Proveedor no encontrado' });
+      }
+      
+      const currentSecretoId = checkResult.rows[0].secreto_id;
+      
+      // Si estamos cambiando de credenciales directas a secreto, verificar que el secreto existe
+      if (secreto_id && secreto_id !== currentSecretoId) {
+        const secretoCheck = await pool.query(
+          'SELECT id FROM cloud_secrets WHERE id = $1',
+          [secreto_id]
+        );
+        
+        if (secretoCheck.rows.length === 0) {
+          return res.status(400).json({ error: 'El secreto seleccionado no existe' });
+        }
       }
       
       // Obtener credenciales existentes si no se proporcionan nuevas o algunas contienen asteriscos
       let updatedCredentials = credenciales;
       let updatedConfig = configuracion;
       
-      // Tenemos que manejar las credenciales con cuidado
-      if (credenciales && typeof credenciales === 'object') {
-        // Obtener las credenciales actuales
-        const currentResult = await pool.query('SELECT credenciales FROM cloud_providers WHERE id = $1', [providerId]);
-        const currentCredentials = typeof currentResult.rows[0].credenciales === 'string' 
-          ? JSON.parse(currentResult.rows[0].credenciales) 
-          : currentResult.rows[0].credenciales || {};
-        
-        // Crear un objeto nuevo combinando las actuales con las nuevas
-        const merged = { ...currentCredentials };
-        
-        // Para cada credencial proporcionada, actualizar solo si no contiene asteriscos
-        // (los campos que contienen asteriscos son los que se muestran enmascarados en la UI)
-        let containsSensitiveFields = false;
-        
-        Object.keys(credenciales).forEach(key => {
-          const value = credenciales[key];
+      // Solo procesar las credenciales si no estamos usando un secreto
+      // o si estamos cambiando de un modo a otro
+      if (!secreto_id || currentSecretoId) {
+        // Tenemos que manejar las credenciales con cuidado
+        if (credenciales && typeof credenciales === 'object') {
+          // Obtener las credenciales actuales
+          const currentResult = await pool.query('SELECT credenciales FROM cloud_providers WHERE id = $1', [providerId]);
+          const currentCredentials = typeof currentResult.rows[0].credenciales === 'string' 
+            ? JSON.parse(currentResult.rows[0].credenciales) 
+            : currentResult.rows[0].credenciales || {};
           
-          // Verificar si es un campo sensible enmascarado
-          const isSensitive = key.toLowerCase().includes('key') || 
-            key.toLowerCase().includes('secret') || 
-            key.toLowerCase().includes('password') || 
-            key.toLowerCase().includes('token');
+          // Crear un objeto nuevo combinando las actuales con las nuevas
+          const merged = { ...currentCredentials };
           
-          // Si el campo es sensible y contiene asteriscos, no actualizar
-          if (isSensitive && typeof value === 'string' && value.includes('*')) {
-            containsSensitiveFields = true;
-            console.log(`[UPDATE] Campo sensible enmascarado detectado: ${key}, manteniendo valor original`);
-          } else {
-            // Caso contrario, actualizar con el nuevo valor
-            merged[key] = value;
+          // Para cada credencial proporcionada, actualizar solo si no contiene asteriscos
+          // (los campos que contienen asteriscos son los que se muestran enmascarados en la UI)
+          let containsSensitiveFields = false;
+          
+          Object.keys(credenciales).forEach(key => {
+            const value = credenciales[key];
+            
+            // Verificar si es un campo sensible enmascarado
+            const isSensitive = key.toLowerCase().includes('key') || 
+              key.toLowerCase().includes('secret') || 
+              key.toLowerCase().includes('password') || 
+              key.toLowerCase().includes('token');
+            
+            // Si el campo es sensible y contiene asteriscos, no actualizar
+            if (isSensitive && typeof value === 'string' && value.includes('*')) {
+              containsSensitiveFields = true;
+              console.log(`[UPDATE] Campo sensible enmascarado detectado: ${key}, manteniendo valor original`);
+            } else {
+              // Caso contrario, actualizar con el nuevo valor
+              merged[key] = value;
+            }
+          });
+          
+          if (containsSensitiveFields) {
+            console.log('[UPDATE] Algunos campos sensibles mantienen sus valores originales');
           }
-        });
-        
-        if (containsSensitiveFields) {
-          console.log('[UPDATE] Algunos campos sensibles mantienen sus valores originales');
+          
+          // Convertir a string para almacenar en la BD
+          updatedCredentials = JSON.stringify(merged);
+        } else if (!credenciales && !secreto_id) {
+          // Si no se proporcionan credenciales y no hay secreto, mantener las originales
+          const currentResult = await pool.query('SELECT credenciales FROM cloud_providers WHERE id = $1', [providerId]);
+          updatedCredentials = currentResult.rows[0].credenciales;
+        } else if (typeof credenciales !== 'string' && credenciales) {
+          // Si las credenciales son un objeto, convertir a string
+          updatedCredentials = JSON.stringify(credenciales);
         }
-        
-        // Convertir a string para almacenar en la BD
-        updatedCredentials = JSON.stringify(merged);
-      } else if (!credenciales) {
-        // Si no se proporcionan credenciales, mantener las originales
-        const currentResult = await pool.query('SELECT credenciales FROM cloud_providers WHERE id = $1', [providerId]);
-        updatedCredentials = currentResult.rows[0].credenciales;
-      } else if (typeof credenciales !== 'string') {
-        // Si las credenciales son un objeto, convertir a string
-        updatedCredentials = JSON.stringify(credenciales);
       }
       
       if (!configuracion) {
@@ -130,27 +155,57 @@ export default async function handler(req, res) {
         updatedConfig = JSON.stringify(configuracion);
       }
       
-      // Actualizar el proveedor
-      const result = await pool.query(`
-        UPDATE cloud_providers 
-        SET nombre = $1, 
-            descripcion = $2, 
-            tipo = $3, 
-            credenciales = $4, 
-            configuracion = $5, 
-            activo = $6,
-            modificado_en = NOW()
-        WHERE id = $7
-        RETURNING id, nombre, descripcion, tipo, estado, activo, creado_en, modificado_en
-      `, [
-        nombre, 
-        descripcion || '', 
-        tipo, 
-        updatedCredentials, 
-        updatedConfig, 
-        activo !== undefined ? activo : true, 
-        providerId
-      ]);
+      // SQL dinámico dependiendo de si estamos usando un secreto o no
+      let sql, params;
+      
+      if (secreto_id) {
+        sql = `
+          UPDATE cloud_providers 
+          SET nombre = $1, 
+              descripcion = $2, 
+              tipo = $3, 
+              configuracion = $4, 
+              secreto_id = $5,
+              activo = $6,
+              modificado_en = NOW()
+          WHERE id = $7
+          RETURNING id, nombre, descripcion, tipo, estado, activo, creado_en, modificado_en, secreto_id
+        `;
+        params = [
+          nombre, 
+          descripcion || '', 
+          tipo, 
+          updatedConfig, 
+          secreto_id,
+          activo !== undefined ? activo : true, 
+          providerId
+        ];
+      } else {
+        sql = `
+          UPDATE cloud_providers 
+          SET nombre = $1, 
+              descripcion = $2, 
+              tipo = $3, 
+              credenciales = $4, 
+              configuracion = $5, 
+              secreto_id = NULL,
+              activo = $6,
+              modificado_en = NOW()
+          WHERE id = $7
+          RETURNING id, nombre, descripcion, tipo, estado, activo, creado_en, modificado_en
+        `;
+        params = [
+          nombre, 
+          descripcion || '', 
+          tipo, 
+          updatedCredentials, 
+          updatedConfig, 
+          activo !== undefined ? activo : true, 
+          providerId
+        ];
+      }
+      
+      const result = await pool.query(sql, params);
       
       return res.status(200).json(result.rows[0]);
     }
