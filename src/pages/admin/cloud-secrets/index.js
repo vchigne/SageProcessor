@@ -1,745 +1,660 @@
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/router';
 import Head from 'next/head';
-import { 
-  ChevronLeftIcon, 
-  KeyIcon, 
-  CloudIcon, 
-  PlusIcon, 
-  TrashIcon,
-  CheckCircleIcon,
-  ExclamationCircleIcon,
-  BeakerIcon
-} from '@heroicons/react/24/outline';
-import Link from 'next/link';
 import { toast } from 'react-toastify';
 import { 
-  Card, 
-  Title, 
-  Text, 
-  Button, 
-  TextInput, 
-  Select, 
-  SelectItem, 
-  Grid, 
-  Col, 
-  Flex,
-  Badge,
-  Divider
-} from '@tremor/react';
+  KeyIcon, 
+  PlusCircleIcon, 
+  TrashIcon, 
+  PencilIcon, 
+  CheckCircleIcon, 
+  XCircleIcon,
+  ExclamationCircleIcon,
+  ArrowPathIcon,
+  CloudIcon
+} from '@heroicons/react/24/outline';
+import { Metric, Text, Title, Subtitle, Badge, Button, Card, Table } from '@tremor/react';
+
+// Estado inicial para un nuevo secreto
+const initialSecretState = {
+  nombre: '',
+  descripcion: '',
+  tipo: 'minio',
+  secretos: {},
+  activo: true
+};
+
+// Tipos de proveedores soportados
+const providerTypes = [
+  { value: 's3', label: 'Amazon S3' },
+  { value: 'azure', label: 'Azure Blob Storage' },
+  { value: 'gcp', label: 'Google Cloud Storage' },
+  { value: 'sftp', label: 'SFTP' },
+  { value: 'minio', label: 'MinIO' }
+];
+
+// Esquemas de credenciales para cada tipo de proveedor
+const credentialSchemas = {
+  's3': [
+    { name: 'access_key', label: 'Access Key ID', type: 'text', required: true },
+    { name: 'secret_key', label: 'Secret Access Key', type: 'password', required: true },
+    { name: 'region', label: 'Región', type: 'text', required: false, default: 'us-east-1' }
+  ],
+  'azure': [
+    { name: 'connection_string', label: 'Connection String', type: 'password', required: true }
+  ],
+  'gcp': [
+    { name: 'key_file', label: 'Archivo de Clave JSON', type: 'textarea', required: true }
+  ],
+  'sftp': [
+    { name: 'host', label: 'Hostname', type: 'text', required: true },
+    { name: 'port', label: 'Puerto', type: 'number', required: false, default: '22' },
+    { name: 'user', label: 'Usuario', type: 'text', required: true },
+    { name: 'password', label: 'Contraseña', type: 'password', required: false },
+    { name: 'key_path', label: 'Ruta a Clave SSH', type: 'text', required: false }
+  ],
+  'minio': [
+    { name: 'endpoint', label: 'Endpoint', type: 'text', required: true },
+    { name: 'access_key', label: 'Access Key', type: 'text', required: true },
+    { name: 'secret_key', label: 'Secret Key', type: 'password', required: true },
+    { name: 'secure', label: 'Usar SSL', type: 'checkbox', required: false, default: true }
+  ]
+};
 
 export default function CloudSecrets() {
+  const router = useRouter();
   const [secrets, setSecrets] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [formData, setFormData] = useState({
-    nombre: '',
-    tipo: 'minio',
-    secretos: {
-      access_key: '',
-      secret_key: '',
-      endpoint: '',
-      bucket: '',
-      region: ''
-    }
-  });
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [testingConnection, setTestingConnection] = useState(false);
-  const [connectionResult, setConnectionResult] = useState(null);
-  const [deletingId, setDeletingId] = useState(null);
-  const [editing, setEditing] = useState(false);
-  const [editingId, setEditingId] = useState(null);
-
-  // Para gestionar buckets
-  const [selectedSecret, setSelectedSecret] = useState(null);
-  const [buckets, setBuckets] = useState([]);
+  const [showForm, setShowForm] = useState(false);
+  const [currentSecret, setCurrentSecret] = useState(initialSecretState);
+  const [isEditing, setIsEditing] = useState(false);
+  const [testingId, setTestingId] = useState(null);
+  const [showBucketDialog, setShowBucketDialog] = useState(false);
+  const [currentSecretId, setCurrentSecretId] = useState(null);
+  const [bucketName, setBucketName] = useState('');
   const [loadingBuckets, setLoadingBuckets] = useState(false);
-  const [bucketFormData, setBucketFormData] = useState({
-    name: '',
-    region: 'us-east-1',
-    access: 'private'
-  });
-  const [creatingBucket, setCreatingBucket] = useState(false);
+  const [buckets, setBuckets] = useState([]);
 
-  // Cargar secretos al montar el componente
+  // Cargar secretos
   useEffect(() => {
     fetchSecrets();
   }, []);
 
-  // Función para obtener los secretos
+  // Obtener todos los secretos
   const fetchSecrets = async () => {
-    setLoading(true);
     try {
+      setLoading(true);
       const response = await fetch('/api/cloud-secrets');
+      if (!response.ok) throw new Error('Error al cargar secretos de nube');
       const data = await response.json();
       
-      if (data.success) {
-        setSecrets(data.secrets || []);
-      } else {
-        toast.error(data.error || 'Error al cargar los secretos');
-      }
+      setSecrets(data);
     } catch (error) {
-      console.error('Error fetching secrets:', error);
-      toast.error('Error de conexión al obtener los secretos');
+      console.error('Error:', error);
+      toast.error('Error al cargar secretos de nube: ' + error.message);
     } finally {
       setLoading(false);
     }
   };
 
-  // Función para cambiar entre formulario y lista
-  const toggleCreateForm = () => {
-    setShowCreateForm(!showCreateForm);
-    setEditing(false);
-    setEditingId(null);
-    setConnectionResult(null);
-    
-    // Resetear formulario
-    setFormData({
-      nombre: '',
-      tipo: 'minio',
-      secretos: {
-        access_key: '',
-        secret_key: '',
-        endpoint: '',
-        bucket: '',
-        region: ''
-      }
-    });
-  };
-
-  // Manejar cambios en formulario
+  // Manejar cambios en los campos del formulario
   const handleInputChange = (e) => {
-    const { name, value } = e.target;
+    const { name, value, type, checked } = e.target;
     
     if (name.includes('.')) {
-      const [parent, child] = name.split('.');
-      setFormData({
-        ...formData,
-        [parent]: {
-          ...formData[parent],
-          [child]: value
+      // Manejar propiedades anidadas (secretos.property)
+      const [obj, prop] = name.split('.');
+      setCurrentSecret(prev => ({
+        ...prev,
+        [obj]: {
+          ...prev[obj],
+          [prop]: type === 'checkbox' ? checked : value
         }
-      });
+      }));
     } else {
-      setFormData({
-        ...formData,
-        [name]: value
-      });
+      // Manejar propiedades directas
+      setCurrentSecret(prev => ({
+        ...prev,
+        [name]: type === 'checkbox' ? checked : value
+      }));
     }
   };
 
-  // Función para manejar la creación de un secreto
-  const handleCreateSecret = async (e) => {
-    e.preventDefault();
+  // Manejar cambio de tipo de proveedor
+  const handleProviderTypeChange = (e) => {
+    const tipo = e.target.value;
     
-    try {
-      const response = await fetch('/api/cloud-secrets', {
-        method: editing ? 'PUT' : 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(editing ? { ...formData, id: editingId } : formData)
-      });
-      
-      const data = await response.json();
-      
-      if (data.success) {
-        toast.success(editing ? 'Secreto actualizado correctamente' : 'Secreto creado correctamente');
-        toggleCreateForm();
-        fetchSecrets();
-      } else {
-        toast.error(data.error || 'Error al guardar el secreto');
+    // Inicializar campos de credenciales específicos para este tipo
+    const secretosIniciales = {};
+    
+    credentialSchemas[tipo].forEach(field => {
+      if (field.default !== undefined) {
+        secretosIniciales[field.name] = field.default;
       }
-    } catch (error) {
-      console.error('Error saving secret:', error);
-      toast.error('Error de conexión al guardar el secreto');
-    }
+    });
+    
+    setCurrentSecret(prev => ({
+      ...prev,
+      tipo,
+      secretos: secretosIniciales
+    }));
   };
 
-  // Función para probar la conexión
-  const testConnection = async () => {
-    setTestingConnection(true);
-    setConnectionResult(null);
-    
-    try {
-      let url = '/api/cloud-secrets/test';
-      let method = 'POST';
-      let payload = formData;
-      
-      // Si estamos editando, usamos el endpoint específico
-      if (editing && editingId) {
-        url = `/api/cloud-secrets/${editingId}/test`;
-        method = 'POST';
-        payload = { ...formData.secretos };
+  // Función para validar el formulario
+  const validateForm = () => {
+    if (!currentSecret.nombre.trim()) {
+      toast.error('El nombre del secreto es obligatorio');
+      return false;
+    }
+
+    if (!currentSecret.tipo) {
+      toast.error('El tipo de proveedor es obligatorio');
+      return false;
+    }
+
+    // Validar credenciales obligatorias
+    const requiredCredentials = credentialSchemas[currentSecret.tipo]
+      .filter(cred => cred.required)
+      .map(cred => cred.name);
+
+    for (const credential of requiredCredentials) {
+      if (!currentSecret.secretos[credential]) {
+        toast.error(`La credencial ${credential} es obligatoria`);
+        return false;
       }
+    }
+
+    return true;
+  };
+
+  // Resetear formulario
+  const resetForm = () => {
+    setCurrentSecret(initialSecretState);
+    setIsEditing(false);
+    setShowForm(false);
+  };
+
+  // Guardar un secreto (crear o actualizar)
+  const saveSecret = async () => {
+    if (!validateForm()) return;
+
+    try {
+      const url = isEditing 
+        ? `/api/cloud-secrets/${currentSecret.id}` 
+        : '/api/cloud-secrets';
+      
+      const method = isEditing ? 'PUT' : 'POST';
       
       const response = await fetch(url, {
         method,
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(currentSecret)
       });
-      
-      const result = await response.json();
-      setConnectionResult(result);
-      
-      if (result.success) {
-        toast.success('Conexión exitosa');
-      } else {
-        toast.error(result.message || 'Error en la conexión');
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Error al guardar el secreto');
       }
+
+      toast.success(`Secreto ${isEditing ? 'actualizado' : 'creado'} correctamente`);
+      resetForm();
+      fetchSecrets();
     } catch (error) {
-      console.error('Error testing connection:', error);
-      toast.error('Error de red al probar la conexión');
-      setConnectionResult({
-        success: false,
-        message: 'Error de red al probar la conexión'
-      });
-    } finally {
-      setTestingConnection(false);
+      console.error('Error:', error);
+      toast.error(error.message);
     }
   };
 
-  // Función para eliminar un secreto
+  // Editar un secreto
+  const editSecret = (secret) => {
+    setCurrentSecret({
+      ...secret,
+      // Asegurarse de que los secretos sean un objeto
+      secretos: secret.secretos || {}
+    });
+    setIsEditing(true);
+    setShowForm(true);
+  };
+
+  // Eliminar un secreto
   const deleteSecret = async (id) => {
-    setDeletingId(id);
-    
+    if (!confirm('¿Estás seguro de que deseas eliminar este secreto?')) {
+      return;
+    }
+
     try {
       const response = await fetch(`/api/cloud-secrets/${id}`, {
         method: 'DELETE'
       });
-      
-      const data = await response.json();
-      
-      if (data.success) {
-        toast.success('Secreto eliminado correctamente');
-        fetchSecrets();
-      } else {
-        toast.error(data.error || 'Error al eliminar el secreto');
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Error al eliminar el secreto');
       }
+
+      toast.success('Secreto eliminado correctamente');
+      fetchSecrets();
     } catch (error) {
-      console.error('Error deleting secret:', error);
-      toast.error('Error de conexión al eliminar el secreto');
-    } finally {
-      setDeletingId(null);
+      console.error('Error:', error);
+      toast.error(error.message);
     }
   };
 
-  // Función para editar un secreto
-  const editSecret = (secret) => {
-    // Parsear los secretos si vienen como string
-    const parsedSecrets = typeof secret.secretos === 'string'
-      ? JSON.parse(secret.secretos)
-      : secret.secretos;
-    
-    setFormData({
-      nombre: secret.nombre,
-      tipo: secret.tipo,
-      secretos: {
-        access_key: parsedSecrets.access_key || '',
-        secret_key: parsedSecrets.secret_key || '',
-        endpoint: parsedSecrets.endpoint || '',
-        bucket: parsedSecrets.bucket || '',
-        region: parsedSecrets.region || ''
+  // Probar un secreto
+  const testSecret = async (id) => {
+    try {
+      setTestingId(id);
+      
+      const response = await fetch(`/api/cloud-secrets/${id}/test`, {
+        method: 'POST'
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        toast.success('Conexión exitosa');
+      } else {
+        toast.error(`Error de conexión: ${result.message}`);
       }
-    });
-    
-    setShowCreateForm(true);
-    setEditing(true);
-    setEditingId(secret.id);
-    setConnectionResult(null);
+      
+      // Actualizar la lista para reflejar el nuevo estado
+      fetchSecrets();
+    } catch (error) {
+      console.error('Error:', error);
+      toast.error(`Error al probar la conexión: ${error.message}`);
+    } finally {
+      setTestingId(null);
+    }
   };
 
-  // Función para mostrar los buckets de un secreto
-  const showBuckets = async (secret) => {
-    setSelectedSecret(secret);
-    setLoadingBuckets(true);
-    setBuckets([]);
-    
+  // Mostrar diálogo para gestionar buckets
+  const showBucketsManager = async (secretId) => {
+    setCurrentSecretId(secretId);
+    setBucketName('');
+    setShowBucketDialog(true);
+    await fetchBuckets(secretId);
+  };
+
+  // Obtener buckets de un secreto
+  const fetchBuckets = async (secretId) => {
     try {
-      const response = await fetch(`/api/cloud-secrets/${secret.id}/buckets`);
-      const data = await response.json();
+      setLoadingBuckets(true);
+      const response = await fetch(`/api/cloud-secrets/${secretId}/buckets`);
       
-      if (data.success) {
-        setBuckets(data.buckets || []);
-      } else {
-        toast.error(data.error || 'Error al obtener los buckets');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Error al obtener buckets');
       }
+      
+      const data = await response.json();
+      setBuckets(data.buckets || []);
     } catch (error) {
-      console.error('Error fetching buckets:', error);
-      toast.error('Error de conexión al obtener los buckets');
+      console.error('Error al obtener buckets:', error);
+      toast.error(`Error al obtener buckets: ${error.message}`);
+      setBuckets([]);
     } finally {
       setLoadingBuckets(false);
     }
   };
 
-  // Función para crear un bucket
-  const createBucket = async (e) => {
-    e.preventDefault();
-    
-    if (!selectedSecret) {
-      toast.error('Debes seleccionar un secreto primero');
+  // Crear un nuevo bucket
+  const createBucket = async () => {
+    if (!bucketName.trim()) {
+      toast.error('El nombre del bucket es obligatorio');
       return;
     }
-    
-    setCreatingBucket(true);
-    
-    try {
-      const response = await fetch(`/api/cloud-secrets/${selectedSecret.id}/buckets`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(bucketFormData)
-      });
-      
-      const data = await response.json();
-      
-      if (data.success) {
-        toast.success(`Bucket ${bucketFormData.name} creado correctamente`);
-        setBucketFormData({
-          name: '',
-          region: 'us-east-1',
-          access: 'private'
-        });
-        // Recargar los buckets
-        showBuckets(selectedSecret);
-      } else {
-        toast.error(data.error || 'Error al crear el bucket');
-      }
-    } catch (error) {
-      console.error('Error creating bucket:', error);
-      toast.error('Error de conexión al crear el bucket');
-    } finally {
-      setCreatingBucket(false);
-    }
-  };
 
-  // Función para manejar cambios en el formulario de bucket
-  const handleBucketInputChange = (e) => {
-    const { name, value } = e.target;
-    setBucketFormData({
-      ...bucketFormData,
-      [name]: value
-    });
+    try {
+      const response = await fetch(`/api/cloud-secrets/${currentSecretId}/buckets`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bucketName })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Error al crear bucket');
+      }
+
+      toast.success(`Bucket ${bucketName} creado correctamente`);
+      setBucketName('');
+      await fetchBuckets(currentSecretId);
+    } catch (error) {
+      console.error('Error al crear bucket:', error);
+      toast.error(`Error al crear bucket: ${error.message}`);
+    }
   };
 
   return (
     <>
       <Head>
-        <title>Secretos de Nube | SAGE</title>
+        <title>SAGE Cloud - Gestión de Secretos</title>
       </Head>
       
-      <div className="container mx-auto px-4 py-8">
-        <div className="mb-6">
-          <Link href="/admin/clouds" className="inline-flex items-center text-blue-600 hover:text-blue-800">
-            <ChevronLeftIcon className="h-5 w-5 mr-1" />
-            Volver a Administración de Nubes
-          </Link>
+      <div className="p-6">
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <Title>Gestión de Secretos de Nube</Title>
+            <Text>Administra las credenciales para conexiones a proveedores de almacenamiento en la nube</Text>
+          </div>
+          <div className="flex space-x-3">
+            <Button 
+              icon={CloudIcon} 
+              onClick={() => router.push('/admin/clouds')}
+              color="cyan"
+            >
+              Gestionar Proveedores
+            </Button>
+            <Button 
+              icon={PlusCircleIcon} 
+              onClick={() => setShowForm(!showForm)}
+              color="indigo"
+            >
+              {showForm ? 'Cancelar' : 'Nuevo Secreto'}
+            </Button>
+          </div>
         </div>
         
-        <Title>Gestión de Secretos de Nube</Title>
-        <Text className="mb-4">Administra las credenciales para diferentes proveedores de nube</Text>
-        
-        {!showCreateForm && !selectedSecret ? (
-          <>
-            <div className="mb-6">
-              <Button
-                icon={PlusIcon}
-                onClick={toggleCreateForm}
-                className="mt-4"
-              >
-                Crear nuevo secreto
-              </Button>
+        {showForm && (
+          <Card className="mb-6">
+            <Subtitle className="mb-4">
+              {isEditing ? 'Editar Secreto' : 'Nuevo Secreto de Nube'}
+            </Subtitle>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Nombre del Secreto*
+                </label>
+                <input
+                  type="text"
+                  name="nombre"
+                  value={currentSecret.nombre}
+                  onChange={handleInputChange}
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                  placeholder="Nombre descriptivo"
+                  required
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Tipo de Proveedor*
+                </label>
+                <select
+                  name="tipo"
+                  value={currentSecret.tipo}
+                  onChange={handleProviderTypeChange}
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                  required
+                >
+                  {providerTypes.map((type) => (
+                    <option key={type.value} value={type.value}>
+                      {type.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Descripción
+                </label>
+                <textarea
+                  name="descripcion"
+                  value={currentSecret.descripcion || ''}
+                  onChange={handleInputChange}
+                  rows="2"
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                  placeholder="Descripción opcional"
+                />
+              </div>
             </div>
             
-            {loading ? (
-              <p>Cargando secretos...</p>
-            ) : (
-              <Grid numItemsMd={2} numItemsLg={3} className="gap-6 mt-6">
-                {secrets.length === 0 ? (
-                  <Col numColSpan={3}>
-                    <Card className="text-center p-6">
-                      <CloudIcon className="h-12 w-12 mx-auto text-gray-400" />
-                      <Text className="mt-2">No hay secretos configurados</Text>
-                      <Button
-                        onClick={toggleCreateForm}
-                        icon={PlusIcon}
-                        className="mt-4"
-                      >
-                        Crear el primer secreto
-                      </Button>
-                    </Card>
-                  </Col>
-                ) : (
-                  secrets.map(secret => {
-                    // Determinar el tipo de secreto para mostrar un icono adecuado
-                    let icon = CloudIcon;
-                    let tipoBadge = "gray";
-                    
-                    if (secret.tipo === 'minio') {
-                      tipoBadge = "orange";
-                    } else if (secret.tipo === 's3') {
-                      tipoBadge = "amber";
-                    } else if (secret.tipo === 'azure') {
-                      tipoBadge = "blue";
-                    } else if (secret.tipo === 'gcp') {
-                      tipoBadge = "indigo";
-                    } else if (secret.tipo === 'sftp') {
-                      tipoBadge = "green";
-                    }
-                    
-                    return (
-                      <Card key={secret.id} className="p-4 relative">
-                        <div className="absolute top-2 right-2">
-                          <Badge color={tipoBadge}>
-                            {secret.tipo.toUpperCase()}
-                          </Badge>
-                        </div>
-                        
-                        <div className="flex items-center mb-4">
-                          <KeyIcon className="h-8 w-8 text-gray-500 mr-3" />
-                          <div>
-                            <Title className="text-lg">{secret.nombre}</Title>
-                            <Text className="text-xs">{`ID: ${secret.id}`}</Text>
+            <div className="mb-6">
+              <Subtitle className="mb-3">Credenciales</Subtitle>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {credentialSchemas[currentSecret.tipo].map((field) => (
+                  <div key={field.name}>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      {field.label} {field.required && '*'}
+                    </label>
+                    {field.type === 'textarea' ? (
+                      <textarea
+                        name={`secretos.${field.name}`}
+                        value={currentSecret.secretos[field.name] || ''}
+                        onChange={handleInputChange}
+                        rows="4"
+                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                        required={field.required}
+                      />
+                    ) : field.type === 'checkbox' ? (
+                      <input
+                        type="checkbox"
+                        name={`secretos.${field.name}`}
+                        checked={!!currentSecret.secretos[field.name]}
+                        onChange={handleInputChange}
+                        className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                      />
+                    ) : (
+                      <input
+                        type={field.type}
+                        name={`secretos.${field.name}`}
+                        value={currentSecret.secretos[field.name] || ''}
+                        onChange={handleInputChange}
+                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                        required={field.required}
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+            
+            <div className="flex justify-end space-x-3">
+              <Button
+                color="gray"
+                onClick={resetForm}
+              >
+                Cancelar
+              </Button>
+              <Button
+                color="indigo"
+                onClick={saveSecret}
+              >
+                {isEditing ? 'Actualizar Secreto' : 'Crear Secreto'}
+              </Button>
+            </div>
+          </Card>
+        )}
+        
+        {loading ? (
+          <div className="flex justify-center items-center h-64">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500"></div>
+          </div>
+        ) : secrets.length === 0 ? (
+          <div className="text-center py-12 bg-white rounded-lg shadow">
+            <KeyIcon className="mx-auto h-16 w-16 text-gray-400" />
+            <h3 className="mt-2 text-lg font-medium text-gray-900">No hay secretos configurados</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              Comienza agregando un nuevo secreto para conectarte a servicios de almacenamiento en la nube.
+            </p>
+            <div className="mt-6">
+              <Button
+                icon={PlusCircleIcon}
+                onClick={() => setShowForm(true)}
+                color="indigo"
+              >
+                Nuevo Secreto
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <Card>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Nombre
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Tipo
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Estado
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Acciones
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {secrets.map((secret) => (
+                    <tr key={secret.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                          <div className="flex-shrink-0 h-10 w-10 flex items-center justify-center bg-blue-100 rounded-full">
+                            <KeyIcon className="h-6 w-6 text-blue-600" />
+                          </div>
+                          <div className="ml-4">
+                            <div className="text-sm font-medium text-gray-900">{secret.nombre}</div>
+                            <div className="text-sm text-gray-500">{secret.descripcion}</div>
                           </div>
                         </div>
-                        
-                        <Divider />
-                        
-                        <div className="mt-4 flex flex-wrap gap-2">
-                          <Button
-                            variant="secondary"
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                          {providerTypes.find(t => t.value === secret.tipo)?.label || secret.tipo}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <Badge color={secret.activo ? "green" : "red"}>
+                          {secret.activo ? "Activo" : "Inactivo"}
+                        </Badge>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <div className="flex justify-end space-x-3">
+                          {secret.tipo === 'minio' && (
+                            <Button 
+                              icon={CloudIcon}
+                              variant="light"
+                              color="blue"
+                              onClick={() => showBucketsManager(secret.id)}
+                              size="xs"
+                            >
+                              Buckets
+                            </Button>
+                          )}
+                          <Button 
+                            icon={CheckCircleIcon}
+                            variant="light"
+                            color="amber"
+                            onClick={() => testSecret(secret.id)}
                             size="xs"
+                            loading={testingId === secret.id}
+                          >
+                            Probar
+                          </Button>
+                          <Button 
+                            icon={PencilIcon}
+                            variant="light"
+                            color="indigo"
                             onClick={() => editSecret(secret)}
+                            size="xs"
                           >
                             Editar
                           </Button>
-                          
-                          <Button
-                            variant="secondary"
-                            size="xs"
-                            color="blue"
-                            onClick={() => showBuckets(secret)}
-                          >
-                            Ver Buckets
-                          </Button>
-                          
-                          <Button
-                            variant="secondary"
-                            size="xs"
-                            color="red"
+                          <Button 
                             icon={TrashIcon}
+                            variant="light"
+                            color="red"
                             onClick={() => deleteSecret(secret.id)}
-                            loading={deletingId === secret.id}
-                            disabled={deletingId === secret.id}
+                            size="xs"
                           >
                             Eliminar
                           </Button>
                         </div>
-                      </Card>
-                    );
-                  })
-                )}
-              </Grid>
-            )}
-          </>
-        ) : selectedSecret ? (
-          // Vista de administración de buckets
-          <Card className="mt-6">
-            <div className="mb-4">
-              <Button
-                variant="secondary"
-                size="xs"
-                icon={ChevronLeftIcon}
-                onClick={() => setSelectedSecret(null)}
-              >
-                Volver a Secretos
-              </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-            
-            <Title>Buckets para {selectedSecret.nombre}</Title>
-            <Text>Administra los buckets disponibles para este secreto</Text>
-            
-            <div className="mt-6">
-              <Card className="bg-gray-50">
-                <Title className="text-base">Crear Nuevo Bucket</Title>
-                
-                <form onSubmit={createBucket} className="mt-4">
-                  <Grid numItemsMd={3} className="gap-4">
-                    <TextInput
-                      name="name"
-                      placeholder="Nombre del bucket"
-                      value={bucketFormData.name}
-                      onChange={handleBucketInputChange}
-                      required
-                    />
-                    
-                    <Select
-                      name="region"
-                      value={bucketFormData.region}
-                      onChange={handleBucketInputChange}
-                    >
-                      <SelectItem value="us-east-1">US East (N. Virginia)</SelectItem>
-                      <SelectItem value="us-east-2">US East (Ohio)</SelectItem>
-                      <SelectItem value="us-west-1">US West (N. California)</SelectItem>
-                      <SelectItem value="us-west-2">US West (Oregon)</SelectItem>
-                      <SelectItem value="sa-east-1">South America (São Paulo)</SelectItem>
-                      <SelectItem value="eu-west-1">EU (Ireland)</SelectItem>
-                      <SelectItem value="eu-central-1">EU (Frankfurt)</SelectItem>
-                    </Select>
-                    
-                    <Select
-                      name="access"
-                      value={bucketFormData.access}
-                      onChange={handleBucketInputChange}
-                    >
-                      <SelectItem value="private">Privado</SelectItem>
-                      <SelectItem value="public-read">Público (lectura)</SelectItem>
-                      <SelectItem value="public-read-write">Público (lectura/escritura)</SelectItem>
-                    </Select>
-                  </Grid>
-                  
-                  <div className="mt-4">
-                    <Button
-                      type="submit"
-                      loading={creatingBucket}
-                      disabled={creatingBucket || !bucketFormData.name}
-                    >
-                      {creatingBucket ? 'Creando...' : 'Crear Bucket'}
-                    </Button>
-                  </div>
-                </form>
-              </Card>
-            </div>
-            
-            <div className="mt-6">
-              <Card>
-                <Title className="text-base">Buckets Existentes</Title>
-                
-                {loadingBuckets ? (
-                  <div className="py-4 text-center">
-                    <Text>Cargando buckets...</Text>
-                  </div>
-                ) : buckets.length === 0 ? (
-                  <div className="py-4 text-center">
-                    <Text>No hay buckets disponibles</Text>
-                  </div>
-                ) : (
-                  <div className="mt-4">
-                    <div className="overflow-x-auto">
-                      <table className="min-w-full divide-y divide-gray-200">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              Nombre
-                            </th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              Región
-                            </th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              Fecha de Creación
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                          {buckets.map((bucket, index) => (
-                            <tr key={index}>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="text-sm font-medium text-gray-900">
-                                  {bucket.name}
-                                </div>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="text-sm text-gray-500">
-                                  {bucket.region || 'No especificada'}
-                                </div>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="text-sm text-gray-500">
-                                  {bucket.creationDate 
-                                    ? new Date(bucket.creationDate).toLocaleDateString() 
-                                    : 'No disponible'}
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-              </Card>
-            </div>
-          </Card>
-        ) : (
-          // Formulario de creación/edición
-          <Card className="mt-6">
-            <div className="mb-4">
-              <Button
-                variant="secondary"
-                size="xs"
-                icon={ChevronLeftIcon}
-                onClick={toggleCreateForm}
-              >
-                Volver a la lista
-              </Button>
-            </div>
-            
-            <Title>{editing ? `Editar Secreto: ${formData.nombre}` : 'Crear Nuevo Secreto'}</Title>
-            
-            <form onSubmit={handleCreateSecret} className="mt-6">
-              <Grid numItemsMd={2} className="gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Nombre del Secreto
-                  </label>
-                  <TextInput
-                    name="nombre"
-                    placeholder="Nombre descriptivo"
-                    value={formData.nombre}
-                    onChange={handleInputChange}
-                    required
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Tipo de Proveedor
-                  </label>
-                  <Select
-                    name="tipo"
-                    value={formData.tipo}
-                    onChange={handleInputChange}
-                  >
-                    <SelectItem value="minio">MinIO</SelectItem>
-                    <SelectItem value="s3">Amazon S3</SelectItem>
-                    <SelectItem value="azure">Azure Blob Storage</SelectItem>
-                    <SelectItem value="gcp">Google Cloud Storage</SelectItem>
-                    <SelectItem value="sftp">SFTP</SelectItem>
-                  </Select>
-                </div>
-              </Grid>
-              
-              <div className="mt-6">
-                <Title className="text-base">Detalles de Credenciales</Title>
-                
-                <Grid numItemsMd={2} className="gap-6 mt-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Access Key
-                    </label>
-                    <TextInput
-                      name="secretos.access_key"
-                      placeholder="Access Key ID"
-                      value={formData.secretos.access_key}
-                      onChange={handleInputChange}
-                      required
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Secret Key
-                    </label>
-                    <TextInput
-                      name="secretos.secret_key"
-                      placeholder="Secret Access Key"
-                      value={formData.secretos.secret_key}
-                      onChange={handleInputChange}
-                      required
-                      type="password"
-                    />
-                  </div>
-                  
-                  {formData.tipo === 'minio' && (
-                    <>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Endpoint
-                        </label>
-                        <TextInput
-                          name="secretos.endpoint"
-                          placeholder="Por ejemplo: play.min.io:9000"
-                          value={formData.secretos.endpoint}
-                          onChange={handleInputChange}
-                          required
-                        />
-                      </div>
-                      
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Bucket predeterminado
-                        </label>
-                        <TextInput
-                          name="secretos.bucket"
-                          placeholder="Nombre del bucket (opcional)"
-                          value={formData.secretos.bucket}
-                          onChange={handleInputChange}
-                        />
-                      </div>
-                    </>
-                  )}
-                  
-                  {formData.tipo === 's3' && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Región
-                      </label>
-                      <Select
-                        name="secretos.region"
-                        value={formData.secretos.region}
-                        onChange={handleInputChange}
-                      >
-                        <SelectItem value="us-east-1">US East (N. Virginia)</SelectItem>
-                        <SelectItem value="us-east-2">US East (Ohio)</SelectItem>
-                        <SelectItem value="us-west-1">US West (N. California)</SelectItem>
-                        <SelectItem value="us-west-2">US West (Oregon)</SelectItem>
-                        <SelectItem value="sa-east-1">South America (São Paulo)</SelectItem>
-                        <SelectItem value="eu-west-1">EU (Ireland)</SelectItem>
-                        <SelectItem value="eu-central-1">EU (Frankfurt)</SelectItem>
-                      </Select>
-                    </div>
-                  )}
-                </Grid>
-              </div>
-              
-              {connectionResult && (
-                <div className={`mt-6 p-4 rounded-lg ${connectionResult.success ? 'bg-green-50' : 'bg-red-50'}`}>
-                  <Flex>
-                    {connectionResult.success ? (
-                      <CheckCircleIcon className="h-5 w-5 text-green-500 mr-2" />
-                    ) : (
-                      <ExclamationCircleIcon className="h-5 w-5 text-red-500 mr-2" />
-                    )}
-                    <Text className={connectionResult.success ? 'text-green-700' : 'text-red-700'}>
-                      {connectionResult.message}
-                    </Text>
-                  </Flex>
-                </div>
-              )}
-              
-              <div className="mt-6 flex gap-4">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  icon={BeakerIcon}
-                  onClick={testConnection}
-                  loading={testingConnection}
-                  disabled={testingConnection}
-                >
-                  Probar Conexión
-                </Button>
-                
-                <Button
-                  type="submit"
-                >
-                  {editing ? 'Actualizar Secreto' : 'Crear Secreto'}
-                </Button>
-              </div>
-            </form>
           </Card>
         )}
       </div>
+
+      {/* Modal para gestión de buckets */}
+      {showBucketDialog && (
+        <div className="fixed z-10 inset-0 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div className="fixed inset-0 transition-opacity" aria-hidden="true">
+              <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
+            </div>
+
+            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+              <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                <div className="sm:flex sm:items-start">
+                  <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
+                    <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
+                      Gestión de Buckets
+                    </h3>
+                    
+                    <div className="mt-2 mb-4">
+                      <div className="flex space-x-2">
+                        <input
+                          type="text"
+                          className="flex-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                          placeholder="Nombre del nuevo bucket"
+                          value={bucketName}
+                          onChange={(e) => setBucketName(e.target.value)}
+                        />
+                        <Button
+                          onClick={createBucket}
+                          color="indigo"
+                          size="sm"
+                        >
+                          Crear
+                        </Button>
+                      </div>
+                    </div>
+                    
+                    <div className="mt-4">
+                      <h4 className="text-md font-medium text-gray-700 mb-2">Buckets existentes</h4>
+                      {loadingBuckets ? (
+                        <div className="flex justify-center py-4">
+                          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-500"></div>
+                        </div>
+                      ) : buckets.length === 0 ? (
+                        <div className="text-sm text-gray-500 py-2">
+                          No hay buckets disponibles
+                        </div>
+                      ) : (
+                        <ul className="divide-y divide-gray-200">
+                          {buckets.map((bucket, index) => (
+                            <li key={index} className="py-2 flex justify-between items-center">
+                              <span className="text-sm font-medium text-gray-900">{bucket}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                <Button
+                  color="gray"
+                  onClick={() => setShowBucketDialog(false)}
+                >
+                  Cerrar
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

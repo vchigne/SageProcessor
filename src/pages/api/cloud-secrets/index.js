@@ -1,68 +1,99 @@
 /**
- * API para gestionar secretos de nubes
+ * API para gestionar secretos de nube
  * 
- * Este endpoint permite listar y crear secretos de nubes
- * que pueden ser utilizados para conectarse a proveedores de almacenamiento
+ * GET: Obtiene todos los secretos de nube
+ * POST: Crea un nuevo secreto de nube
  */
 
-import { Pool } from 'pg';
-
-// Obtener conexión a la base de datos desde las variables de entorno
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
+import { pool } from '../../../utils/db';
 
 export default async function handler(req, res) {
-  const { method } = req;
-  
   try {
-    // Obtener todos los secretos (GET)
-    if (method === 'GET') {
-      const result = await pool.query(`
-        SELECT id, nombre, descripcion, tipo, 
-               creado_en, modificado_en, activo
-        FROM cloud_secrets 
+    switch (req.method) {
+      case 'GET':
+        return await getCloudSecrets(req, res);
+      case 'POST':
+        return await createCloudSecret(req, res);
+      default:
+        return res.status(405).json({ error: 'Método no permitido' });
+    }
+  } catch (error) {
+    console.error('Error en API de secretos de nube:', error);
+    return res.status(500).json({ error: 'Error interno del servidor' });
+  }
+}
+
+/**
+ * Obtiene todos los secretos de nube
+ */
+async function getCloudSecrets(req, res) {
+  try {
+    const client = await pool.connect();
+    
+    try {
+      const result = await client.query(`
+        SELECT id, nombre, descripcion, tipo, activo, creado_en, actualizado_en
+        FROM cloud_secrets
         ORDER BY nombre ASC
       `);
       
       return res.status(200).json(result.rows);
-    }
-    
-    // Crear un nuevo secreto (POST)
-    else if (method === 'POST') {
-      const { nombre, descripcion, tipo, secretos, activo = true } = req.body;
-      
-      // Validación básica
-      if (!nombre || !tipo || !secretos) {
-        return res.status(400).json({ 
-          error: 'Datos incompletos. Se requiere nombre, tipo y secretos.' 
-        });
-      }
-      
-      // Convertir objeto de secretos a JSON para almacenamiento
-      const secretosJson = typeof secretos === 'string' 
-        ? secretos 
-        : JSON.stringify(secretos);
-      
-      const result = await pool.query(`
-        INSERT INTO cloud_secrets 
-        (nombre, descripcion, tipo, secretos, activo) 
-        VALUES ($1, $2, $3, $4, $5) 
-        RETURNING id, nombre, descripcion, tipo, activo, creado_en
-      `, [nombre, descripcion || '', tipo, secretosJson, activo]);
-      
-      return res.status(201).json(result.rows[0]);
-    }
-    
-    // Método no permitido
-    else {
-      return res.status(405).json({ error: 'Método no permitido' });
+    } finally {
+      client.release();
     }
   } catch (error) {
-    console.error('Error en API de cloud-secrets:', error);
-    return res.status(500).json({ 
-      error: 'Error interno del servidor', 
-      details: error.message 
-    });
+    console.error('Error al obtener secretos de nube:', error);
+    return res.status(500).json({ error: 'Error al obtener secretos de nube' });
+  }
+}
+
+/**
+ * Crea un nuevo secreto de nube
+ */
+async function createCloudSecret(req, res) {
+  const { nombre, descripcion, tipo, secretos, activo = true } = req.body;
+  
+  // Validaciones
+  if (!nombre) {
+    return res.status(400).json({ error: 'El nombre es obligatorio' });
+  }
+  
+  if (!tipo) {
+    return res.status(400).json({ error: 'El tipo de proveedor es obligatorio' });
+  }
+  
+  if (!secretos || Object.keys(secretos).length === 0) {
+    return res.status(400).json({ error: 'Las credenciales son obligatorias' });
+  }
+  
+  try {
+    const client = await pool.connect();
+    
+    try {
+      // Verificar si ya existe un secreto con el mismo nombre
+      const existingSecret = await client.query(
+        'SELECT id FROM cloud_secrets WHERE nombre = $1',
+        [nombre]
+      );
+      
+      if (existingSecret.rows.length > 0) {
+        return res.status(400).json({ error: 'Ya existe un secreto con ese nombre' });
+      }
+      
+      // Insertar el nuevo secreto
+      const result = await client.query(
+        `INSERT INTO cloud_secrets (nombre, descripcion, tipo, secretos, activo) 
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id, nombre, descripcion, tipo, activo, creado_en, actualizado_en`,
+        [nombre, descripcion || null, tipo, JSON.stringify(secretos), activo]
+      );
+      
+      return res.status(201).json(result.rows[0]);
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error('Error al crear secreto de nube:', error);
+    return res.status(500).json({ error: 'Error al crear secreto de nube' });
   }
 }

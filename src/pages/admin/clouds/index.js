@@ -16,7 +16,8 @@ import {
   DocumentTextIcon,
   FolderArrowDownIcon,
   ArrowUturnLeftIcon,
-  MagnifyingGlassIcon
+  MagnifyingGlassIcon,
+  KeyIcon
 } from '@heroicons/react/24/outline';
 import { Metric, Text, Title, Subtitle, Badge, Button, Card, Table } from '@tremor/react';
 
@@ -611,6 +612,13 @@ function CloudProviders() {
               color="cyan"
             >
               Migraciones
+            </Button>
+            <Button 
+              icon={KeyIcon} 
+              onClick={() => router.push('/admin/cloud-secrets')}
+              color="blue"
+            >
+              Gestión de Secretos
             </Button>
             <Button 
               icon={CheckCircleIcon} 
