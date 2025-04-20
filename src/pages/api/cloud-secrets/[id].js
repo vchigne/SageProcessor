@@ -77,22 +77,34 @@ async function updateCloudSecret(req, res, id) {
     return res.status(400).json({ error: 'El tipo de proveedor es obligatorio' });
   }
   
-  if (!secretos || Object.keys(secretos).length === 0) {
-    return res.status(400).json({ error: 'Las credenciales son obligatorias' });
-  }
+  // No validamos que secretos esté presente, lo manejaremos más adelante
   
   try {
     const client = await pool.connect();
     
     try {
-      // Verificar si el secreto existe
-      const existingSecret = await client.query(
-        'SELECT id FROM cloud_secrets WHERE id = $1',
+      // Obtener el secreto existente
+      const existingSecretResult = await client.query(
+        'SELECT id, secretos FROM cloud_secrets WHERE id = $1',
         [id]
       );
       
-      if (existingSecret.rows.length === 0) {
+      if (existingSecretResult.rows.length === 0) {
         return res.status(404).json({ error: 'Secreto no encontrado' });
+      }
+      
+      // Obtener las credenciales existentes
+      const existingSecret = existingSecretResult.rows[0];
+      let existingSecretData = {};
+      
+      try {
+        if (existingSecret.secretos) {
+          existingSecretData = typeof existingSecret.secretos === 'string' 
+            ? JSON.parse(existingSecret.secretos) 
+            : existingSecret.secretos;
+        }
+      } catch (e) {
+        console.error('Error al parsear secretos existentes:', e);
       }
       
       // Verificar si el nombre ya está en uso por otro secreto
@@ -105,13 +117,21 @@ async function updateCloudSecret(req, res, id) {
         return res.status(400).json({ error: 'Ya existe otro secreto con ese nombre' });
       }
       
+      // Combinar secretos existentes con los nuevos si se proporcionan
+      let secretosActualizados = existingSecretData;
+      
+      if (secretos && Object.keys(secretos).length > 0) {
+        // Solo actualizar los campos que se proporcionan, mantener el resto
+        secretosActualizados = { ...existingSecretData, ...secretos };
+      }
+      
       // Actualizar el secreto
       const result = await client.query(
         `UPDATE cloud_secrets 
          SET nombre = $1, descripcion = $2, tipo = $3, secretos = $4, activo = $5, modificado_en = NOW()
          WHERE id = $6
          RETURNING id, nombre, descripcion, tipo, activo, creado_en, modificado_en`,
-        [nombre, descripcion || null, tipo, JSON.stringify(secretos), activo, id]
+        [nombre, descripcion || null, tipo, JSON.stringify(secretosActualizados), activo, id]
       );
       
       return res.status(200).json(result.rows[0]);
