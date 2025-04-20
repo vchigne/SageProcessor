@@ -40,7 +40,7 @@ async function testCloudSecret(req, res, id) {
     try {
       // Obtener el secreto por ID
       const secretResult = await client.query(
-        `SELECT id, nombre, tipo, credenciales
+        `SELECT id, nombre, tipo, secretos
          FROM cloud_secrets
          WHERE id = $1`,
         [id]
@@ -57,9 +57,9 @@ async function testCloudSecret(req, res, id) {
       
       // Crear un proveedor temporal para probar la conexión
       // Parsear credenciales si es necesario
-      let credenciales = typeof secret.credenciales === 'string' 
-        ? JSON.parse(secret.credenciales) 
-        : secret.credenciales;
+      let credenciales = typeof secret.secretos === 'string' 
+        ? JSON.parse(secret.secretos) 
+        : secret.secretos;
       
       const tempProvider = {
         id: 0,
