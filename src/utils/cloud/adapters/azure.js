@@ -1023,48 +1023,89 @@ export async function listBuckets(credentials, config = {}) {
         console.log('[Azure] Usando connection string para extraer credenciales');
         const normalizedConnString = credentials.connection_string.trim();
         
-        // Extraer parámetros de la connection string
-        const connectionParts = normalizedConnString.split(';');
-        
-        for (const part of connectionParts) {
-          const normalizedPart = part.trim();
-          if (!normalizedPart) continue;
+        // Verifica si la cadena comienza con https:// (formato URL de SAS token completo)
+        if (normalizedConnString.toLowerCase().startsWith('https://')) {
+          console.log('[Azure] Detectado formato de conexión basado en URL');
           
-          const normalizedPartLower = normalizedPart.toLowerCase();
-          
-          if (normalizedPartLower.startsWith('accountname=')) {
-            const equalPos = normalizedPart.indexOf('=');
-            if (equalPos !== -1 && equalPos < normalizedPart.length - 1) {
-              accountName = normalizedPart.substring(equalPos + 1);
+          try {
+            // Extraer la URL base antes del primer punto y coma
+            let urlBase = normalizedConnString;
+            const firstSemiColon = normalizedConnString.indexOf(';');
+            if (firstSemiColon !== -1) {
+              urlBase = normalizedConnString.substring(0, firstSemiColon);
             }
-          } 
-          else if (normalizedPartLower.startsWith('accountkey=')) {
-            const equalPos = normalizedPart.indexOf('=');
-            if (equalPos !== -1 && equalPos < normalizedPart.length - 1) {
-              accountKey = normalizedPart.substring(equalPos + 1);
-            }
-          }
-          else if (normalizedPartLower.startsWith('sharedaccesssignature=')) {
-            const equalPos = normalizedPart.indexOf('=');
-            if (equalPos !== -1 && equalPos < normalizedPart.length - 1) {
-              sasToken = normalizedPart.substring(equalPos + 1);
-              useSasToken = true;
-            }
-          }
-          else if (normalizedPartLower.startsWith('blobendpoint=')) {
-            const equalPos = normalizedPart.indexOf('=');
-            if (equalPos !== -1 && equalPos < normalizedPart.length - 1) {
-              blobEndpoint = normalizedPart.substring(equalPos + 1);
+            
+            const url = new URL(urlBase);
+            const hostParts = url.hostname.split('.');
+            
+            if (hostParts.length >= 1) {
+              // El nombre de la cuenta es la primera parte del nombre del host
+              accountName = hostParts[0];
+              console.log(`[Azure] Nombre de cuenta extraído de URL: ${accountName}`);
               
-              // Intentar extraer el nombre de cuenta del BlobEndpoint
-              try {
-                const url = new URL(blobEndpoint);
-                const hostParts = url.hostname.split('.');
-                if (hostParts[0] && !accountName) {
-                  accountName = hostParts[0];
+              // Establecer blobEndpoint si no está establecido
+              if (!blobEndpoint) {
+                blobEndpoint = url.origin + '/';
+              }
+            }
+            
+            // Buscar el SAS token en toda la cadena de conexión
+            const sasMatch = normalizedConnString.match(/SharedAccessSignature=([^;]+)/i);
+            if (sasMatch && sasMatch[1]) {
+              sasToken = sasMatch[1];
+              useSasToken = true;
+              console.log('[Azure] SAS token extraído de la cadena de conexión');
+            }
+          } catch (err) {
+            console.warn('[Azure] Error al procesar URL en formato de conexión:', err);
+          }
+        } 
+        // Formato tradicional de connection string con pares clave=valor
+        else {
+          console.log('[Azure] Detectado formato de conexión tradicional');
+          // Extraer parámetros de la connection string
+          const connectionParts = normalizedConnString.split(';');
+          
+          for (const part of connectionParts) {
+            const normalizedPart = part.trim();
+            if (!normalizedPart) continue;
+            
+            const normalizedPartLower = normalizedPart.toLowerCase();
+            
+            if (normalizedPartLower.startsWith('accountname=')) {
+              const equalPos = normalizedPart.indexOf('=');
+              if (equalPos !== -1 && equalPos < normalizedPart.length - 1) {
+                accountName = normalizedPart.substring(equalPos + 1);
+              }
+            } 
+            else if (normalizedPartLower.startsWith('accountkey=')) {
+              const equalPos = normalizedPart.indexOf('=');
+              if (equalPos !== -1 && equalPos < normalizedPart.length - 1) {
+                accountKey = normalizedPart.substring(equalPos + 1);
+              }
+            }
+            else if (normalizedPartLower.startsWith('sharedaccesssignature=')) {
+              const equalPos = normalizedPart.indexOf('=');
+              if (equalPos !== -1 && equalPos < normalizedPart.length - 1) {
+                sasToken = normalizedPart.substring(equalPos + 1);
+                useSasToken = true;
+              }
+            }
+            else if (normalizedPartLower.startsWith('blobendpoint=')) {
+              const equalPos = normalizedPart.indexOf('=');
+              if (equalPos !== -1 && equalPos < normalizedPart.length - 1) {
+                blobEndpoint = normalizedPart.substring(equalPos + 1);
+                
+                // Intentar extraer el nombre de cuenta del BlobEndpoint
+                try {
+                  const url = new URL(blobEndpoint);
+                  const hostParts = url.hostname.split('.');
+                  if (hostParts[0] && !accountName) {
+                    accountName = hostParts[0];
+                  }
+                } catch (err) {
+                  console.warn('[Azure] No se pudo extraer el nombre de cuenta del BlobEndpoint:', err);
                 }
-              } catch (err) {
-                console.warn('[Azure] No se pudo extraer el nombre de cuenta del BlobEndpoint:', err);
               }
             }
           }
@@ -1256,47 +1297,89 @@ export async function createBucket(credentials, config = {}, bucketName) {
       // Extraer credenciales de la connection string
       try {
         const normalizedConnString = credentials.connection_string.trim();
-        const connectionParts = normalizedConnString.split(';');
         
-        for (const part of connectionParts) {
-          const normalizedPart = part.trim();
-          if (!normalizedPart) continue;
+        // Verifica si la cadena comienza con https:// (formato URL de SAS token completo)
+        if (normalizedConnString.toLowerCase().startsWith('https://')) {
+          console.log('[Azure] Detectado formato de conexión basado en URL para crear bucket');
           
-          const normalizedPartLower = normalizedPart.toLowerCase();
-          
-          if (normalizedPartLower.startsWith('accountname=')) {
-            const equalPos = normalizedPart.indexOf('=');
-            if (equalPos !== -1) {
-              accountName = normalizedPart.substring(equalPos + 1);
+          try {
+            // Extraer la URL base antes del primer punto y coma
+            let urlBase = normalizedConnString;
+            const firstSemiColon = normalizedConnString.indexOf(';');
+            if (firstSemiColon !== -1) {
+              urlBase = normalizedConnString.substring(0, firstSemiColon);
             }
-          } 
-          else if (normalizedPartLower.startsWith('accountkey=')) {
-            const equalPos = normalizedPart.indexOf('=');
-            if (equalPos !== -1) {
-              accountKey = normalizedPart.substring(equalPos + 1);
-            }
-          }
-          else if (normalizedPartLower.startsWith('sharedaccesssignature=')) {
-            const equalPos = normalizedPart.indexOf('=');
-            if (equalPos !== -1) {
-              sasToken = normalizedPart.substring(equalPos + 1);
-              useSasToken = true;
-            }
-          }
-          else if (normalizedPartLower.startsWith('blobendpoint=')) {
-            const equalPos = normalizedPart.indexOf('=');
-            if (equalPos !== -1) {
-              blobEndpoint = normalizedPart.substring(equalPos + 1);
+            
+            const url = new URL(urlBase);
+            const hostParts = url.hostname.split('.');
+            
+            if (hostParts.length >= 1) {
+              // El nombre de la cuenta es la primera parte del nombre del host
+              accountName = hostParts[0];
+              console.log(`[Azure] Nombre de cuenta extraído de URL para crear bucket: ${accountName}`);
               
-              // Extraer el nombre de cuenta del BlobEndpoint
-              try {
-                const url = new URL(blobEndpoint);
-                const hostParts = url.hostname.split('.');
-                if (hostParts[0] && !accountName) {
-                  accountName = hostParts[0];
+              // Establecer blobEndpoint si no está establecido
+              if (!blobEndpoint) {
+                blobEndpoint = url.origin + '/';
+              }
+            }
+            
+            // Buscar el SAS token en toda la cadena de conexión
+            const sasMatch = normalizedConnString.match(/SharedAccessSignature=([^;]+)/i);
+            if (sasMatch && sasMatch[1]) {
+              sasToken = sasMatch[1];
+              useSasToken = true;
+              console.log('[Azure] SAS token extraído de la cadena de conexión para crear bucket');
+            }
+          } catch (err) {
+            console.warn('[Azure] Error al procesar URL en formato de conexión para crear bucket:', err);
+          }
+        }
+        // Formato tradicional de connection string con pares clave=valor
+        else {
+          console.log('[Azure] Detectado formato de conexión tradicional para crear bucket');
+          const connectionParts = normalizedConnString.split(';');
+          
+          for (const part of connectionParts) {
+            const normalizedPart = part.trim();
+            if (!normalizedPart) continue;
+            
+            const normalizedPartLower = normalizedPart.toLowerCase();
+            
+            if (normalizedPartLower.startsWith('accountname=')) {
+              const equalPos = normalizedPart.indexOf('=');
+              if (equalPos !== -1) {
+                accountName = normalizedPart.substring(equalPos + 1);
+              }
+            } 
+            else if (normalizedPartLower.startsWith('accountkey=')) {
+              const equalPos = normalizedPart.indexOf('=');
+              if (equalPos !== -1) {
+                accountKey = normalizedPart.substring(equalPos + 1);
+              }
+            }
+            else if (normalizedPartLower.startsWith('sharedaccesssignature=')) {
+              const equalPos = normalizedPart.indexOf('=');
+              if (equalPos !== -1) {
+                sasToken = normalizedPart.substring(equalPos + 1);
+                useSasToken = true;
+              }
+            }
+            else if (normalizedPartLower.startsWith('blobendpoint=')) {
+              const equalPos = normalizedPart.indexOf('=');
+              if (equalPos !== -1) {
+                blobEndpoint = normalizedPart.substring(equalPos + 1);
+                
+                // Extraer el nombre de cuenta del BlobEndpoint
+                try {
+                  const url = new URL(blobEndpoint);
+                  const hostParts = url.hostname.split('.');
+                  if (hostParts[0] && !accountName) {
+                    accountName = hostParts[0];
+                  }
+                } catch (err) {
+                  console.warn('[Azure] No se pudo extraer el nombre de cuenta del BlobEndpoint');
                 }
-              } catch (err) {
-                console.warn('[Azure] No se pudo extraer el nombre de cuenta del BlobEndpoint');
               }
             }
           }
