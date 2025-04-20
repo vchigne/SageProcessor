@@ -42,7 +42,8 @@ const credentialSchemas = {
     { name: 'region', label: 'Región', type: 'text', required: false, default: 'us-east-1' }
   ],
   'azure': [
-    { name: 'connection_string', label: 'Connection String', type: 'password', required: true }
+    { name: 'connection_string', label: 'Connection String', type: 'password', required: true },
+    { name: 'container_name', label: 'Nombre del Container (opcional)', type: 'text', required: false }
   ],
   'gcp': [
     { name: 'key_file', label: 'Archivo de Clave JSON', type: 'textarea', required: true }
