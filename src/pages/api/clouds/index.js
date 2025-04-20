@@ -18,30 +18,56 @@ export default async function handler(req, res) {
     
     // Crear un nuevo proveedor
     else if (method === 'POST') {
-      const { nombre, descripcion, tipo, credenciales, configuracion, activo = true } = req.body;
+      const { nombre, descripcion, tipo, credenciales, configuracion, secreto_id, activo = true } = req.body;
       
-      // Validación básica
-      if (!nombre || !tipo || !credenciales || !configuracion) {
+      // Validación básica - ahora permitimos credenciales directas o secreto_id
+      if (!nombre || !tipo || (!credenciales && !secreto_id) || !configuracion) {
         return res.status(400).json({ 
-          error: 'Datos incompletos. Se requiere nombre, tipo, credenciales y configuración.' 
+          error: 'Datos incompletos. Se requiere nombre, tipo, (credenciales o secreto_id) y configuración.' 
         });
       }
       
       // Convertir objetos a JSON para almacenamiento
-      const credencialesJson = typeof credenciales === 'string' 
+      const credencialesJson = credenciales && typeof credenciales === 'string' 
         ? credenciales 
-        : JSON.stringify(credenciales);
+        : credenciales ? JSON.stringify(credenciales) : null;
         
       const configuracionJson = typeof configuracion === 'string' 
         ? configuracion 
         : JSON.stringify(configuracion);
       
-      const result = await pool.query(`
-        INSERT INTO cloud_providers 
-        (nombre, descripcion, tipo, credenciales, configuracion, activo) 
-        VALUES ($1, $2, $3, $4, $5, $6) 
-        RETURNING id, nombre, descripcion, tipo, estado, activo, creado_en
-      `, [nombre, descripcion || '', tipo, credencialesJson, configuracionJson, activo]);
+      // SQL dinámico dependiendo de si tenemos credenciales directas o un secreto_id
+      let sql, params;
+      
+      if (secreto_id) {
+        // Verificar que el secreto existe
+        const secretoCheck = await pool.query(
+          'SELECT id FROM cloud_secrets WHERE id = $1',
+          [secreto_id]
+        );
+        
+        if (secretoCheck.rows.length === 0) {
+          return res.status(400).json({ error: 'El secreto seleccionado no existe' });
+        }
+        
+        sql = `
+          INSERT INTO cloud_providers 
+          (nombre, descripcion, tipo, credenciales, configuracion, secreto_id, activo) 
+          VALUES ($1, $2, $3, $4, $5, $6, $7) 
+          RETURNING id, nombre, descripcion, tipo, estado, activo, creado_en, secreto_id
+        `;
+        params = [nombre, descripcion || '', tipo, credencialesJson, configuracionJson, secreto_id, activo];
+      } else {
+        sql = `
+          INSERT INTO cloud_providers 
+          (nombre, descripcion, tipo, credenciales, configuracion, activo) 
+          VALUES ($1, $2, $3, $4, $5, $6) 
+          RETURNING id, nombre, descripcion, tipo, estado, activo, creado_en
+        `;
+        params = [nombre, descripcion || '', tipo, credencialesJson, configuracionJson, activo];
+      }
+      
+      const result = await pool.query(sql, params);
       
       return res.status(201).json(result.rows[0]);
     }
