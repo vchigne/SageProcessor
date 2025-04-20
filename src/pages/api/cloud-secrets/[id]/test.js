@@ -1,8 +1,7 @@
 /**
- * API para probar la conexión usando un secreto de nube
+ * API para probar la conexión a un proveedor usando un secreto existente
  * 
- * Este endpoint permite verificar si un secreto puede conectarse correctamente
- * al proveedor de nube respectivo
+ * POST: Prueba la conexión con el secreto especificado por ID
  */
 
 import { Pool } from 'pg';
@@ -14,78 +13,98 @@ const pool = new Pool({
 });
 
 export default async function handler(req, res) {
-  // Solo permitimos POST para pruebas de conexión
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Método no permitido' });
   }
   
   const { id } = req.query;
   
-  if (!id || isNaN(parseInt(id))) {
-    return res.status(400).json({ error: 'ID de secreto inválido' });
+  // Validar que el ID es un número
+  const secretId = parseInt(id);
+  if (isNaN(secretId)) {
+    return res.status(400).json({ 
+      success: false,
+      message: 'ID de secreto inválido' 
+    });
   }
   
-  const secretId = parseInt(id);
-  
   try {
-    // Obtener los datos del secreto desde la base de datos
+    // Obtener el secreto de la base de datos
     const result = await pool.query(`
       SELECT id, nombre, tipo, secretos
-      FROM cloud_secrets 
-      WHERE id = $1
+      FROM cloud_secrets
+      WHERE id = $1 AND activo = true
     `, [secretId]);
     
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Secreto no encontrado' });
+      return res.status(404).json({ 
+        success: false,
+        message: 'Secreto no encontrado o inactivo' 
+      });
     }
     
     const secreto = result.rows[0];
     
-    // Parsear secretos
-    const credentials = typeof secreto.secretos === 'string' 
-      ? JSON.parse(secreto.secretos) 
+    // Parsear los secretos si es necesario
+    const credentials = typeof secreto.secretos === 'string'
+      ? JSON.parse(secreto.secretos)
       : secreto.secretos;
     
-    // Cargar el adaptador para este tipo de proveedor
+    // Fusionar las credenciales con los nuevos valores si se proporcionan
+    const mergedCredentials = {
+      ...credentials,
+      ...req.body
+    };
+    
+    // Cargar el adaptador adecuado para el proveedor
     const adapter = await getCloudAdapter(secreto.tipo);
     
-    if (!adapter || !adapter.testConnection) {
+    if (!adapter) {
       return res.status(400).json({ 
-        error: `El adaptador para ${secreto.tipo} no soporta la función de prueba de conexión` 
+        success: false,
+        message: `No se encontró adaptador para el tipo ${secreto.tipo}`
       });
     }
     
-    // Configuración básica para la prueba
+    // Verificar que el adaptador tenga la función testConnection
+    if (!adapter.testConnection) {
+      return res.status(400).json({ 
+        success: false,
+        message: `El adaptador para ${secreto.tipo} no soporta pruebas de conexión`
+      });
+    }
+    
+    // Configuración básica para la conexión
     const config = {};
     
-    // Si es MinIO, algunos valores podrían estar en credenciales en lugar de config
+    // Configuración específica para cada tipo de proveedor
     if (secreto.tipo === 'minio') {
-      console.log('Probando conexión MinIO con credenciales:', JSON.stringify(credentials, null, 2));
-      
-      // Si hay un endpoint en las credenciales, moverlo a config
-      if (credentials?.endpoint) {
-        config.endpoint = credentials.endpoint;
+      // Para MinIO necesitamos pasar el endpoint a la configuración
+      if (mergedCredentials.endpoint) {
+        config.endpoint = mergedCredentials.endpoint;
         
-        // Si el endpoint no tiene protocolo, agregarlo
-        if (config.endpoint && !config.endpoint.startsWith('http')) {
-          const useSSL = config.secure !== false;
-          const protocol = useSSL ? 'https://' : 'http://';
-          console.log(`Añadiendo protocolo ${protocol} al endpoint ${config.endpoint}`);
-          config.endpoint = protocol + config.endpoint;
+        // Si el endpoint no tiene protocolo, usar http por defecto
+        if (!config.endpoint.startsWith('http')) {
+          const useSSL = mergedCredentials.secure !== false;
+          config.endpoint = (useSSL ? 'https://' : 'http://') + config.endpoint;
         }
+      }
+    } else if (secreto.tipo === 's3') {
+      // Para S3 podemos necesitar la región
+      if (mergedCredentials.region) {
+        config.region = mergedCredentials.region;
       }
     }
     
-    // Probar la conexión usando el adaptador real
-    const testResult = await adapter.testConnection(credentials, config);
+    // Probar la conexión
+    const testResult = await adapter.testConnection(mergedCredentials, config);
     
     return res.status(200).json(testResult);
   } catch (error) {
-    console.error(`Error al probar secreto de nube ${id}:`, error);
+    console.error(`Error testing connection for secret ${id}:`, error);
     return res.status(500).json({ 
-      error: 'Error interno del servidor', 
-      details: error.message,
-      success: false
+      success: false,
+      message: `Error de servidor: ${error.message}`
     });
   }
 }
