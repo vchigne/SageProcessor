@@ -224,31 +224,78 @@ export async function testConnection(credentials, config = {}) {
     
     let isSasUrl = false;
     
-    // Verificar si la connection string es una URL directa con SAS token
-    if (credentials.connection_string && credentials.connection_string.startsWith('http')) {
-      try {
-        const url = new URL(credentials.connection_string);
+    // Verificar si la connection string contiene una URL con BlobEndpoint
+    if (credentials.connection_string) {
+      // Primero revisamos si es una URL simple con SAS token
+      if (credentials.connection_string.startsWith('http') && !credentials.connection_string.includes(';')) {
+        try {
+          const url = new URL(credentials.connection_string);
+          
+          // Extraer nombre de cuenta del hostname
+          const hostParts = url.hostname.split('.');
+          if (hostParts[0]) {
+            accountName = hostParts[0];
+            console.log('[Azure] Nombre de cuenta extraído de URL directa:', accountName);
+          }
+          
+          // Extraer SAS token del query string
+          if (url.search && url.search.length > 1) {
+            sasToken = url.search.substring(1); // Quitar el ? inicial
+            console.log('[Azure] SAS token extraído de URL directa (longitud):', sasToken.length);
+            useSasToken = true;
+            isSasUrl = true;
+          }
+          
+          // Configurar el BlobEndpoint
+          blobEndpoint = `${url.protocol}//${url.host}`;
+          console.log('[Azure] BlobEndpoint extraído de URL directa:', blobEndpoint);
+        } catch (error) {
+          console.warn('[Azure] La connection string parece ser una URL pero no se pudo parsear:', error);
+        }
+      } 
+      // Formato mixto: URL;QueueEndpoint=...;SharedAccessSignature=... 
+      else if (credentials.connection_string.startsWith('http') && credentials.connection_string.includes(';')) {
+        console.log('[Azure] Detectado formato mixto con URL + elementos separados por punto y coma');
         
-        // Extraer nombre de cuenta del hostname
-        const hostParts = url.hostname.split('.');
-        if (hostParts[0]) {
-          accountName = hostParts[0];
-          console.log('[Azure] Nombre de cuenta extraído de URL directa:', accountName);
+        const parts = credentials.connection_string.split(';');
+        
+        // La primera parte debería ser la URL del blob endpoint
+        if (parts[0] && parts[0].startsWith('http')) {
+          try {
+            const url = new URL(parts[0]);
+            blobEndpoint = parts[0];
+            console.log('[Azure] BlobEndpoint extraído del primer elemento:', blobEndpoint);
+            
+            // Extraer nombre de cuenta del hostname
+            const hostParts = url.hostname.split('.');
+            if (hostParts[0]) {
+              accountName = hostParts[0];
+              console.log('[Azure] Nombre de cuenta extraído del BlobEndpoint:', accountName);
+            }
+          } catch (error) {
+            console.warn('[Azure] No se pudo parsear el BlobEndpoint como URL:', error);
+          }
         }
         
-        // Extraer SAS token del query string
-        if (url.search && url.search.length > 1) {
-          sasToken = url.search.substring(1); // Quitar el ? inicial
-          console.log('[Azure] SAS token extraído de URL directa (longitud):', sasToken.length);
-          useSasToken = true;
-          isSasUrl = true;
+        // Buscar el SharedAccessSignature en las otras partes
+        for (const part of parts) {
+          const trimmedPart = part.trim();
+          if (trimmedPart.toLowerCase().startsWith('sharedaccesssignature=')) {
+            const equalPos = trimmedPart.indexOf('=');
+            if (equalPos !== -1 && equalPos < trimmedPart.length - 1) {
+              sasToken = trimmedPart.substring(equalPos + 1);
+              console.log('[Azure] SAS Token encontrado (longitud):', sasToken ? sasToken.length : 0);
+              useSasToken = true;
+              
+              // Si se encontró tanto blobEndpoint como sasToken, podemos usar SAS
+              if (blobEndpoint) {
+                console.log('[Azure] Usando BlobEndpoint y SAS Token del formato mixto');
+                // No necesitamos AccountKey para SAS
+                break;
+              }
+            }
+          }
         }
-        
-        // Configurar el BlobEndpoint
-        blobEndpoint = `${url.protocol}//${url.host}`;
-        console.log('[Azure] BlobEndpoint extraído de URL directa:', blobEndpoint);
-      } catch (error) {
-        console.warn('[Azure] La connection string parece ser una URL pero no se pudo parsear:', error);
       }
     }
     
