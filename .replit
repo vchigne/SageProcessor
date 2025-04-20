@@ -8,77 +8,6 @@ packages = ["cacert", "glibcLocales", "libyaml"]
 runButton = "Run"
 
 [[workflows.workflow]]
-name = "UI Dev Server"
-author = 39710120
-mode = "sequential"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "npm run dev"
-
-[[workflows.workflow]]
-name = "Project"
-mode = "parallel"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "SAGE Daemon 2"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Janitor Daemon"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Janitor Manual Run"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Web Server Proxy"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Next.js Development Server with Turbopack"
-
-[[workflows.workflow]]
-name = "SAGE Daemon 2"
-author = "agent"
-
-[workflows.workflow.metadata]
-agentRequireRestartOnSave = false
-
-[[workflows.workflow.tasks]]
-task = "packager.installForAll"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "python run_sage_daemon2.py"
-
-[[workflows.workflow]]
-name = "Cleanup Temporales"
-author = 39710120
-mode = "sequential"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "python scripts/procesamiento/cleanup_executions.py"
-
-[[workflows.workflow]]
-name = "Janitor Daemon"
-author = "agent"
-
-[workflows.workflow.metadata]
-agentRequireRestartOnSave = false
-
-[[workflows.workflow.tasks]]
-task = "packager.installForAll"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd /home/runner/$REPL_SLUG && python janitor_daemon.py"
-
-[[workflows.workflow]]
 name = "Run"
 author = 39710120
 mode = "sequential"
@@ -86,49 +15,6 @@ mode = "sequential"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "npm run dev"
-
-[[workflows.workflow]]
-name = "Janitor Manual Run"
-author = "agent"
-
-[workflows.workflow.metadata]
-agentRequireRestartOnSave = false
-
-[[workflows.workflow.tasks]]
-task = "packager.installForAll"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd /home/runner/workspace && python janitor_daemon.py"
-
-[[workflows.workflow]]
-name = "Web Server Proxy"
-author = "agent"
-
-[workflows.workflow.metadata]
-agentRequireRestartOnSave = false
-
-[[workflows.workflow.tasks]]
-task = "packager.installForAll"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd /home/runner/workspace && curl -s http://localhost:3000/admin/cloud-secrets/1/buckets | grep -A 20 \"Examinar bucket\""
-
-[[workflows.workflow]]
-name = "Next.js Development Server with Turbopack"
-author = "agent"
-
-[workflows.workflow.metadata]
-agentRequireRestartOnSave = false
-
-[[workflows.workflow.tasks]]
-task = "packager.installForAll"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd /home/runner/workspace && npx next dev -p 3000"
-waitForPort = 3000
 
 [deployment]
 run = ["sh", "-c", "npm run dev"]
