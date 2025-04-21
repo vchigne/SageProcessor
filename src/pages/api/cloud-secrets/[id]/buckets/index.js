@@ -191,13 +191,34 @@ async function listBuckets(req, res, id) {
 async function createBucket(req, res, id) {
   try {
     // Validar el cuerpo de la solicitud
-    const { bucketName } = req.body;
+    let { bucketName } = req.body;
     
-    if (!bucketName) {
-      return res.status(400).json({
-        success: false,
-        message: 'Nombre de bucket no proporcionado'
-      });
+    console.log(`[Buckets API] Credenciales preparadas para crear bucket:`, {
+      tipo: 'azure',
+      credenciales_type: typeof req.body.bucketName,
+      key_file_type: typeof bucketName,
+      bucket_name: bucketName
+    });
+    
+    // Asegurarse de que bucketName sea un string
+    if (typeof bucketName !== 'string') {
+      if (bucketName === undefined || bucketName === null) {
+        return res.status(400).json({
+          success: false,
+          message: 'Nombre de bucket no proporcionado'
+        });
+      }
+      
+      // Intentar convertir a string si no lo es
+      try {
+        bucketName = String(bucketName);
+        console.log(`[Buckets API] bucketName convertido a string:`, bucketName);
+      } catch (error) {
+        return res.status(400).json({
+          success: false,
+          message: `Nombre de bucket no es convertible a string: ${error.message}`
+        });
+      }
     }
     
     // Validar formato del nombre (letras minúsculas, números, puntos y guiones)
@@ -317,14 +338,17 @@ async function createBucket(req, res, id) {
         else if (secret.tipo === 'azure') {
           console.log(`[Buckets API] Llamando a createBucket para Azure con credenciales, bucketName, config`);
           
-          // Verificaciones adicionales para Azure
+          // Importante: Verificar que el nombre sea un string válido
           if (typeof bucketName !== 'string') {
-            console.error(`[Buckets API] Error: bucketName no es string, es: ${typeof bucketName}`, bucketName);
+            console.error(`[Buckets API] Error crítico: bucketName no es string, es: ${typeof bucketName}`, bucketName);
             return res.status(400).json({
               success: false,
               message: `Nombre de bucket inválido. Debe ser un string, se recibió: ${typeof bucketName}`
             });
           }
+          
+          // Log detallado del nombre recibido
+          console.log(`[Buckets API] Nombre de bucket recibido: "${bucketName}" (${typeof bucketName})`);
           
           // Verificar formato del nombre para Azure (letras minúsculas y números, sin puntos ni caracteres especiales)
           if (!/^[a-z0-9-]+$/.test(bucketName)) {
@@ -346,7 +370,20 @@ async function createBucket(req, res, id) {
           
           // Intentar crear el contenedor
           try {
-            result = await adapter.createBucket(tempProvider.credenciales, bucketName, options);
+            // Verificar estructura completa de credenciales para debugging
+            console.log(`[Buckets API] Verificando credenciales Azure:`, {
+              tiene_connection_string: !!tempProvider.credenciales.connection_string,
+              connection_string_length: tempProvider.credenciales.connection_string ? tempProvider.credenciales.connection_string.length : 0,
+              tiene_account_name: !!tempProvider.credenciales.account_name,
+              tiene_blob_endpoint: !!tempProvider.credenciales.blob_endpoint
+            });
+            
+            // Pasar el nombre de bucket como string explícito
+            result = await adapter.createBucket(
+              tempProvider.credenciales, 
+              bucketName.toString(), // Convertir explícitamente a string para asegurar
+              options
+            );
           } catch (error) {
             console.error('[Buckets API] Error al crear contenedor Azure:', error);
             return res.status(400).json({

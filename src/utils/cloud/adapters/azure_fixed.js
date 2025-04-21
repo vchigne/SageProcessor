@@ -1564,27 +1564,55 @@ export async function createBucket(credentials, config = {}, bucketName) {
       }
     }
     
-    // Si no tenemos sasToken pero podemos usar el connection string
-    if (!sasToken && credentials.connection_string) {
-      const connStr = credentials.connection_string.toLowerCase();
+    // Segundo intento: asegurarnos de tener un SAS token si tenemos connection_string
+    if ((!sasToken || sasToken.length === 0) && credentials.connection_string) {
+      const connStr = credentials.connection_string;
       
-      // Verificamos si es una conexión que sabemos que tiene permisos completos
-      if (connStr.includes('sp=rwdlacupiytfx') || connStr.includes('sp=racwdl') || 
-          connStr.includes('sv=2024') || connStr.includes('sv=2023') || 
-          connStr.includes('sv=2022') || connStr.includes('sv=2021')) {
-        
-        console.log('[Azure] Detectada connection string con posibles permisos completos');
-        
-        // Extraer el SAS token directamente de la URL
-        if (connStr.includes('?sv=')) {
-          const startIndex = connStr.indexOf('?sv=');
-          if (startIndex !== -1) {
-            sasToken = connStr.substring(startIndex + 1); // +1 para quitar el '?'
-            console.log('[Azure] Extraído SAS token directamente de la cadena:', 
-                       sasToken.length > 30 ? sasToken.substring(0, 30) + '...' : sasToken);
-            useSasToken = true;
-          }
+      console.log('[Azure] Realizando extracción forzada de SAS token del connection string');
+      
+      // Buscar cualquier occurencia de ?sv= que normalmente indica el inicio de un token SAS
+      if (connStr.includes('?sv=')) {
+        const startIndex = connStr.indexOf('?sv=');
+        if (startIndex !== -1) {
+          sasToken = connStr.substring(startIndex + 1); // +1 para quitar el '?'
+          console.log('[Azure] Extraído SAS token de ?sv=:', 
+                    sasToken.length > 30 ? sasToken.substring(0, 30) + '...' : sasToken);
+          useSasToken = true;
         }
+      }
+      // Si no encontramos ?sv=, buscamos sv= directamente
+      else if (connStr.includes('sv=')) {
+        const startIndex = connStr.indexOf('sv=');
+        if (startIndex !== -1) {
+          sasToken = 'sv=' + connStr.substring(startIndex + 3); // +3 para quitar 'sv='
+          console.log('[Azure] Extraído SAS token de sv=:', 
+                    sasToken.length > 30 ? sasToken.substring(0, 30) + '...' : sasToken);
+          useSasToken = true;
+        }
+      }
+      
+      // Si tenemos algún indicio de permisos específicos, generamos un token mínimo para los permisos
+      if (!sasToken && (
+          connStr.toLowerCase().includes('sp=rwdlacupiytfx') || 
+          connStr.toLowerCase().includes('sp=racwdl') || 
+          connStr.toLowerCase().includes('sp=c') ||
+          connStr.toLowerCase().includes('sp=a'))) {
+        
+        console.log('[Azure] Detectados permisos completos, usando token sintético');
+        sasToken = 'sv=2023-11-03&ss=b&srt=sco&sp=rwdlacupiyx&se=2030-01-01T00:00:00Z';
+        useSasToken = true;
+      }
+      
+      // Solución de último recurso - si tiene cualquier versión sv=20XX, usar token básico
+      if (!sasToken && (
+          connStr.toLowerCase().includes('sv=2024') || 
+          connStr.toLowerCase().includes('sv=2023') || 
+          connStr.toLowerCase().includes('sv=2022') || 
+          connStr.toLowerCase().includes('sv=2021'))) {
+        
+        console.log('[Azure] Detectado indicador de versión sv=20XX, usando token predeterminado');
+        sasToken = 'sv=2023-11-03&ss=b&srt=sco&sp=rwdlacupiyx&se=2030-01-01T00:00:00Z';
+        useSasToken = true;
       }
     }
     
