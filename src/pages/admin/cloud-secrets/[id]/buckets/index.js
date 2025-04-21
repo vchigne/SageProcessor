@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import Head from 'next/head';
-import { ArrowLeftIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, InformationCircleIcon, FolderIcon, FolderOpenIcon } from '@heroicons/react/24/outline';
 import { Card, Text, Title, Button, Flex } from '@tremor/react';
 import { toast } from 'react-toastify';
 
@@ -133,29 +133,39 @@ export default function CloudSecretBuckets() {
                 <Text>No se encontraron buckets disponibles.</Text>
               </Card>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
-                {buckets.map((bucket) => (
-                  <Card key={bucket.name} className="hover:shadow-md transition-shadow">
-                    <Flex alignItems="start" className="h-full">
-                      <div className="flex-grow">
-                        <Title className="text-lg">{bucket.name}</Title>
-                        {bucket.creationDate && (
-                          <Text className="text-sm text-gray-500">
-                            Creado: {formatDate(bucket.creationDate)}
-                          </Text>
-                        )}
-                        <div className="mt-4">
-                          <Link 
-                            href={`/admin/cloud-secrets/${id}/buckets/${bucket.name}`} 
-                            className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-                          >
-                            Explorar bucket →
-                          </Link>
-                        </div>
-                      </div>
-                    </Flex>
-                  </Card>
-                ))}
+              <div className="mt-4">
+                <Card>
+                  <div className="mb-2 flex justify-between items-center">
+                    <h4 className="text-sm font-medium text-gray-700">Buckets disponibles</h4>
+                    {/* Aquí se podría agregar un botón para crear un nuevo bucket si es necesario */}
+                  </div>
+                  <div className="border border-gray-200 rounded-md overflow-hidden">
+                    <ul className="divide-y divide-gray-200">
+                      {buckets.map((bucket) => (
+                        <li key={bucket.name} className="px-4 py-3 hover:bg-gray-50">
+                          <div className="flex justify-between items-center">
+                            <div className="flex items-center">
+                              <FolderIcon className="h-5 w-5 text-yellow-500 mr-2" />
+                              <span className="text-sm font-medium text-gray-900">{bucket.name}</span>
+                            </div>
+                            <Link 
+                              href={`/admin/cloud-secrets/${id}/buckets/${bucket.name}`}
+                              className="text-xs text-indigo-600 hover:text-indigo-800 font-medium flex items-center"
+                            >
+                              <FolderOpenIcon className="h-4 w-4 mr-1" />
+                              Explorar
+                            </Link>
+                          </div>
+                          {bucket.creationDate && (
+                            <div className="ml-7 text-xs text-gray-500">
+                              Creado: {formatDate(bucket.creationDate)}
+                            </div>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </Card>
               </div>
             )}
           </>
