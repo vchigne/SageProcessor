@@ -367,7 +367,30 @@ export async function listContents(credentials, config = {}, path = '', limit = 
           try {
             const url = new URL(normalizedConnString);
             blobEndpoint = `${url.protocol}//${url.hostname}`;
+            
+            // Para Azure, el SAS token podría estar en distintos formatos:
+            // 1. Como parte de la query string directamente (tradicional)
+            // 2. Como parte del path (más complejo) 
+            // 3. Como un formato mixto que combina ambos
+            
+            // Primero, intentamos obtener el SAS token de la query string
             sasToken = url.search.startsWith('?') ? url.search.substring(1) : url.search;
+            
+            // Si no hay sasToken en la query, buscamos en el path
+            if (!sasToken || sasToken.length === 0) {
+              // El SAS token suele comenzar con "?sv=" en alguna parte del path
+              const fullPath = url.pathname;
+              const svIndex = fullPath.indexOf('?sv=');
+              if (svIndex !== -1) {
+                sasToken = fullPath.substring(svIndex + 1); // +1 para omitir el "?"
+              }
+            }
+            
+            // Si aún no hay sasToken, buscamos el "?" en la connection string completa
+            if ((!sasToken || sasToken.length === 0) && normalizedConnString.includes('?sv=')) {
+              const svIndex = normalizedConnString.indexOf('?sv=');
+              sasToken = normalizedConnString.substring(svIndex + 1);
+            }
             
             // Extraer accountName del hostname (cuenta.blob.core.windows.net)
             const hostParts = url.hostname.split('.');
@@ -375,13 +398,16 @@ export async function listContents(credentials, config = {}, path = '', limit = 
               accountName = hostParts[0];
             }
             
+            // Si no tenemos SAS token pero tenemos una URL, forzamos a usarlo igual
+            // para permitir a la API explorar contenedores públicos
             useSasToken = true;
-            console.log(`[Azure] URL SAS extraído - BlobEndpoint: ${blobEndpoint}, AccountName: ${accountName}, SAS token presente: ${!!sasToken}`);
+            console.log(`[Azure] URL SAS extraído - BlobEndpoint: ${blobEndpoint}, AccountName: ${accountName}, SAS token presente: ${!!sasToken && sasToken.length > 0}`);
             
-            // Si la URL directa no tiene SAS token, ignoramos esta sección
-            if (!sasToken) {
-              console.log('[Azure] URL sin SAS token, buscando en connection string normal');
-              useSasToken = false;
+            // Caso especial: si es una URL sin SAS token, creamos uno vacío
+            // Esto permitirá acceder a contenedores públicos
+            if (!sasToken || sasToken.length === 0) {
+              console.log('[Azure] URL sin SAS token explícito, asumiendo contenedor público');
+              sasToken = ""; // Esto permitirá al menos intentar la conexión
             }
           } catch (error) {
             console.error('[Azure] Error al procesar URL directa:', error);
@@ -479,10 +505,17 @@ export async function listContents(credentials, config = {}, path = '', limit = 
     
     // Si usa SAS token, asegurarse de que tenemos lo necesario
     if (useSasToken) {
-      // Validar que tenemos la información mínima necesaria para SAS
-      if (!accountName || !sasToken || !blobEndpoint) {
-        console.error('[Azure] Credenciales SAS incompletas. AccountName:', !!accountName, 'SAS Token:', !!sasToken, 'BlobEndpoint:', !!blobEndpoint);
-        throw new Error('Faltan parámetros para la conexión con SAS Token. Se requiere BlobEndpoint y SharedAccessSignature en la connection string.');
+      // Para conexiones sin SAS token explícito (URL simple) permitimos continuar
+      // ya que podrían ser contenedores públicos
+      if (!accountName || !blobEndpoint) {
+        console.error('[Azure] Credenciales incompletas. AccountName:', !!accountName, 'BlobEndpoint:', !!blobEndpoint);
+        throw new Error('Faltan parámetros para la conexión con Azure. Se requiere accountName y blobEndpoint.');
+      }
+      
+      // Si no hay SAS token, usamos uno vacío (para buckets públicos)
+      if (!sasToken) {
+        sasToken = "";
+        console.log('[Azure] No se encontró SAS token, asumiendo acceso público');
       }
       
       console.log('[Azure] Listando contenedor usando SAS Token para la cuenta:', accountName);
@@ -787,7 +820,30 @@ export async function listBuckets(credentials, config = {}) {
           try {
             const url = new URL(normalizedConnString);
             blobEndpoint = `${url.protocol}//${url.hostname}`;
+            
+            // Para Azure, el SAS token podría estar en distintos formatos:
+            // 1. Como parte de la query string directamente (tradicional)
+            // 2. Como parte del path (más complejo) 
+            // 3. Como un formato mixto que combina ambos
+            
+            // Primero, intentamos obtener el SAS token de la query string
             sasToken = url.search.startsWith('?') ? url.search.substring(1) : url.search;
+            
+            // Si no hay sasToken en la query, buscamos en el path
+            if (!sasToken || sasToken.length === 0) {
+              // El SAS token suele comenzar con "?sv=" en alguna parte del path
+              const fullPath = url.pathname;
+              const svIndex = fullPath.indexOf('?sv=');
+              if (svIndex !== -1) {
+                sasToken = fullPath.substring(svIndex + 1); // +1 para omitir el "?"
+              }
+            }
+            
+            // Si aún no hay sasToken, buscamos el "?" en la connection string completa
+            if ((!sasToken || sasToken.length === 0) && normalizedConnString.includes('?sv=')) {
+              const svIndex = normalizedConnString.indexOf('?sv=');
+              sasToken = normalizedConnString.substring(svIndex + 1);
+            }
             
             // Extraer accountName del hostname (cuenta.blob.core.windows.net)
             const hostParts = url.hostname.split('.');
@@ -795,8 +851,17 @@ export async function listBuckets(credentials, config = {}) {
               accountName = hostParts[0];
             }
             
+            // Si no tenemos SAS token pero tenemos una URL, forzamos a usarlo igual
+            // para permitir a la API explorar contenedores públicos
             useSasToken = true;
-            console.log(`[Azure] URL SAS extraído - BlobEndpoint: ${blobEndpoint}, AccountName: ${accountName}, SAS token presente: ${!!sasToken}`);
+            console.log(`[Azure] URL SAS extraído - BlobEndpoint: ${blobEndpoint}, AccountName: ${accountName}, SAS token presente: ${!!sasToken && sasToken.length > 0}`);
+            
+            // Caso especial: si es una URL sin SAS token, creamos uno vacío
+            // Esto permitirá acceder a contenedores públicos
+            if (!sasToken || sasToken.length === 0) {
+              console.log('[Azure] URL sin SAS token explícito, asumiendo contenedor público');
+              sasToken = ""; // Esto permitirá al menos intentar la conexión
+            }
           } catch (error) {
             console.error('[Azure] Error al procesar URL directa:', error);
           }
@@ -867,8 +932,16 @@ export async function listBuckets(credentials, config = {}) {
     
     // Si usa SAS token, asegurarse de que tenemos lo necesario
     if (useSasToken) {
-      if (!accountName || !sasToken || !blobEndpoint) {
-        throw new Error('Faltan parámetros para la conexión con SAS Token. Se requiere accountName, sasToken y blobEndpoint.');
+      // Para conexiones sin SAS token explícito (URL simple) permitimos continuar
+      // ya que podrían ser contenedores públicos
+      if (!accountName || !blobEndpoint) {
+        throw new Error('Faltan parámetros para la conexión con Azure. Se requiere accountName y blobEndpoint.');
+      }
+      
+      // Si no hay SAS token, usamos uno vacío (para buckets públicos)
+      if (!sasToken) {
+        sasToken = "";
+        console.log('[Azure] No se encontró SAS token, asumiendo acceso público');
       }
       
       // Construir la URL con SAS token para listar contenedores
@@ -1052,7 +1125,30 @@ export async function createBucket(credentials, config = {}, bucketName) {
           try {
             const url = new URL(normalizedConnString);
             blobEndpoint = `${url.protocol}//${url.hostname}`;
+            
+            // Para Azure, el SAS token podría estar en distintos formatos:
+            // 1. Como parte de la query string directamente (tradicional)
+            // 2. Como parte del path (más complejo) 
+            // 3. Como un formato mixto que combina ambos
+            
+            // Primero, intentamos obtener el SAS token de la query string
             sasToken = url.search.startsWith('?') ? url.search.substring(1) : url.search;
+            
+            // Si no hay sasToken en la query, buscamos en el path
+            if (!sasToken || sasToken.length === 0) {
+              // El SAS token suele comenzar con "?sv=" en alguna parte del path
+              const fullPath = url.pathname;
+              const svIndex = fullPath.indexOf('?sv=');
+              if (svIndex !== -1) {
+                sasToken = fullPath.substring(svIndex + 1); // +1 para omitir el "?"
+              }
+            }
+            
+            // Si aún no hay sasToken, buscamos el "?" en la connection string completa
+            if ((!sasToken || sasToken.length === 0) && normalizedConnString.includes('?sv=')) {
+              const svIndex = normalizedConnString.indexOf('?sv=');
+              sasToken = normalizedConnString.substring(svIndex + 1);
+            }
             
             // Extraer accountName del hostname (cuenta.blob.core.windows.net)
             const hostParts = url.hostname.split('.');
@@ -1060,7 +1156,10 @@ export async function createBucket(credentials, config = {}, bucketName) {
               accountName = hostParts[0];
             }
             
+            // Si no tenemos SAS token pero tenemos una URL, forzamos a usarlo igual
+            // para permitir a la API explorar contenedores públicos
             useSasToken = true;
+            console.log(`[Azure] URL SAS extraído - BlobEndpoint: ${blobEndpoint}, AccountName: ${accountName}, SAS token presente: ${!!sasToken && sasToken.length > 0}`);
           } catch (error) {
             console.error('[Azure] Error al procesar URL directa:', error);
           }
@@ -1131,8 +1230,15 @@ export async function createBucket(credentials, config = {}, bucketName) {
     
     // Si usa SAS token, asegurarse de que tenemos lo necesario
     if (useSasToken) {
-      if (!accountName || !sasToken || !blobEndpoint) {
-        throw new Error('Faltan parámetros para la conexión con SAS Token. Se requiere accountName, sasToken y blobEndpoint.');
+      // Para conexiones sin SAS token explícito (URL simple) permitimos continuar
+      // ya que podrían ser contenedores públicos
+      if (!accountName || !blobEndpoint) {
+        throw new Error('Faltan parámetros para la conexión con Azure. Se requiere accountName y blobEndpoint.');
+      }
+      
+      // Si no hay SAS token, mostramos un error específico para la creación
+      if (!sasToken) {
+        throw new Error('Para crear un contenedor se requiere un SAS token con permisos de creación (sp=c o sp=a)');
       }
       
       // Verificar que el SAS token tenga permisos para crear contenedores
