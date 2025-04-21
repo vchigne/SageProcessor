@@ -654,6 +654,33 @@ function CloudProviders() {
       
       setIsEditing(true);
       setShowForm(true);
+      
+      // Filtrar los secretos por tipo
+      const filtered = cloudSecrets.filter(secret => secret.tipo === data.tipo);
+      setFilteredSecrets(filtered);
+      
+      // Si usa secreto, cargar los buckets disponibles
+      if (usandoSecreto && data.secreto_id) {
+        // Determinar si se debe usar nombre personalizado o lista de buckets
+        if (data.configuracion && data.configuracion.bucket) {
+          // Verificar si el bucket existe en la lista o si debe ser personalizado
+          loadBucketsForSecret(data.secreto_id).then(() => {
+            // Usar un timeout para asegurar que la carga de buckets haya tenido tiempo de completarse
+            setTimeout(() => {
+              // Esta comprobación se hará después de cargar los buckets
+              const bucketExists = availableBuckets.some(b => b === data.configuracion.bucket);
+              setUseCustomBucketName(!bucketExists);
+            }, 500);
+          });
+        } else {
+          // No hay bucket configurado, cargar buckets y mostrar la lista
+          setUseCustomBucketName(false);
+          loadBucketsForSecret(data.secreto_id);
+        }
+      } else {
+        // No usa secreto, usar modo de entrada manual
+        setUseCustomBucketName(true);
+      }
     } catch (error) {
       console.error('Error:', error);
       toast.error('Error al cargar datos del proveedor: ' + error.message);
