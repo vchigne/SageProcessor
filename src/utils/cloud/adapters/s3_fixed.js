@@ -1519,7 +1519,19 @@ async function getSignedUrl(client, remotePath, options = {}) {
  * @returns {Promise<object>} - Resultado de la operación
  */
 async function createBucket(credentials, config = {}, bucketName) {
-  console.log(`[S3] Creando bucket: ${bucketName}`);
+  // Imprimir los parámetros recibidos para diagnóstico
+  console.log(`[S3] Creando bucket con parámetros:`, {
+    credentialType: typeof credentials,
+    configType: typeof config,
+    bucketNameType: typeof bucketName,
+    bucketName: bucketName
+  });
+  
+  // Si bucketName es undefined o null pero está en config, usarlo desde allí
+  if (!bucketName && config && config.bucketName) {
+    console.log(`[S3] Usando bucketName desde config:`, config.bucketName);
+    bucketName = config.bucketName;
+  }
   
   // Validar credenciales mínimas requeridas
   if (!credentials.access_key || !credentials.secret_key) {

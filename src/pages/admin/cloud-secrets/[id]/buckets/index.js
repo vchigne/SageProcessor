@@ -14,6 +14,7 @@ export default function CloudSecretBuckets() {
   const [secret, setSecret] = useState(null);
   const [buckets, setBuckets] = useState([]);
   const [error, setError] = useState(null);
+  const [newBucketName, setNewBucketName] = useState('');
   
   // Cargar detalles del secreto y buckets
   useEffect(() => {
@@ -222,20 +223,34 @@ export default function CloudSecretBuckets() {
                   <Text className="text-xs text-gray-500 mb-4">
                     Puede crear un nuevo bucket en el proveedor de nube seleccionado.
                   </Text>
-                  <Button 
-                    color="indigo"
-                    size="sm"
-                    className="w-full flex items-center justify-center"
-                    onClick={() => {
-                      const bucketName = prompt('Ingrese el nombre del nuevo bucket:');
-                      if (bucketName && bucketName.trim()) {
-                        createBucket(bucketName.trim());
-                      }
-                    }}
-                  >
-                    <PlusCircleIcon className="h-4 w-4 mr-1" />
-                    Crear bucket
-                  </Button>
+                  <form onSubmit={(e) => {
+                    e.preventDefault();
+                    if (newBucketName && newBucketName.trim()) {
+                      createBucket(newBucketName.trim());
+                      setNewBucketName('');
+                    }
+                  }}>
+                    <div className="mb-3">
+                      <input
+                        type="text"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                        placeholder="Nombre del bucket"
+                        value={newBucketName}
+                        onChange={(e) => setNewBucketName(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <Button 
+                      type="submit"
+                      color="indigo"
+                      size="sm"
+                      className="w-full flex items-center justify-center"
+                      disabled={!newBucketName.trim()}
+                    >
+                      <PlusCircleIcon className="h-4 w-4 mr-1" />
+                      Crear bucket
+                    </Button>
+                  </form>
                 </Card>
               </div>
             </div>

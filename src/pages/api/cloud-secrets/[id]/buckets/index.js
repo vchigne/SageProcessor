@@ -297,7 +297,35 @@ async function createBucket(req, res, id) {
         
         // Crear bucket
         console.log(`[Buckets API] Creando bucket "${bucketName}" en proveedor tipo ${secret.tipo}`);
-        const result = await adapter.createBucket(tempProvider.credenciales, bucketName, options);
+        
+        // Cada adaptador tiene un orden diferente de parámetros, necesitamos adaptarnos a cada implementación
+        let result;
+        
+        // Comprobando directamente cada tipo de proveedor
+        if (secret.tipo === 'minio') {
+          console.log(`[Buckets API] Llamando a createBucket para MinIO con credenciales, config, bucketName`);
+          result = await adapter.createBucket(tempProvider.credenciales, options, bucketName);
+        } 
+        else if (secret.tipo === 's3') {
+          console.log(`[Buckets API] Llamando a createBucket para S3 con credenciales, config, bucketName`);
+          result = await adapter.createBucket(tempProvider.credenciales, options, bucketName);
+        }
+        else if (secret.tipo === 'gcp') {
+          console.log(`[Buckets API] Llamando a createBucket para GCP con credenciales, bucketName, config`);
+          result = await adapter.createBucket(tempProvider.credenciales, bucketName, options);
+        }
+        else if (secret.tipo === 'azure') {
+          console.log(`[Buckets API] Llamando a createBucket para Azure con credenciales, bucketName, config`);
+          result = await adapter.createBucket(tempProvider.credenciales, bucketName, options);
+        }
+        else if (secret.tipo === 'sftp') {
+          console.log(`[Buckets API] Llamando a createBucket para SFTP con credenciales, bucketName, config`);
+          result = await adapter.createBucket(tempProvider.credenciales, bucketName, options);
+        }
+        else {
+          console.log(`[Buckets API] Proveedor desconocido: ${secret.tipo}, intentando orden: credentials, bucketName, config`);
+          result = await adapter.createBucket(tempProvider.credenciales, bucketName, options);
+        }
         
         // Actualizar fecha de última modificación
         await client.query(

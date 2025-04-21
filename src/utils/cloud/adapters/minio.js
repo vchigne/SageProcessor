@@ -777,6 +777,20 @@ async function listBuckets(credentials, config = {}) {
  */
 async function createBucket(credentials, config = {}, bucketName) {
   try {
+    // Imprimir los parámetros recibidos para diagnóstico
+    console.log(`[MinIO] Creando bucket con parámetros:`, {
+      credentialType: typeof credentials,
+      configType: typeof config,
+      bucketNameType: typeof bucketName,
+      bucketName: bucketName
+    });
+    
+    // Si bucketName es undefined o null pero está en config, usarlo desde allí
+    if (!bucketName && config && config.bucketName) {
+      console.log(`[MinIO] Usando bucketName desde config:`, config.bucketName);
+      bucketName = config.bucketName;
+    }
+    
     if (!bucketName) {
       throw new Error('El nombre del bucket es requerido');
     }
