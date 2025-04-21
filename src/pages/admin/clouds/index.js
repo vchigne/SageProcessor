@@ -514,7 +514,12 @@ function CloudProviders() {
         setShowExplorer(false);
       } else {
         // Todo bien, datos normales
-        setExplorerData(data);
+        // Asegurar que las propiedades folders y files siempre existan
+        setExplorerData({
+          ...data,
+          folders: data.folders || data.directories || [],
+          files: data.files || []
+        });
       }
     } catch (error) {
       // Error de red u otro error no controlado
