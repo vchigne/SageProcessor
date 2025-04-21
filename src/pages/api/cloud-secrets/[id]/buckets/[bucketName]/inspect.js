@@ -147,6 +147,16 @@ async function inspectBucket(req, res, id, bucketName) {
           maxItems
         );
         
+        // Adaptar el formato si es necesario (por ejemplo, convertir "folders" a "directories" para GCP)
+        let adaptedResult = { ...result };
+        
+        // Si es GCP y tiene 'folders', mapeamos a 'directories' para mantener compatibilidad
+        if (secret.tipo === 'gcp' && result.folders && !result.directories) {
+          console.log('[Inspect API] Adaptando respuesta de GCP: folders -> directories');
+          adaptedResult.directories = result.folders;
+          delete adaptedResult.folders;
+        }
+        
         // Actualizar fecha de última modificación
         await client.query(
           `UPDATE cloud_secrets 
@@ -159,7 +169,7 @@ async function inspectBucket(req, res, id, bucketName) {
           success: true,
           bucket: bucketName,
           path: path || '/',
-          contents: result
+          contents: adaptedResult
         });
       } catch (error) {
         console.error('Error al inspeccionar bucket:', error);

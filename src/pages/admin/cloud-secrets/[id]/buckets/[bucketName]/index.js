@@ -262,7 +262,7 @@ export default function BucketExplorer() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {contents.contents && contents.contents.folders && contents.contents.folders.map((dir) => (
+                {contents.contents && contents.contents.directories && contents.contents.directories.map((dir) => (
                   <tr key={`dir-${dir.name}`} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
@@ -321,7 +321,7 @@ export default function BucketExplorer() {
                   </tr>
                 ))}
                 
-                {(!contents.contents?.folders?.length && !contents.contents?.files?.length) && (
+                {(!contents.contents?.directories?.length && !contents.contents?.files?.length) && (
                   <tr>
                     <td colSpan="4" className="px-6 py-4 text-center text-sm text-gray-500">
                       No hay contenido en esta ubicación
