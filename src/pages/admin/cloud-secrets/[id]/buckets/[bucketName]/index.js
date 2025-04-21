@@ -282,43 +282,31 @@ export default function BucketExplorer() {
                 </div>
               </div>
               
-              {/* Lista de carpetas */}
-              {explorerData.folders && explorerData.folders.length > 0 && (
-                <div>
-                  <h4 className="text-sm font-medium text-gray-700 mb-2">Carpetas</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {explorerData.folders.map((folder, idx) => (
-                      <div
-                        key={idx}
-                        className="flex items-center p-2 rounded border border-gray-200 hover:bg-gray-50 hover:border-blue-300 cursor-pointer"
-                        onClick={() => inspectProvider(explorerProvider, folder.path)}
-                      >
-                        <FolderIcon className="h-6 w-6 text-yellow-500 mr-2" />
-                        <span className="text-sm truncate">{folder.name}</span>
-                      </div>
-                    ))}
+              {/* Lista de carpetas - usamos folders o directories, pero no ambos */}
+              {(() => {
+                // Determinar qué array usar (folders o directories)
+                const foldersToShow = explorerData.folders && explorerData.folders.length > 0 
+                  ? explorerData.folders 
+                  : (explorerData.directories && explorerData.directories.length > 0 ? explorerData.directories : []);
+                
+                return foldersToShow.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">Carpetas</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {foldersToShow.map((folder, idx) => (
+                        <div
+                          key={idx}
+                          className="flex items-center p-2 rounded border border-gray-200 hover:bg-gray-50 hover:border-blue-300 cursor-pointer"
+                          onClick={() => inspectProvider(explorerProvider, folder.path)}
+                        >
+                          <FolderIcon className="h-6 w-6 text-yellow-500 mr-2" />
+                          <span className="text-sm truncate">{folder.name}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
-              
-              {/* Lista de carpetas (directories para compatibilidad) */}
-              {explorerData.directories && explorerData.directories.length > 0 && (
-                <div>
-                  <h4 className="text-sm font-medium text-gray-700 mb-2">Carpetas</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {explorerData.directories.map((folder, idx) => (
-                      <div
-                        key={idx}
-                        className="flex items-center p-2 rounded border border-gray-200 hover:bg-gray-50 hover:border-blue-300 cursor-pointer"
-                        onClick={() => inspectProvider(explorerProvider, folder.path)}
-                      >
-                        <FolderIcon className="h-6 w-6 text-yellow-500 mr-2" />
-                        <span className="text-sm truncate">{folder.name}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+                );
+              })()}
               
               {/* Lista de archivos */}
               {explorerData.files && explorerData.files.length > 0 && (
@@ -363,15 +351,24 @@ export default function BucketExplorer() {
               )}
               
               {/* Mensaje de carpeta vacía */}
-              {(!explorerData.folders?.length && !explorerData.directories?.length && !explorerData.files?.length) && (
-                <div className="text-center py-12 border border-dashed border-gray-300 rounded-lg">
-                  <FolderIcon className="mx-auto h-12 w-12 text-gray-400" />
-                  <h3 className="mt-2 text-sm font-medium text-gray-900">Carpeta vacía</h3>
-                  <p className="mt-1 text-sm text-gray-500">
-                    Esta ubicación no contiene archivos ni carpetas.
-                  </p>
-                </div>
-              )}
+              {(() => {
+                const hasFolders = (explorerData.folders && explorerData.folders.length > 0) || 
+                                   (explorerData.directories && explorerData.directories.length > 0);
+                const hasFiles = explorerData.files && explorerData.files.length > 0;
+                
+                if (!hasFolders && !hasFiles) {
+                  return (
+                    <div className="text-center py-12 border border-dashed border-gray-300 rounded-lg">
+                      <FolderIcon className="mx-auto h-12 w-12 text-gray-400" />
+                      <h3 className="mt-2 text-sm font-medium text-gray-900">Carpeta vacía</h3>
+                      <p className="mt-1 text-sm text-gray-500">
+                        Esta ubicación no contiene archivos ni carpetas.
+                      </p>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
             </div>
           )}
         </div>
