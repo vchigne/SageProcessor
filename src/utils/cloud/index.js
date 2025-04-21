@@ -32,13 +32,17 @@ async function loadAdapter(type) {
   if (adapters[type]) return adapters[type];
   
   try {
-    // Para S3 o MinIO, cargar el adaptador específico
+    // Para S3, Azure o MinIO, cargar el adaptador específico
     if (type === 's3') {
       const module = await import(`./adapters/s3_fixed`);
       adapters[type] = module.default;
       return adapters[type];
     } else if (type === 'minio') {
       const module = await import(`./adapters/minio`);
+      adapters[type] = module.default;
+      return adapters[type];
+    } else if (type === 'azure') {
+      const module = await import(`./adapters/azure_fixed`);
       adapters[type] = module.default;
       return adapters[type];
     }
@@ -71,6 +75,9 @@ export function getAdapter(type) {
       } else if (type === 'minio') {
         // MinIO usa su propio adaptador específico
         adapters[type] = require(`./adapters/minio`).default;
+      } else if (type === 'azure') {
+        // Azure usa su propio adaptador específico fijo
+        adapters[type] = require(`./adapters/azure_fixed`).default;
       } else {
         adapters[type] = require(`./adapters/${type}`).default;
       }

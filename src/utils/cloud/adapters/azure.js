@@ -594,11 +594,17 @@ export async function listContents(credentials, config = {}, path = '', limit = 
     // Variables para almacenar los datos de conexión extraídos
     let accountName = credentials.account_name;
     let accountKey = credentials.account_key;
-    let sasToken = null;
-    let blobEndpoint = null;
-    let useSasToken = false;
+    let sasToken = credentials.sas_token || null;
+    let blobEndpoint = credentials.blob_endpoint || null;
+    let useSasToken = !!sasToken || (config && config.use_sas === true);
     
-    if (credentials.connection_string) {
+    // Si tenemos sasToken y blobEndpoint directamente en las credenciales, usamos eso
+    if (sasToken && blobEndpoint) {
+      console.log('[Azure] Usando credenciales directas de SAS token y blob_endpoint');
+      useSasToken = true;
+    }
+    // Si no, tratamos de extraerlos de la connection_string
+    else if (credentials.connection_string) {
       try {
         console.log('[Azure] Usando connection string para extraer credenciales');
         // Normalizar la cadena de conexión (eliminar espacios, tabs, etc.)
@@ -606,10 +612,39 @@ export async function listContents(credentials, config = {}, path = '', limit = 
         console.log('[Azure] Connection string normalizada (primeros 30 chars):', 
           normalizedConnString.substring(0, 30) + '...');
         
-        // Validar que tenga formato de ConnectionString (tiene múltiples partes con ;)
-        if (!normalizedConnString.includes(';')) {
-          throw new Error('El formato de la ConnectionString no es válido. Debe contener múltiples partes separadas por punto y coma (;)');
+        // Si es una URL directa con SAS token (formato especial)
+        if (normalizedConnString.startsWith('http')) {
+          console.log('[Azure] Detectada URL con SAS Token directa');
+          try {
+            const url = new URL(normalizedConnString);
+            blobEndpoint = `${url.protocol}//${url.hostname}`;
+            sasToken = url.search.startsWith('?') ? url.search.substring(1) : url.search;
+            
+            // Extraer accountName del hostname (cuenta.blob.core.windows.net)
+            const hostParts = url.hostname.split('.');
+            if (hostParts.length > 0) {
+              accountName = hostParts[0];
+            }
+            
+            useSasToken = true;
+            console.log(`[Azure] URL SAS extraído - BlobEndpoint: ${blobEndpoint}, AccountName: ${accountName}, SAS token presente: ${!!sasToken}`);
+            
+            // Si la URL directa no tiene SAS token, ignoramos esta sección
+            if (!sasToken) {
+              console.log('[Azure] URL sin SAS token, buscando en connection string normal');
+              useSasToken = false;
+            }
+          } catch (error) {
+            console.error('[Azure] Error al procesar URL directa:', error);
+          }
         }
+        
+        // Procesamiento tradicional de connection string (solo si no hemos configurado SAS token via URL)
+        if (!useSasToken) {
+          // Validar que tenga formato de ConnectionString (tiene múltiples partes con ;)
+          if (!normalizedConnString.includes(';')) {
+            throw new Error('El formato de la ConnectionString no es válido. Debe contener múltiples partes separadas por punto y coma (;)');
+          }
 
         const connectionParts = normalizedConnString.split(';');
         console.log('[Azure] Número de partes en connection string:', connectionParts.length);
