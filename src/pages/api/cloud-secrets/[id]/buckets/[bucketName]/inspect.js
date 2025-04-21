@@ -1,7 +1,9 @@
 /**
  * API para inspeccionar un bucket específico usando un secreto de nube
  * 
- * GET: Obtiene información detallada sobre un bucket específico y sus contenidos
+ * GET/POST: Obtiene información detallada sobre un bucket específico y sus contenidos
+ * 
+ * Nota: Se soporta POST para mantener compatibilidad con el componente de SAGE Clouds
  */
 
 import { pool } from '../../../../../../utils/db';
@@ -14,7 +16,7 @@ export default async function handler(req, res) {
     // Validar que el ID sea un número válido
     if (!id || isNaN(parseInt(id))) {
       return res.status(400).json({ 
-        success: false, 
+        error: true,
         message: 'ID de secreto no válido' 
       });
     }
@@ -22,15 +24,15 @@ export default async function handler(req, res) {
     // Validar que se proporcione un nombre de bucket
     if (!bucketName) {
       return res.status(400).json({ 
-        success: false, 
+        error: true,
         message: 'Nombre de bucket no proporcionado' 
       });
     }
     
-    // Solo aceptamos solicitudes GET
-    if (req.method !== 'GET') {
+    // Aceptamos solicitudes GET y POST para compatibilidad con el componente de SAGE Clouds
+    if (req.method !== 'GET' && req.method !== 'POST') {
       return res.status(405).json({ 
-        success: false, 
+        error: true,
         message: 'Método no permitido' 
       });
     }
@@ -40,7 +42,7 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error('Error en API de inspección de bucket:', error);
     return res.status(500).json({ 
-      success: false, 
+      error: true,
       message: `Error interno del servidor: ${error.message}` 
     });
   }
@@ -48,9 +50,18 @@ export default async function handler(req, res) {
 
 /**
  * Inspecciona un bucket específico y lista su contenido
+ * 
+ * Formato de respuesta compatible con SAGE Clouds:
+ * - Éxito: Objeto con propiedades bucket, path, files, folders/directories
+ * - Error: Objeto con propiedades error: true, errorMessage
  */
 async function inspectBucket(req, res, id, bucketName) {
-  const { path = '', limit = '50' } = req.query;
+  // Obtener el path del cuerpo de POST o de la query según el método
+  const path = req.method === 'POST' && req.body.path !== undefined 
+    ? req.body.path 
+    : (req.query.path || '');
+    
+  const limit = req.query.limit || '50';
   const maxItems = parseInt(limit) || 50;
   
   try {
@@ -67,8 +78,8 @@ async function inspectBucket(req, res, id, bucketName) {
       
       if (secretResult.rows.length === 0) {
         return res.status(404).json({ 
-          success: false, 
-          message: 'Secreto no encontrado' 
+          error: true,
+          errorMessage: 'Secreto no encontrado' 
         });
       }
       
@@ -117,16 +128,16 @@ async function inspectBucket(req, res, id, bucketName) {
         
         if (!adapter) {
           return res.status(400).json({ 
-            success: false, 
-            message: `Tipo de proveedor no soportado: ${secret.tipo}` 
+            error: true,
+            errorMessage: `Tipo de proveedor no soportado: ${secret.tipo}` 
           });
         }
         
         // Listamos el contenido del bucket
         if (!adapter.listContents) {
           return res.status(400).json({ 
-            success: false, 
-            message: `El proveedor ${secret.tipo} no implementa el método listContents` 
+            error: true,
+            errorMessage: `El proveedor ${secret.tipo} no implementa el método listContents` 
           });
         }
         
@@ -147,7 +158,7 @@ async function inspectBucket(req, res, id, bucketName) {
           maxItems
         );
         
-        // Adaptar el formato si es necesario (por ejemplo, convertir "folders" a "directories" para GCP)
+        // Adaptar el formato si es necesario para compatibilidad con SAGE Clouds
         let adaptedResult = { ...result };
         
         // Si es GCP y tiene 'folders', mapeamos a 'directories' para mantener compatibilidad
@@ -165,20 +176,27 @@ async function inspectBucket(req, res, id, bucketName) {
           [id]
         );
         
+        // IMPORTANTE: Formato de respuesta igual que en SAGE Clouds 
+        // (devolver el objeto completo, no dentro de 'contents')
         return res.status(200).json({
-          success: true,
           bucket: bucketName,
           path: path || '/',
-          contents: adaptedResult
+          parentPath: getParentPath(path),
+          service: secret.tipo,
+          // Si hay directorios, incluirlos en la respuesta (como 'folders' para SAGE Clouds)
+          folders: adaptedResult.directories || adaptedResult.folders || [],
+          // Incluir archivos
+          files: adaptedResult.files || []
         });
       } catch (error) {
         console.error('Error al inspeccionar bucket:', error);
         return res.status(200).json({
-          success: false,
-          message: `Error al inspeccionar bucket: ${error.message}`,
+          error: true,
+          errorMessage: `Error al inspeccionar bucket: ${error.message}`,
           bucket: bucketName,
           path: path || '/',
-          contents: null
+          folders: [],
+          files: []
         });
       }
     } finally {
@@ -187,8 +205,33 @@ async function inspectBucket(req, res, id, bucketName) {
   } catch (error) {
     console.error('Error en inspectBucket:', error);
     return res.status(500).json({ 
-      success: false, 
-      message: `Error al inspeccionar bucket: ${error.message}`
+      error: true,
+      errorMessage: `Error al inspeccionar bucket: ${error.message}`,
+      bucket: bucketName,
+      path: path || '/',
+      folders: [],
+      files: []
     });
   }
+}
+
+/**
+ * Obtiene la ruta del directorio padre
+ */
+function getParentPath(path) {
+  if (!path || path === '' || path === '/') {
+    return '';
+  }
+  
+  // Eliminar la última barra si existe
+  const cleanPath = path.endsWith('/') ? path.slice(0, -1) : path;
+  
+  // Encontrar la última barra
+  const lastSlashIndex = cleanPath.lastIndexOf('/');
+  if (lastSlashIndex <= 0) {
+    return ''; // Si no hay barras o está en la primera posición, volver a la raíz
+  }
+  
+  // Devolver la ruta hasta la última barra
+  return cleanPath.substring(0, lastSlashIndex);
 }

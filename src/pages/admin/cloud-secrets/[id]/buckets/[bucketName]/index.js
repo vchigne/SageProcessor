@@ -1,11 +1,20 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
-import Link from 'next/link';
 import Head from 'next/head';
-import { ArrowLeftIcon, FolderIcon, DocumentIcon, ArrowUpIcon, ArrowDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
-import { Card, Text, Title, Button, Flex, Metric } from '@tremor/react';
+import { 
+  ArrowLeftIcon, 
+  DocumentTextIcon, 
+  FolderIcon, 
+  ArrowUturnLeftIcon,
+  PlusCircleIcon
+} from '@heroicons/react/24/outline';
+import { Card, Text, Title, Button } from '@tremor/react';
 import { toast } from 'react-toastify';
-import { formatBytes } from '../../../../../../utils/formatters';
+
+// Importar el mismo componente que en SAGE Clouds
+function getFileExtension(filename) {
+  return filename.slice((filename.lastIndexOf('.') - 1 >>> 0) + 2).toUpperCase();
+}
 
 export default function BucketExplorer() {
   const router = useRouter();
@@ -13,9 +22,13 @@ export default function BucketExplorer() {
   
   const [loading, setLoading] = useState(true);
   const [secret, setSecret] = useState(null);
+  
+  // Estados para el explorador (IGUAL que en SAGE Clouds)
+  const [showExplorer, setShowExplorer] = useState(true);
+  const [explorerProvider, setExplorerProvider] = useState(null);
+  const [explorerLoading, setExplorerLoading] = useState(true);
+  const [explorerData, setExplorerData] = useState({});
   const [currentPath, setCurrentPath] = useState('');
-  const [contents, setContents] = useState(null);
-  const [error, setError] = useState(null);
   
   // Cargar detalles del secreto
   useEffect(() => {
@@ -31,6 +44,15 @@ export default function BucketExplorer() {
         
         const secretData = await secretRes.json();
         setSecret(secretData);
+        
+        // Establecer el provider simulado para el explorador
+        setExplorerProvider({
+          id: id,
+          nombre: secretData.nombre,
+          tipo: secretData.tipo,
+          secreto_id: id,
+          bucket: bucketName
+        });
       } catch (err) {
         console.error('Error al cargar datos del secreto:', err);
         toast.error(`Error: ${err.message}`);
@@ -38,55 +60,70 @@ export default function BucketExplorer() {
     }
     
     loadSecretDetails();
-  }, [id]);
+  }, [id, bucketName]);
   
-  // Cargar contenidos del bucket
+  // Inspeccionar el bucketName cuando el provider esté listo
+  // Este código usa EXACTAMENTE el mismo patrón que SAGE Clouds
   useEffect(() => {
-    if (!id || !bucketName) return;
+    if (!explorerProvider || !bucketName) return;
     
-    const path = router.query.path || '';
+    inspectProvider(explorerProvider, router.query.path || '');
+  }, [explorerProvider, bucketName, router.query.path]);
+  
+  // Función de inspección IDÉNTICA a la de SAGE Clouds
+  const inspectProvider = async (provider, path = '') => {
+    setExplorerLoading(true);
+    setShowExplorer(true);
     setCurrentPath(path);
     
-    async function loadBucketContents() {
-      setLoading(true);
-      setError(null);
+    try {
+      // Usar endpoint SIMILAR pero adaptado a secrets - EXACTAMENTE igual que en SAGE Clouds
+      const response = await fetch(`/api/cloud-secrets/${id}/buckets/${bucketName}/inspect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path })
+      });
       
-      try {
-        // Construir la URL con parámetros de consulta
-        const queryParams = new URLSearchParams({ path });
-        const inspectUrl = `/api/cloud-secrets/${id}/buckets/${encodeURIComponent(bucketName)}/inspect?${queryParams}`;
+      const data = await response.json();
+      
+      if (data.error) {
+        // Es un objeto de error del adaptador
+        console.error('Error al inspeccionar bucket:', data.errorMessage || data.message || "Error desconocido");
         
-        console.log('Consultando contenido en:', inspectUrl);
-        const contentsRes = await fetch(inspectUrl);
-        
-        if (!contentsRes.ok) {
-          throw new Error(`Error al cargar contenido: ${contentsRes.status}`);
-        }
-        
-        const contentsData = await contentsRes.json();
-        console.log('Respuesta de API:', contentsData);
-        
-        if (contentsData.success) {
-          setContents(contentsData);
-        } else {
-          setError(contentsData.message || 'Error al cargar contenido del bucket');
-          setContents(null);
-        }
-      } catch (err) {
-        console.error('Error al cargar contenido del bucket:', err);
-        setError(err.message);
-        toast.error(`Error: ${err.message}`);
-      } finally {
-        setLoading(false);
+        // Usar exactamente el mismo formato que SAGE Clouds
+        setExplorerData({
+          error: true,
+          errorMessage: data.errorMessage || data.message || "Error desconocido",
+          bucket: bucketName,
+          path: path || '/',
+          folders: [],
+          files: []
+        });
+      } else {
+        // Todo bien, datos normales - exactamente como en SAGE Clouds
+        setExplorerData(data);
       }
+    } catch (error) {
+      // Error de red u otro error no controlado
+      console.error('Error al inspeccionar bucket:', error);
+      
+      // Igual que en SAGE Clouds
+      setExplorerData({
+        error: true,
+        errorMessage: error.message || "Error desconocido",
+        bucket: bucketName,
+        path: path || '/',
+        folders: [],
+        files: []
+      });
+    } finally {
+      setExplorerLoading(false);
     }
-    
-    loadBucketContents();
-  }, [id, bucketName, router.query.path]);
-  
+  };
+
   // Manejar navegación a una carpeta
   const handleNavigateToFolder = (folderPath) => {
-    // Actualizar la URL sin recargar la página
+    // Actualizar la URL sin recargar la página, respetando el patrón existente
     router.push({
       pathname: router.pathname,
       query: { ...router.query, path: folderPath }
@@ -96,72 +133,6 @@ export default function BucketExplorer() {
   // Manejar volver a la página de buckets
   const handleBackToBuckets = () => {
     router.push(`/admin/cloud-secrets/${id}/buckets`);
-  };
-  
-  // Manejar navegación a la carpeta superior
-  const handleNavigateUp = () => {
-    if (!currentPath) return; // Ya estamos en la raíz
-    
-    const parts = currentPath.split('/');
-    // Eliminar la última parte y reconstruir la ruta
-    parts.pop();
-    const newPath = parts.join('/');
-    
-    // Actualizar la URL
-    router.push({
-      pathname: router.pathname,
-      query: { ...router.query, path: newPath }
-    }, undefined, { shallow: true });
-  };
-  
-  // Formatear fecha ISO
-  const formatDate = (isoDate) => {
-    if (!isoDate) return 'N/A';
-    try {
-      return new Date(isoDate).toLocaleString();
-    } catch (e) {
-      return isoDate;
-    }
-  };
-  
-  // Formatear ruta para navegación por migajas
-  const formatBreadcrumbs = () => {
-    if (!currentPath) {
-      return [{ name: '/', path: '' }];
-    }
-    
-    const parts = currentPath.split('/').filter(Boolean);
-    const breadcrumbs = [{ name: '/', path: '' }];
-    
-    let currentBuildPath = '';
-    for (const part of parts) {
-      currentBuildPath += (currentBuildPath ? '/' : '') + part;
-      breadcrumbs.push({
-        name: part,
-        path: currentBuildPath
-      });
-    }
-    
-    return breadcrumbs;
-  };
-  
-  // Generar breadcrumbs
-  const pageBreadcrumbs = [
-    { name: 'Inicio', href: '/' },
-    { name: 'Administración', href: '/admin' },
-    { name: 'Secretos Cloud', href: '/admin/cloud-secrets' },
-    { name: secret?.nombre || 'Secreto', href: `/admin/cloud-secrets/${id}` },
-    { name: 'Buckets', href: `/admin/cloud-secrets/${id}/buckets` },
-    { name: bucketName || 'Bucket', href: `/admin/cloud-secrets/${id}/buckets/${bucketName}` },
-  ];
-  
-  // Icono basado en el tipo de archivo
-  const getFileIcon = (item) => {
-    if (item.isDirectory) {
-      return <FolderIcon className="h-5 w-5 text-yellow-500" />;
-    }
-    
-    return <DocumentIcon className="h-5 w-5 text-blue-500" />;
   };
   
   return (
@@ -193,150 +164,218 @@ export default function BucketExplorer() {
               )}
             </div>
           </div>
-          
-          {/* Navegación por migajas de pan */}
-          <div className="mt-2 md:mt-0 flex items-center overflow-x-auto whitespace-nowrap">
-            {formatBreadcrumbs().map((crumb, index, arr) => (
-              <div key={crumb.path} className="flex items-center">
-                <Button
-                  size="xs"
-                  variant={index === arr.length - 1 ? "light" : "light"}
-                  color={index === arr.length - 1 ? "indigo" : "gray"}
-                  onClick={() => handleNavigateToFolder(crumb.path)}
-                  className="px-2 py-1"
-                >
-                  {crumb.name || '/'}
-                </Button>
-                {index < arr.length - 1 && (
-                  <ChevronRightIcon className="h-3 w-3 text-gray-400 mx-1" />
-                )}
-              </div>
-            ))}
-          </div>
         </div>
       </div>
       
-      {loading ? (
-        <div className="flex justify-center items-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500"></div>
-        </div>
-      ) : error ? (
-        <Card className="mt-4">
-          <div className="flex items-center text-red-500 mb-2">
-            <div className="h-5 w-5 mr-2"></div>
-            <Text>Error al cargar contenido</Text>
-          </div>
-          <Text>{error}</Text>
-        </Card>
-      ) : contents ? (
-        <Card className="overflow-hidden">
-          {currentPath && (
-            <div className="p-4 border-b border-gray-200">
-              <Button
-                icon={ArrowUpIcon}
-                size="xs"
-                color="gray"
-                onClick={handleNavigateUp}
-              >
-                Subir un nivel
-              </Button>
+      {/* Contenedor principal */}
+      <div className="bg-white rounded-lg shadow overflow-hidden">
+        {/* Panel del explorador - EXACTAMENTE IGUAL que en SAGE Clouds */}
+        <div className="p-4">
+          {explorerLoading ? (
+            <div className="flex justify-center items-center py-10">
+              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-500"></div>
+            </div>
+          ) : explorerData.error ? (
+            <div className="text-center py-8">
+              <div className="bg-red-50 p-4 rounded mb-4">
+                <h3 className="text-red-800 font-medium">Error al explorar el bucket</h3>
+                <p className="text-red-600 mt-1">{explorerData.errorMessage}</p>
+              </div>
+              
+              <div className="mt-6 bg-gray-50 p-4 rounded text-left">
+                <h4 className="text-gray-700 font-medium mb-2">Posibles soluciones:</h4>
+                <ul className="text-sm text-gray-600 space-y-1 list-disc pl-5">
+                  {/* Errores específicos de AWS S3 */}
+                  {explorerProvider && explorerProvider.tipo === 's3' && explorerData.errorMessage && explorerData.errorMessage.includes('AccessDenied') && (
+                    <>
+                      <li>El usuario IAM no tiene permisos suficientes para acceder al bucket</li>
+                      <li>Verifica la política de permisos del IAM en la consola de AWS</li>
+                    </>
+                  )}
+                  
+                  {explorerProvider && explorerProvider.tipo === 's3' && explorerData.errorMessage && explorerData.errorMessage.includes('NoSuchBucket') && (
+                    <>
+                      <li>El bucket especificado no existe en la cuenta</li>
+                      <li>Verifica el nombre del bucket</li>
+                      <li>Asegúrate de que el bucket esté en la región configurada</li>
+                    </>
+                  )}
+                  
+                  {explorerProvider && explorerProvider.tipo === 's3' && explorerData.errorMessage && explorerData.errorMessage.includes('SignatureDoesNotMatch') && (
+                    <>
+                      <li>Error de autenticación - firma incorrecta</li>
+                      <li>Verifica que la clave de acceso y la clave secreta sean correctas</li>
+                      <li>Asegúrate de que la región configurada sea la correcta</li>
+                    </>
+                  )}
+                  
+                  {/* Errores específicos de Azure */}
+                  {explorerProvider && explorerProvider.tipo === 'azure' && (
+                    <>
+                      <li>Verifica que la cadena de conexión sea válida</li>
+                      <li>Comprueba que el bucket o container exista</li>
+                      <li>Verifica los permisos en el portal de Azure</li>
+                    </>
+                  )}
+                  
+                  {/* Errores específicos de GCP */}
+                  {explorerProvider && explorerProvider.tipo === 'gcp' && (
+                    <>
+                      <li>Verifica que el archivo de credenciales sea válido</li>
+                      <li>Comprueba que el bucket exista en tu proyecto</li>
+                      <li>Verifica los permisos IAM para el servicio</li>
+                    </>
+                  )}
+                  
+                  {/* Errores específicos de SFTP */}
+                  {explorerProvider && explorerProvider.tipo === 'sftp' && (
+                    <>
+                      <li>Verifica la conexión al servidor SFTP</li>
+                      <li>Comprueba que el usuario y contraseña sean correctos</li>
+                      <li>Asegúrate de que la ruta exista en el servidor</li>
+                    </>
+                  )}
+                  
+                  {/* Errores específicos de MinIO */}
+                  {explorerProvider && explorerProvider.tipo === 'minio' && (
+                    <>
+                      <li>Verifica la conexión a internet</li>
+                      <li>Comprueba si el servidor MinIO está funcionando</li>
+                      <li>Revisa la configuración del endpoint y credenciales</li>
+                    </>
+                  )}
+                  
+                  {/* Errores generales de AWS o errores por defecto */}
+                  {(!explorerProvider || 
+                    (explorerProvider.tipo === 's3' && 
+                    explorerData.errorMessage && typeof explorerData.errorMessage === 'string' &&
+                    !explorerData.errorMessage.includes('SignatureDoesNotMatch') && 
+                    !explorerData.errorMessage.includes('NoSuchBucket') && 
+                    !explorerData.errorMessage.includes('AccessDenied') &&
+                    !explorerData.errorMessage.includes('InvalidAccessKeyId'))) && (
+                    <>
+                      <li>Verifica la conexión a internet</li>
+                      <li>Comprueba si el servicio está experimentando problemas</li>
+                      <li>Revisa las credenciales y configuración del proveedor</li>
+                    </>
+                  )}
+                </ul>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* Ruta de navegación */}
+              <div className="flex items-center space-x-2 bg-gray-50 p-2 rounded">
+                <button 
+                  className="p-1 rounded hover:bg-gray-200"
+                  disabled={!explorerData.parentPath && currentPath === ''}
+                  onClick={() => {
+                    if (explorerData.parentPath || currentPath !== '') {
+                      inspectProvider(explorerProvider, explorerData.parentPath);
+                    }
+                  }}
+                >
+                  <ArrowUturnLeftIcon className="h-5 w-5 text-gray-600" />
+                </button>
+                <div className="flex-1 text-sm text-gray-700 truncate">
+                  {explorerData.bucket}/{currentPath || '/'}
+                </div>
+              </div>
+              
+              {/* Lista de carpetas */}
+              {explorerData.folders && explorerData.folders.length > 0 && (
+                <div>
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">Carpetas</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {explorerData.folders.map((folder, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center p-2 rounded border border-gray-200 hover:bg-gray-50 hover:border-blue-300 cursor-pointer"
+                        onClick={() => inspectProvider(explorerProvider, folder.path)}
+                      >
+                        <FolderIcon className="h-6 w-6 text-yellow-500 mr-2" />
+                        <span className="text-sm truncate">{folder.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {/* Lista de carpetas (directories para compatibilidad) */}
+              {explorerData.directories && explorerData.directories.length > 0 && (
+                <div>
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">Carpetas</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {explorerData.directories.map((folder, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center p-2 rounded border border-gray-200 hover:bg-gray-50 hover:border-blue-300 cursor-pointer"
+                        onClick={() => inspectProvider(explorerProvider, folder.path)}
+                      >
+                        <FolderIcon className="h-6 w-6 text-yellow-500 mr-2" />
+                        <span className="text-sm truncate">{folder.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {/* Lista de archivos */}
+              {explorerData.files && explorerData.files.length > 0 && (
+                <div>
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">Archivos</h4>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Nombre</th>
+                          <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Tamaño</th>
+                          <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Última modificación</th>
+                          <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Tipo</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {explorerData.files.map((file, idx) => (
+                          <tr key={idx} className="hover:bg-gray-50">
+                            <td className="px-3 py-2 whitespace-nowrap">
+                              <div className="flex items-center">
+                                <DocumentTextIcon className="h-5 w-5 text-blue-500 mr-2" />
+                                <span className="text-sm font-medium text-gray-900">{file.name}</span>
+                              </div>
+                            </td>
+                            <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">
+                              {(file.size / 1024).toFixed(2)} KB
+                            </td>
+                            <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">
+                              {new Date(file.lastModified).toLocaleString()}
+                            </td>
+                            <td className="px-3 py-2 whitespace-nowrap">
+                              <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                                {getFileExtension(file.name)}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+              
+              {/* Mensaje de carpeta vacía */}
+              {(!explorerData.folders?.length && !explorerData.directories?.length && !explorerData.files?.length) && (
+                <div className="text-center py-12 border border-dashed border-gray-300 rounded-lg">
+                  <FolderIcon className="mx-auto h-12 w-12 text-gray-400" />
+                  <h3 className="mt-2 text-sm font-medium text-gray-900">Carpeta vacía</h3>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Esta ubicación no contiene archivos ni carpetas.
+                  </p>
+                </div>
+              )}
             </div>
           )}
-          
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Nombre
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Tamaño
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Última modificación
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Acciones
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {contents.contents && contents.contents.directories && contents.contents.directories.map((dir) => (
-                  <tr key={`dir-${dir.name}`} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <FolderIcon className="h-5 w-5 text-yellow-500 mr-2" />
-                        <button 
-                          onClick={() => handleNavigateToFolder(dir.path)} 
-                          className="text-indigo-600 hover:text-indigo-900"
-                        >
-                          {dir.name}/
-                        </button>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      -
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {dir.lastModified ? formatDate(dir.lastModified) : '-'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <button 
-                        onClick={() => handleNavigateToFolder(dir.path)}
-                        className="text-indigo-600 hover:text-indigo-900 mr-3"
-                      >
-                        Explorar
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                
-                {contents.contents && contents.contents.files && contents.contents.files.map((file) => (
-                  <tr key={`file-${file.name}`} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <DocumentIcon className="h-5 w-5 text-blue-500 mr-2" />
-                        <span className="text-gray-900">{file.name}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {typeof file.size === 'number' ? formatBytes(file.size) : '-'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {file.lastModified ? formatDate(file.lastModified) : '-'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      {file.url && (
-                        <a 
-                          href={file.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-indigo-600 hover:text-indigo-900"
-                        >
-                          Ver
-                        </a>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-                
-                {(!contents.contents?.directories?.length && !contents.contents?.files?.length) && (
-                  <tr>
-                    <td colSpan="4" className="px-6 py-4 text-center text-sm text-gray-500">
-                      No hay contenido en esta ubicación
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      ) : (
-        <Card>
-          <Text>No se pudo cargar el contenido del bucket.</Text>
-        </Card>
-      )}
+        </div>
+      </div>
     </div>
   );
 }
