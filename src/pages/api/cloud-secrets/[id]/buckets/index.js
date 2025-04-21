@@ -379,9 +379,13 @@ async function createBucket(req, res, id) {
             });
             
             // Pasar el nombre de bucket como string explícito
+            // NOTA: Azure recibe parámetros (credentials, bucketName, config) a diferencia de otros adaptadores
+            console.log(`[Buckets API] Pasando parámetros a adapter.createBucket: bucketName="${bucketName}"`);
+            
+            // Primer intento: Directo como string
             result = await adapter.createBucket(
               tempProvider.credenciales, 
-              bucketName.toString(), // Convertir explícitamente a string para asegurar
+              bucketName, // Pasar directamente como string
               options
             );
           } catch (error) {

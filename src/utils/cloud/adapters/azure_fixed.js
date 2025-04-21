@@ -1377,9 +1377,22 @@ export async function listBuckets(credentials, config = {}) {
  * @param {string} bucketName Nombre del contenedor a crear
  * @returns {Promise<Object>} Resultado de la operación
  */
-export async function createBucket(credentials, config = {}, bucketName) {
+export async function createBucket(credentials, bucketName, config = {}) {
   try {
+    // ADAPTADOR AZURE RECIBE LOS PARÁMETROS EN ORDEN: credentials, bucketName, config
+    // (Diferente a otros adaptadores como MinIO/S3 que usan credentials, config, bucketName)
+    
+    // Detectar si el orden de parámetros está incorrecto (frecuente error de integración)
+    // Si bucketName no es un string pero config sí, asumimos que están al revés
+    if (typeof bucketName !== 'string' && typeof bucketName === 'object' && config && typeof config === 'string') {
+      console.log('[Azure] ⚠️ Detectado orden incorrecto de parámetros. Intercambiando bucketName y config');
+      const temp = bucketName;
+      bucketName = config;
+      config = temp;
+    }
+    
     if (!bucketName) {
+      console.error('[Azure] Error: Falta el nombre del contenedor');
       return {
         success: false,
         message: 'Se requiere especificar el nombre del contenedor',
@@ -1387,7 +1400,22 @@ export async function createBucket(credentials, config = {}, bucketName) {
       };
     }
     
-    console.log(`[Azure] Creando contenedor: ${bucketName}`);
+    // Asegurarnos que bucketName es un string
+    if (typeof bucketName !== 'string') {
+      try {
+        bucketName = String(bucketName);
+        console.log(`[Azure] Nombre de contenedor convertido a string: "${bucketName}"`);
+      } catch (error) {
+        console.error('[Azure] Error: No se pudo convertir bucketName a string', bucketName);
+        return {
+          success: false,
+          message: 'El nombre del contenedor debe ser un string',
+          error: 'INVALID_BUCKET_NAME'
+        };
+      }
+    }
+    
+    console.log(`[Azure] Creando contenedor: "${bucketName}" (${typeof bucketName})`);
     
     // Variables para almacenar los datos de conexión extraídos
     let accountName = credentials.account_name;
