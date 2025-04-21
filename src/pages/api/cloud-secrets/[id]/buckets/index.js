@@ -118,11 +118,34 @@ async function listBuckets(req, res, id) {
         configuracionAzure.use_sas = true;
       }
       
+      // Normalizar las credenciales según el tipo de proveedor para listBuckets
+      let normalizedCredentials = { ...credenciales };
+      
+      // Asegurarnos de que todas las credenciales tengan formato uniforme
+      if (secret.tipo === 's3' || secret.tipo === 'minio') {
+        normalizedCredentials = {
+          ...normalizedCredentials,
+          access_key: normalizedCredentials.access_key || normalizedCredentials.accessKey,
+          secret_key: normalizedCredentials.secret_key || normalizedCredentials.secretKey
+        };
+      } else if (secret.tipo === 'azure') {
+        // Para Azure mantenemos el formato tal cual
+      } else if (secret.tipo === 'gcp') {
+        // Para GCP aseguramos que key_file esté correctamente formateado
+        if (normalizedCredentials.key_file && typeof normalizedCredentials.key_file === 'string') {
+          try {
+            normalizedCredentials.key_file = JSON.parse(normalizedCredentials.key_file);
+          } catch (e) {
+            // Mantenemos el formato original si hay error en el parsing
+          }
+        }
+      }
+      
       const tempProvider = {
         id: 0,
         nombre: `Test de ${secret.nombre}`,
         tipo: secret.tipo,
-        credenciales: credenciales,
+        credenciales: normalizedCredentials,
         configuracion: configuracionAzure
       };
       
@@ -352,11 +375,40 @@ async function createBucket(req, res, id) {
         configuracionAzure.use_sas = true;
       }
       
+      // Normalizar las credenciales según el tipo de proveedor para createBucket
+      let normalizedCredentials = { ...credenciales };
+      
+      // Asegurarnos de que todas las credenciales tengan formato uniforme
+      if (secret.tipo === 's3' || secret.tipo === 'minio') {
+        normalizedCredentials = {
+          ...normalizedCredentials,
+          access_key: normalizedCredentials.access_key || normalizedCredentials.accessKey,
+          secret_key: normalizedCredentials.secret_key || normalizedCredentials.secretKey,
+          bucket: bucketName,
+          bucket_name: bucketName
+        };
+      } else if (secret.tipo === 'azure') {
+        normalizedCredentials = {
+          ...normalizedCredentials,
+          containerName: bucketName,
+          container_name: bucketName
+        };
+      } else if (secret.tipo === 'gcp') {
+        // Para GCP aseguramos que key_file esté correctamente formateado
+        if (normalizedCredentials.key_file && typeof normalizedCredentials.key_file === 'string') {
+          try {
+            normalizedCredentials.key_file = JSON.parse(normalizedCredentials.key_file);
+          } catch (e) {
+            // Mantenemos el formato original si hay error en el parsing
+          }
+        }
+      }
+      
       const tempProvider = {
         id: 0,
         nombre: `Test de ${secret.nombre}`,
         tipo: secret.tipo,
-        credenciales: credenciales,
+        credenciales: normalizedCredentials,
         configuracion: configuracionAzure
       };
       
