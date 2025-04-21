@@ -350,16 +350,16 @@ export async function testConnection(credentials, config = {}) {
         }
       }
       
-      // Para probar conexión con un SAS token, intentaremos varios métodos
-      // 1. Si el token parece tener permisos de servicio, usar comp=list
-      // 2. De lo contrario, simplemente probar la URL base con el token
-
-      if (sasToken.includes('srt=s') || sasToken.includes('srt=sc') || sasToken.includes('srt=sco')) {
-        // Si tiene permisos de servicio, intentar listar servicios
-        url = `${urlBase}?restype=service&comp=list&${sasToken}`;
-      } else {
-        // Si no tiene permisos explícitos, intentar acceder a la URL base
+      // Para el método de prueba, usamos la URL más simple posible
+      // El objetivo es solo verificar que podemos conectarnos, no listar recursos
+      
+      if (sasToken && sasToken.length > 0) {
+        // Si tenemos token SAS, añadir a la URL base
         url = `${urlBase}?${sasToken}`;
+      } else {
+        // Si el token está vacío, intentar con la URL base solamente
+        // (para contenedores públicos)
+        url = urlBase;
       }
     } else {
       // Si tenemos una connection_string para Azure, asumir que es un SAS token
