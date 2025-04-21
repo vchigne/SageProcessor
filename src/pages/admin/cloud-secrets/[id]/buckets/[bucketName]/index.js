@@ -6,11 +6,6 @@ import { ArrowLeftIcon, FolderIcon, DocumentIcon } from '@heroicons/react/24/out
 import { Card, Text, Title, Button, Flex } from '@tremor/react';
 import { toast } from 'react-toastify';
 
-// Componentes reutilizables
-import LoadingSpinner from '../../../../../../components/common/LoadingSpinner';
-import BreadcrumbNav from '../../../../../../components/nav/BreadcrumbNav';
-import AdminLayout from '../../../../../../components/layouts/AdminLayout';
-
 export default function BucketExplorer() {
   const router = useRouter();
   const { id, bucketName, path } = router.query;
@@ -169,12 +164,10 @@ export default function BucketExplorer() {
   };
   
   return (
-    <AdminLayout>
+    <div className="container mx-auto px-4 py-6">
       <Head>
         <title>Explorador: {bucketName} | SAGE</title>
       </Head>
-      
-      <BreadcrumbNav items={generateBreadcrumbs()} />
       
       <div className="py-4">
         <Button
@@ -204,7 +197,9 @@ export default function BucketExplorer() {
         </div>
         
         {loading ? (
-          <LoadingSpinner message="Cargando contenido..." />
+          <div className="flex justify-center items-center h-64">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500"></div>
+          </div>
         ) : error ? (
           <Card className="mt-4">
             <div className="flex items-center text-red-500 mb-2">
@@ -277,6 +272,6 @@ export default function BucketExplorer() {
           </>
         )}
       </div>
-    </AdminLayout>
+    </div>
   );
 }

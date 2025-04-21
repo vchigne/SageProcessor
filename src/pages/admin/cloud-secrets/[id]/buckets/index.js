@@ -6,11 +6,6 @@ import { ArrowLeftIcon, InformationCircleIcon } from '@heroicons/react/24/outlin
 import { Card, Text, Title, Button, Flex } from '@tremor/react';
 import { toast } from 'react-toastify';
 
-// Componentes reutilizables
-import LoadingSpinner from '../../../../../components/common/LoadingSpinner';
-import BreadcrumbNav from '../../../../../components/nav/BreadcrumbNav';
-import AdminLayout from '../../../../../components/layouts/AdminLayout';
-
 export default function CloudSecretBuckets() {
   const router = useRouter();
   const { id } = router.query;
@@ -92,12 +87,10 @@ export default function CloudSecretBuckets() {
   ];
   
   return (
-    <AdminLayout>
+    <div className="container mx-auto px-4 py-6">
       <Head>
         <title>Buckets para {secret?.nombre || 'Secreto'} | SAGE</title>
       </Head>
-      
-      <BreadcrumbNav items={breadcrumbs} />
       
       <div className="py-4">
         <Button
@@ -122,7 +115,9 @@ export default function CloudSecretBuckets() {
         </div>
         
         {loading ? (
-          <LoadingSpinner message="Cargando buckets..." />
+          <div className="flex justify-center items-center h-64">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500"></div>
+          </div>
         ) : error ? (
           <Card className="mt-4">
             <div className="flex items-center text-red-500 mb-2">
@@ -166,6 +161,6 @@ export default function CloudSecretBuckets() {
           </>
         )}
       </div>
-    </AdminLayout>
+    </div>
   );
 }
