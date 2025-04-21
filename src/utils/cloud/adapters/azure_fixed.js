@@ -350,36 +350,83 @@ export async function testConnection(credentials, config = {}) {
         }
       }
       
-      // Para probar conexión con un SAS token, podemos simplemente listar los containers
-      // Algunos SAS tokens no tienen permisos para listar servicios completos (comp=list)
-      url = `${urlBase}?${sasToken}`;
-      
-      // Verificar si tenemos permisos explícitos de listado de servicios
+      // Para probar conexión con un SAS token, intentaremos varios métodos
+      // 1. Si el token parece tener permisos de servicio, usar comp=list
+      // 2. De lo contrario, simplemente probar la URL base con el token
+
       if (sasToken.includes('srt=s') || sasToken.includes('srt=sc') || sasToken.includes('srt=sco')) {
+        // Si tiene permisos de servicio, intentar listar servicios
         url = `${urlBase}?restype=service&comp=list&${sasToken}`;
+      } else {
+        // Si no tiene permisos explícitos, intentar acceder a la URL base
+        url = `${urlBase}?${sasToken}`;
       }
     } else {
-      console.log('[Azure] Probando conexión con Shared Key');
-      
-      // Necesitamos accountKey para Shared Key
-      if (!accountKey) {
-        throw new Error('Para autenticación con Shared Key se requiere account_key');
+      // Si tenemos una connection_string para Azure, asumir que es un SAS token
+      if (credentials.connection_string && 
+          credentials.connection_string.includes('blob.core.windows.net')) {
+        console.log('[Azure] Connection string de Azure Blob detectada, intentando modo SAS token');
+        
+        // Extraer un posible SAS token de la connection_string
+        const connString = credentials.connection_string;
+        let extractedSasToken = '';
+        
+        if (connString.includes('sv=')) {
+          const svIndex = connString.indexOf('sv=');
+          let endIndex = connString.indexOf(';', svIndex);
+          if (endIndex === -1) endIndex = connString.length;
+          
+          // Si hay un ? antes de sv=, comenzar desde allí
+          const questionMarkIndex = connString.lastIndexOf('?', svIndex);
+          if (questionMarkIndex !== -1 && questionMarkIndex < svIndex) {
+            extractedSasToken = connString.substring(questionMarkIndex + 1, endIndex);
+          } else {
+            extractedSasToken = connString.substring(svIndex, endIndex);
+          }
+          
+          console.log('[Azure] SAS token extraído de connection_string');
+          
+          // Asegurarnos de que el SAS token no comience con ?
+          if (extractedSasToken.startsWith('?')) {
+            extractedSasToken = extractedSasToken.substring(1);
+          }
+          
+          // Probar directamente con URL base
+          url = `${urlBase}?${extractedSasToken}`;
+          sasToken = extractedSasToken;
+          useSasToken = true;
+        } else {
+          // Si no hay SAS token pero sí URL de Azure, probar acceder directamente
+          url = urlBase;
+          useSasToken = true;
+          console.log('[Azure] Probando URL Azure Blob sin SAS token');
+        }
+      } else {
+        console.log('[Azure] Probando conexión con Shared Key');
+        
+        // Necesitamos accountKey para Shared Key
+        if (!accountKey) {
+          throw new Error('Para autenticación con Shared Key se requiere account_key');
+        }
       }
       
-      url = `${urlBase}?restype=service&comp=list`;
-      
-      // Generar firma para autenticación Shared Key
-      const authHeader = generateAzureStorageSignature(
-        accountName,
-        accountKey,
-        'GET',
-        '',
-        '',
-        headers,
-        { restype: 'service', comp: 'list' }
-      );
-      
-      headers['Authorization'] = authHeader;
+      // Solo usar Shared Key si no estamos en modo SAS token
+      if (!useSasToken) {
+        url = `${urlBase}?restype=service&comp=list`;
+        
+        // Generar firma para autenticación Shared Key
+        const authHeader = generateAzureStorageSignature(
+          accountName,
+          accountKey,
+          'GET',
+          '',
+          '',
+          headers,
+          { restype: 'service', comp: 'list' }
+        );
+        
+        headers['Authorization'] = authHeader;
+      }
     }
     
     console.log('[Azure] URL de prueba:', url.substring(0, Math.min(50, url.length)) + '...');

@@ -95,6 +95,12 @@ async function listBuckets(req, res, id) {
           contiene_blob: connString.includes('blob.core.windows.net'),
           empieza_con_http: connString.startsWith('http')
         });
+        
+        // Agregar configuración para activar modo SAS token en Azure
+        if (connString.includes('blob.core.windows.net')) {
+          console.log('[Buckets API] Connection string de Azure detectada, activando modo SAS');
+          // Se manejará cuando creemos el tempProvider más adelante
+        }
       }
       
       console.log('[Buckets API] Credenciales preparadas:', {

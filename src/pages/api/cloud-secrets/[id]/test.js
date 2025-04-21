@@ -103,8 +103,26 @@ async function testCloudSecret(req, res, id) {
         if (secret.tipo === 'azure') {
           console.log('[Test API] Verificando credenciales de Azure:', {
             tiene_connection_string: !!credenciales.connection_string,
-            connection_string_length: credenciales.connection_string ? credenciales.connection_string.length : 0
+            connection_string_length: credenciales.connection_string ? credenciales.connection_string.length : 0,
+            contiene_blob_azure: credenciales.connection_string ? credenciales.connection_string.includes('blob.core.windows.net') : false
           });
+          
+          // Forzar modo SAS token si tenemos connection_string con formato Azure
+          if (credenciales.connection_string && 
+              credenciales.connection_string.includes('blob.core.windows.net')) {
+            console.log('[Test API] Detectado formato connection_string de Azure, activando modo SAS');
+            
+            // Si tenemos algún parámetro de SAS token, como sv=, extráigalo
+            if (credenciales.connection_string.includes('sv=')) {
+              console.log('[Test API] Detectado parámetro SAS token en connection_string');
+              
+              // Agregar config para forzar modo SAS
+              tempProvider.configuracion = {
+                ...tempProvider.configuracion,
+                use_sas: true
+              };
+            }
+          }
         }
         
         // Probar conexión pasando credenciales y configuración
