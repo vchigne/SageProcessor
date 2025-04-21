@@ -110,6 +110,31 @@ async function inspectBucket(req, res, id, bucketName) {
         path: path
       });
       
+      // -------------------- PREPARAR CREDENCIALES ESPECÍFICAS DE CADA PROVEEDOR --------------------
+      
+      // Enriquecimiento de credenciales según el tipo de proveedor
+      if (secret.tipo === 's3') {
+        // Asegurar que S3 tenga el bucket correcto
+        credenciales.bucket = bucketName;
+      } else if (secret.tipo === 'minio') {
+        // MinIO requiere bucket y access/secret keys
+        credenciales.bucket = bucketName;
+        
+        // Si no tiene access_key o secret_key, buscarlos en lugares alternativos
+        if (!credenciales.access_key && credenciales.accessKey) {
+          credenciales.access_key = credenciales.accessKey;
+        }
+        if (!credenciales.secret_key && credenciales.secretKey) {
+          credenciales.secret_key = credenciales.secretKey;
+        }
+      } else if (secret.tipo === 'azure') {
+        // Azure requiere cuenta de almacenamiento y clave
+        credenciales.containerName = bucketName;
+      } else if (secret.tipo === 'sftp') {
+        // SFTP necesita bucket (directorio remoto)
+        credenciales.remoteDir = bucketName;
+      }
+      
       // Configuración por defecto del proveedor temporal
       const tempProvider = {
         id: 0,
@@ -122,51 +147,48 @@ async function inspectBucket(req, res, id, bucketName) {
         configuracion: {}
       };
       
+      // Para S3 y MinIO pueden necesitar el bucket en la configuración también
+      if (secret.tipo === 's3' || secret.tipo === 'minio') {
+        tempProvider.configuracion.bucket = bucketName;
+      }
+      
       // Obtener adaptador e inspeccionar bucket
       try {
         const adapter = await getCloudAdapter(tempProvider.tipo);
         
         if (!adapter) {
-          return res.status(400).json({ 
+          return res.status(200).json({ 
             error: true,
-            errorMessage: `Tipo de proveedor no soportado: ${secret.tipo}` 
+            errorMessage: `Tipo de proveedor no soportado: ${secret.tipo}`,
+            bucket: bucketName,
+            path: path || '/',
+            folders: [],
+            files: []
           });
         }
         
         // Listamos el contenido del bucket
         if (!adapter.listContents) {
-          return res.status(400).json({ 
+          return res.status(200).json({ 
             error: true,
-            errorMessage: `El proveedor ${secret.tipo} no implementa el método listContents` 
+            errorMessage: `El proveedor ${secret.tipo} no implementa el método listContents`,
+            bucket: bucketName,
+            path: path || '/',
+            folders: [],
+            files: []
           });
         }
         
-        // Ajustes según el tipo de proveedor
-        let config = {};
-        
-        // Especificar configuración especial para S3 si es necesario
-        if (secret.tipo === 's3') {
-          // ...
-        }
+        // -------------------- LLAMAR AL ADAPTADOR CON PARÁMETROS ESPECÍFICOS --------------------
         
         // Obtener contenido del bucket
-        console.log(`[Inspect API] Listando contenido del bucket ${bucketName} en ruta ${path || '/'}`);
+        console.log(`[Inspect API] Listando contenido del bucket ${bucketName} en ruta ${path || '/'} con proveedor ${secret.tipo}`);
         const result = await adapter.listContents(
           tempProvider.credenciales, 
-          { ...tempProvider.configuracion, ...config },
+          tempProvider.configuracion,
           path,
           maxItems
         );
-        
-        // Adaptar el formato si es necesario para compatibilidad con SAGE Clouds
-        let adaptedResult = { ...result };
-        
-        // Si es GCP y tiene 'folders', mapeamos a 'directories' para mantener compatibilidad
-        if (secret.tipo === 'gcp' && result.folders && !result.directories) {
-          console.log('[Inspect API] Adaptando respuesta de GCP: folders -> directories');
-          adaptedResult.directories = result.folders;
-          delete adaptedResult.folders;
-        }
         
         // Actualizar fecha de última modificación
         await client.query(
@@ -176,17 +198,175 @@ async function inspectBucket(req, res, id, bucketName) {
           [id]
         );
         
-        // IMPORTANTE: Formato de respuesta igual que en SAGE Clouds 
-        // (devolver el objeto completo, no dentro de 'contents')
+        // -------------------- NORMALIZAR RESPUESTA A FORMATO SAGE CLOUDS --------------------
+        
+        // IMPORTANTE: Formato de respuesta EXACTAMENTE igual que en SAGE Clouds
+        let folders = [];
+        let files = [];
+        
+        // Normalizar formato según el tipo de proveedor para tener EXACTAMENTE el mismo formato
+        if (secret.tipo === 'gcp') {
+          // GCP puede usar 'folders' o 'directories'
+          folders = result.folders || result.directories || [];
+          files = result.files || [];
+          
+          // Normalizar formato de carpetas para GCP
+          folders = folders.map(folder => {
+            if (typeof folder === 'string') {
+              return { name: folder, path: folder, type: 'folder' };
+            }
+            return { ...folder, type: 'folder' };
+          });
+          
+        } else if (secret.tipo === 's3') {
+          // S3 usa 'CommonPrefixes' para carpetas y 'Contents' para archivos
+          const commonPrefixes = result.CommonPrefixes || [];
+          const contents = result.Contents || [];
+          
+          // Normalizar carpetas de S3
+          folders = commonPrefixes.map(prefix => {
+            if (typeof prefix === 'string') {
+              return { name: prefix, path: prefix, type: 'folder' };
+            } else if (prefix.Prefix) {
+              const prefixPath = prefix.Prefix;
+              const name = prefixPath.split('/').filter(Boolean).pop() || prefixPath;
+              return { name, path: prefixPath, type: 'folder' };
+            }
+            return { ...prefix, type: 'folder' };
+          });
+          
+          // Normalizar archivos de S3
+          files = contents.map(file => {
+            if (file.Key) {
+              // Excluir archivos que son parte de carpetas (terminan en /)
+              if (file.Key.endsWith('/')) {
+                return null;
+              }
+              
+              const key = file.Key;
+              const name = key.split('/').pop();
+              return { 
+                name, 
+                path: key,
+                size: file.Size || 0,
+                lastModified: file.LastModified || new Date().toISOString(),
+                type: 'file'
+              };
+            }
+            return { ...file, type: 'file' };
+          }).filter(Boolean); // Eliminar nulos
+          
+        } else if (secret.tipo === 'minio') {
+          // MinIO es similar a S3, o puede usar formato propio
+          // Primero intentamos formato MinIO propio
+          folders = result.folders || result.directories || [];
+          files = result.files || [];
+          
+          // Si no hay carpetas o archivos, intentamos formato S3
+          if ((!folders || folders.length === 0) && result.CommonPrefixes) {
+            folders = result.CommonPrefixes;
+          }
+          
+          if ((!files || files.length === 0) && result.Contents) {
+            files = result.Contents;
+          }
+          
+          // Normalizar carpetas de MinIO
+          folders = folders.map(folder => {
+            if (typeof folder === 'string') {
+              return { name: folder, path: folder, type: 'folder' };
+            } else if (folder.Prefix) {
+              const prefix = folder.Prefix;
+              const name = prefix.split('/').filter(Boolean).pop() || prefix;
+              return { name, path: prefix, type: 'folder' };
+            }
+            return { ...folder, type: 'folder' };
+          });
+          
+          // Normalizar archivos de MinIO
+          files = files.map(file => {
+            if (file.Key) {
+              // Excluir archivos que son parte de carpetas
+              if (file.Key.endsWith('/')) {
+                return null;
+              }
+              
+              const key = file.Key;
+              const name = key.split('/').pop();
+              return { 
+                name, 
+                path: key,
+                size: file.Size || 0,
+                lastModified: file.LastModified || new Date().toISOString(),
+                type: 'file'
+              };
+            } else if (file.name) {
+              return {
+                ...file,
+                type: 'file'
+              };
+            }
+            return { ...file, type: 'file' };
+          }).filter(Boolean); // Eliminar nulos
+          
+        } else if (secret.tipo === 'azure') {
+          // Azure usa 'directories' y 'blobs'
+          folders = result.directories || result.folders || [];
+          files = result.files || result.blobs || [];
+          
+          // Normalizar carpetas Azure
+          folders = folders.map(folder => {
+            if (typeof folder === 'string') {
+              return { name: folder, path: folder, type: 'folder' };
+            }
+            return { ...folder, type: 'folder' };
+          });
+          
+          // Normalizar archivos Azure
+          files = files.map(file => {
+            if (file.name) {
+              const name = file.name.split('/').pop();
+              return {
+                name,
+                path: file.name,
+                size: file.properties?.contentLength || 0,
+                lastModified: file.properties?.lastModified || new Date().toISOString(),
+                type: 'file'
+              };
+            }
+            return { ...file, type: 'file' };
+          });
+          
+        } else if (secret.tipo === 'sftp') {
+          // SFTP usa 'directories' y 'files'
+          folders = result.directories || result.folders || [];
+          files = result.files || [];
+          
+          // Normalizar carpetas SFTP
+          folders = folders.map(folder => {
+            if (typeof folder === 'string') {
+              return { name: folder, path: folder, type: 'folder' };
+            }
+            return { ...folder, type: 'folder' };
+          });
+          
+          // Normalizar archivos SFTP
+          files = files.map(file => {
+            if (typeof file === 'string') {
+              return { name: file, path: file, type: 'file' };
+            }
+            return { ...file, type: 'file' };
+          });
+        }
+        
+        // IMPORTANTE: Formato SAGE Clouds exacto
         return res.status(200).json({
           bucket: bucketName,
           path: path || '/',
           parentPath: getParentPath(path),
           service: secret.tipo,
-          // Si hay directorios, incluirlos en la respuesta (como 'folders' para SAGE Clouds)
-          folders: adaptedResult.directories || adaptedResult.folders || [],
-          // Incluir archivos
-          files: adaptedResult.files || []
+          folders: folders || [],
+          files: files || []
         });
       } catch (error) {
         console.error('Error al inspeccionar bucket:', error);

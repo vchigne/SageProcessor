@@ -512,6 +512,18 @@ export async function listContents(credentials, config = {}, path = '', limit = 
       const sasStart = connString.indexOf('SharedAccessSignature=') + 'SharedAccessSignature='.length;
       const sasToken = connString.substring(sasStart);
       
+      // Asegurarse de que tenemos un nombre de contenedor válido
+      const bucketOrContainer = credentials.bucket || credentials.container_name || credentials.containerName || config.bucket || config.container_name;
+      
+      if (!bucketOrContainer) {
+        throw new Error('Falta especificar el nombre del contenedor. Por favor, proporciona un valor en bucket, container_name o en la configuración.');
+      }
+      
+      // Actualizar el containerName para esta sesión
+      containerName = bucketOrContainer;
+      
+      console.log(`[Azure] Usando contenedor: ${containerName}`);
+      
       // Preparar variables de listado
       const prefix = path ? `${path}${path.endsWith('/') ? '' : '/'}` : '';
       const delimiter = '/';
@@ -623,6 +635,18 @@ export async function listContents(credentials, config = {}, path = '', limit = 
     // Código normal para el caso general
     const prefix = path ? `${path}${path.endsWith('/') ? '' : '/'}` : '';
     const delimiter = '/';
+    
+    // Asegurarse de que tenemos un nombre de contenedor válido para todos los casos
+    const bucketOrContainer = credentials.bucket || credentials.container_name || credentials.containerName || config.bucket || config.container_name;
+    
+    if (!bucketOrContainer) {
+      throw new Error('Falta especificar el nombre del contenedor. Por favor, proporciona un valor en bucket, container_name o en la configuración.');
+    }
+    
+    // Actualizar el containerName para esta sesión
+    containerName = bucketOrContainer;
+    
+    console.log(`[Azure] Usando contenedor general: ${containerName}`);
     
     // Si usa SAS token, asegurarse de que tenemos lo necesario
     if (useSasToken) {

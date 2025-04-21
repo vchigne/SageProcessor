@@ -21,6 +21,212 @@ async function sha256(message) {
 }
 
 /**
+ * Calcula el HMAC SHA-256 para mensaje y clave dados
+ * @param {string|Uint8Array} key - La clave para HMAC
+ * @param {string} message - El mensaje a firmar
+ * @returns {Promise<Uint8Array>} - La firma en formato Uint8Array
+ */
+async function hmacSha256(key, message) {
+  const msgBuffer = new TextEncoder().encode(message);
+  let keyBuffer = key;
+  
+  // Si la clave es un string, convertirla a bytes
+  if (typeof key === 'string') {
+    keyBuffer = new TextEncoder().encode(key);
+  }
+  
+  // Importar la clave
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    keyBuffer,
+    { name: 'HMAC', hash: { name: 'SHA-256' } },
+    false,
+    ['sign']
+  );
+  
+  // Firmar el mensaje
+  const signBuffer = await crypto.subtle.sign(
+    { name: 'HMAC', hash: { name: 'SHA-256' } },
+    cryptoKey,
+    msgBuffer
+  );
+  
+  return new Uint8Array(signBuffer);
+}
+
+/**
+ * Calcula el HMAC SHA-256 para mensaje y clave dados, devolviendo hex
+ * @param {string|Uint8Array} key - La clave para HMAC
+ * @param {string} message - El mensaje a firmar
+ * @returns {Promise<string>} - La firma en formato hexadecimal
+ */
+async function hmacSha256Hex(key, message) {
+  const hmacBuffer = await hmacSha256(key, message);
+  return Array.from(hmacBuffer)
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+/**
+ * Lista el contenido de un bucket en una región específica
+ * Usado para manejar redirecciones permanentes en S3
+ * 
+ * @param {string} accessKey - Clave de acceso de AWS
+ * @param {string} secretKey - Clave secreta de AWS
+ * @param {string} bucket - Nombre del bucket
+ * @param {string} prefix - Prefijo para listar
+ * @param {string} region - Región específica de AWS a utilizar
+ * @returns {Promise<object>} - Resultado con carpetas y archivos
+ */
+async function listBucketContentsInRegion(accessKey, secretKey, bucket, prefix, region) {
+  console.log(`[S3] Intentando listar contenido de bucket '${bucket}' en región '${region}' con prefijo '${prefix}'`);
+  
+  // Construir endpoint para la región específica
+  const host = `s3.${region}.amazonaws.com`;
+  const url = `https://${host}/${bucket}?list-type=2&max-keys=1000&prefix=${prefix}`;
+  
+  // Fecha en formato ISO 8601 para encabezado x-amz-date
+  const amzDate = getAmzDate();
+  const dateStamp = getDateStamp();
+  
+  // Headers a firmar
+  const headers = {
+    'host': host,
+    'x-amz-date': amzDate,
+    'x-amz-content-sha256': 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855' // hash de cadena vacía
+  };
+  
+  // Construir la solicitud canónica
+  const canonicalUri = `/${bucket}`;
+  const canonicalQueryString = `list-type=2&max-keys=1000&prefix=${prefix}`;
+  
+  const sortedHeaders = Object.keys(headers).sort();
+  const canonicalHeaders = sortedHeaders.map(key => `${key}:${headers[key]}\n`).join('');
+  const signedHeaders = sortedHeaders.join(';');
+  
+  const payloadHash = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'; // hash de cuerpo vacío
+  
+  const canonicalRequest = [
+    'GET',
+    canonicalUri,
+    canonicalQueryString,
+    canonicalHeaders,
+    signedHeaders,
+    payloadHash
+  ].join('\n');
+  
+  // Calcular la firma
+  const canonicalRequestHash = await sha256(canonicalRequest);
+  
+  const algorithm = 'AWS4-HMAC-SHA256';
+  const scope = `${dateStamp}/${region}/s3/aws4_request`;
+  
+  const stringToSign = [
+    algorithm,
+    amzDate,
+    scope,
+    canonicalRequestHash
+  ].join('\n');
+  
+  // Derivar la clave de firma
+  const kSecret = new TextEncoder().encode(`AWS4${secretKey}`);
+  const kDate = await hmacSha256(kSecret, dateStamp);
+  const kRegion = await hmacSha256(kDate, region);
+  const kService = await hmacSha256(kRegion, 's3');
+  const kSigning = await hmacSha256(kService, 'aws4_request');
+  
+  // Obtener la firma
+  const signature = await hmacSha256Hex(kSigning, stringToSign);
+  
+  // Crear el header de autorización
+  const authorizationHeader = `${algorithm} Credential=${accessKey}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+  
+  // Realizar la petición
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      ...headers,
+      'Authorization': authorizationHeader
+    }
+  });
+  
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`[S3] Error en respuesta de bucket en región ${region}:`, errorText);
+    throw new Error(`Error al listar bucket en región ${region}: ${response.status} ${response.statusText}`);
+  }
+  
+  // Procesar la respuesta XML
+  const text = await response.text();
+  console.log(`[S3] Respuesta de bucket en región ${region} (${text.length} bytes)`);
+  
+  // Extraer prefijos (carpetas)
+  const prefixMatches = text.match(/<CommonPrefixes>[\s\S]*?<Prefix>(.*?)<\/Prefix>[\s\S]*?<\/CommonPrefixes>/g) || [];
+  const folders = prefixMatches.map(match => {
+    const prefix = match.replace(/<CommonPrefixes>[\s\S]*?<Prefix>(.*?)<\/Prefix>[\s\S]*?<\/CommonPrefixes>/g, '$1');
+    const name = prefix.split('/').filter(p => p).pop() || '';
+    
+    return {
+      name,
+      path: prefix,
+      type: 'directory'
+    };
+  });
+  
+  // Extraer contenidos (archivos)
+  const contentMatches = text.match(/<Contents>[\s\S]*?<\/Contents>/g) || [];
+  const files = [];
+  
+  contentMatches.forEach(contentBlock => {
+    const keyMatch = contentBlock.match(/<Key>(.*?)<\/Key>/);
+    const sizeMatch = contentBlock.match(/<Size>(.*?)<\/Size>/);
+    const dateMatch = contentBlock.match(/<LastModified>(.*?)<\/LastModified>/);
+    
+    if (keyMatch) {
+      const key = keyMatch[1];
+      
+      // No incluir "directorios" (claves que terminan en /)
+      if (key.endsWith('/')) return;
+      
+      // Solo incluir archivos en el nivel actual
+      if (prefix && !key.startsWith(prefix)) return;
+      
+      const relativePath = prefix ? key.slice(prefix.length) : key;
+      if (relativePath.includes('/')) return;
+      
+      const size = sizeMatch ? parseInt(sizeMatch[1], 10) : 0;
+      const lastModified = dateMatch ? new Date(dateMatch[1]) : new Date();
+      const name = key.split('/').pop() || '';
+      
+      files.push({
+        name,
+        path: key,
+        size,
+        lastModified,
+        type: 'file'
+      });
+    }
+  });
+  
+  // Construir respuesta en formato compatible con el resto del código
+  return {
+    folders,
+    files,
+    path: prefix || '',
+    parentPath: '',
+    
+    // También incluir los formatos que requiere el inspector
+    CommonPrefixes: folders.map(folder => ({ Prefix: folder.path })),
+    Contents: files.map(file => ({ 
+      Key: file.path, 
+      Size: file.size, 
+      LastModified: file.lastModified 
+    })),
+    directories: folders
+  };
+}
+
+/**
  * Devuelve la fecha actual en formato ISO 8601 para el encabezado x-amz-date
  * @returns {string} Fecha en formato yyyyMMddTHHmmssZ
  */
@@ -410,6 +616,31 @@ async function listContents(credentials, config = {}, path = '') {
       const codeMatch = errorText.match(/<Code>(.*?)<\/Code>/);
       const messageMatch = errorText.match(/<Message>(.*?)<\/Message>/);
       
+      // Manejar redirección permanente - extraer endpoint correcto
+      if (codeMatch && messageMatch && codeMatch[1] === 'PermanentRedirect') {
+        const endpointMatch = errorText.match(/<Endpoint>(.*?)<\/Endpoint>/);
+        const regionHint = endpointMatch && endpointMatch[1] ? 
+          endpointMatch[1].split('.')[1].replace('s3-', '') : 'us-west-2';
+            
+        console.log(`[S3] Detectado bucket en otra región. Intentando con región detectada: ${regionHint}`);
+            
+        // Intentar nuevamente con la región correcta
+        try {
+          const redirectResponse = await listBucketContentsInRegion(
+            credentials.access_key, 
+            credentials.secret_key, 
+            bucket, 
+            prefix,
+            regionHint
+          );
+          
+          return redirectResponse;
+        } catch (redirectError) {
+          console.error('[S3] Error al reintentar con región detectada:', redirectError);
+          // Continuar con el manejo de errores normal
+        }
+      }
+      
       if (codeMatch && messageMatch) {
         const errorCode = codeMatch[1];
         const errorDetail = messageMatch[1];
@@ -433,6 +664,13 @@ async function listContents(credentials, config = {}, path = '') {
           errorMessage += `\n\nLas credenciales proporcionadas no tienen permiso para acceder al bucket '${bucket}'. Verifica:\n` +
             `1. Que la clave de acceso tenga permisos suficientes (s3:ListBucket)\n` +
             `2. Que la política del bucket permita el acceso a este usuario`;
+        } else if (errorCode === 'PermanentRedirect') {
+          const endpointMatch = errorText.match(/<Endpoint>(.*?)<\/Endpoint>/);
+          if (endpointMatch && endpointMatch[1]) {
+            const suggestedEndpoint = endpointMatch[1];
+            errorMessage += `\n\nEl bucket '${bucket}' debe ser accedido a través del endpoint: ${suggestedEndpoint}.\n` +
+              `La región configurada (${region}) no es correcta para este bucket.`;
+          }
         }
       }
       

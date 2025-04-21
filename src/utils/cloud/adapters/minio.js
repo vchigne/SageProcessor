@@ -258,10 +258,33 @@ async function testConnection(credentials, config = {}) {
  */
 async function listContents(credentials, config = {}, path = '') {
   try {
+    console.log('[MinIO] Listando contenido con credenciales:', JSON.stringify({
+      ...credentials,
+      secret_key: credentials.secret_key ? '***' : undefined,
+      secretKey: credentials.secretKey ? '***' : undefined,
+    }));
+    
+    // Obtener credenciales y configuración de múltiples ubicaciones posibles
+    const accessKey = credentials.access_key || credentials.accessKey;
+    const secretKey = credentials.secret_key || credentials.secretKey;
+    
+    // Buscar bucket en múltiples ubicaciones
+    let bucket = credentials.bucket || credentials.bucket_name || config.bucket;
+    
+    // Si el bucket está en configuración, moverlo a credenciales
+    if (!credentials.bucket && bucket) {
+      credentials.bucket = bucket;
+    }
+    
     // Validar credenciales
-    if (!credentials.access_key || !credentials.secret_key || !credentials.bucket) {
+    if (!accessKey || !secretKey || !bucket) {
+      console.error('[MinIO] Faltan credenciales:', { accessKey: !!accessKey, secretKey: !!secretKey, bucket: !!bucket });
       throw new Error('Faltan credenciales requeridas para MinIO');
     }
+    
+    // Asignar credenciales corregidas para uso posterior
+    credentials.access_key = accessKey;
+    credentials.secret_key = secretKey;
 
     // Verificar si el endpoint está en credenciales en lugar de config
     if (!config.endpoint) {
@@ -294,9 +317,9 @@ async function listContents(credentials, config = {}, path = '') {
     const port = config.port ? `:${config.port}` : '';
     const baseUrl = `${endpoint}${port}`;
     
-    const bucket = credentials.bucket;
+    // Ya tenemos 'bucket' en credentials.bucket asignado anteriormente
     const prefix = path ? encodeURIComponent(path + (path.endsWith('/') ? '' : '/')) : '';
-    const url = `${baseUrl}/${bucket}?delimiter=%2F&list-type=2&max-keys=100&prefix=${prefix}`;
+    const url = `${baseUrl}/${credentials.bucket}?delimiter=%2F&list-type=2&max-keys=100&prefix=${prefix}`;
     
     // Fecha y timestamp para la firma
     const amzDate = getAmzDate();
@@ -538,11 +561,27 @@ async function listContents(credentials, config = {}, path = '') {
     
     console.log(`[MinIO] Path: "${path}", calculando parentPath: "${parentPath}"`);
     
+    // Estructurar respuesta para ser EXACTAMENTE compatible con SAGE Clouds
+    // Devolver TODOS los formatos posibles que podrían utilizarse
     return {
+      // Formato estándar del adaptador
       folders: sortedFolders,
       files: sortedFiles,
       path: path,
-      parentPath: parentPath
+      parentPath: parentPath,
+      
+      // Formato S3 compatible
+      CommonPrefixes: sortedFolders.map(folder => ({
+        Prefix: folder.path
+      })),
+      Contents: sortedFiles.map(file => ({
+        Key: file.path,
+        Size: file.size,
+        LastModified: file.lastModified
+      })),
+      
+      // Formato necesario para el inspector de SAGE Clouds
+      directories: sortedFolders
     };
   } catch (error) {
     console.error('[MinIO] Error al listar contenido:', error);
