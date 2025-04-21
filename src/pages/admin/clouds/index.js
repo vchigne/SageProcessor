@@ -661,6 +661,40 @@ function CloudProviders() {
   };
 
   // Resetear formulario
+  // Función para cargar buckets disponibles para un secreto
+  const loadBucketsForSecret = async (secretId) => {
+    if (!secretId) return;
+    
+    try {
+      setLoadingBuckets(true);
+      const response = await fetch(`/api/cloud-secrets/${secretId}/buckets`);
+      
+      if (!response.ok) {
+        const error = await response.json();
+        console.warn('Error al cargar buckets:', error);
+        setAvailableBuckets([]);
+        return;
+      }
+      
+      const data = await response.json();
+      
+      if (data.success && data.buckets && Array.isArray(data.buckets)) {
+        // Extraer nombres de buckets (puede ser un array de strings o de objetos)
+        const bucketList = data.buckets.map(bucket => 
+          typeof bucket === 'string' ? bucket : bucket.name || bucket
+        );
+        setAvailableBuckets(bucketList);
+      } else {
+        setAvailableBuckets([]);
+      }
+    } catch (error) {
+      console.error('Error al cargar buckets:', error);
+      setAvailableBuckets([]);
+    } finally {
+      setLoadingBuckets(false);
+    }
+  };
+  
   // Función para obtener los secretos de nube
   const fetchCloudSecrets = async () => {
     try {
@@ -671,6 +705,14 @@ function CloudProviders() {
       
       console.log("Secretos de nube recibidos:", data);
       setCloudSecrets(data);
+      
+      // Si tenemos un tipo de proveedor seleccionado, filtrar los secretos por ese tipo
+      if (currentProvider.tipo) {
+        const filtered = data.filter(secret => secret.tipo === currentProvider.tipo);
+        setFilteredSecrets(filtered);
+      } else {
+        setFilteredSecrets(data);
+      }
     } catch (error) {
       console.error('Error:', error);
       toast.error('Error al cargar secretos de nube: ' + error.message);
@@ -704,6 +746,11 @@ function CloudProviders() {
         ...prev,
         [name]: val
       }));
+      
+      // Si se cambia el secreto de nube, cargar los buckets disponibles
+      if (name === 'secreto_id' && val) {
+        loadBucketsForSecret(val);
+      }
     }
   };
 
@@ -731,8 +778,17 @@ function CloudProviders() {
       ...prev,
       tipo: newType,
       credenciales: defaultCredentials,
-      configuracion: defaultConfig
+      configuracion: defaultConfig,
+      secreto_id: null // Limpiar el secreto seleccionado cuando cambia el tipo
     }));
+    
+    // Filtrar secretos por el nuevo tipo
+    const filtered = cloudSecrets.filter(secret => secret.tipo === newType);
+    setFilteredSecrets(filtered);
+    
+    // Limpiar buckets y restablecer modo de entrada
+    setAvailableBuckets([]);
+    setUseCustomBucketName(false);
   };
 
   return (
@@ -867,7 +923,7 @@ function CloudProviders() {
                     required
                   >
                     <option value="">Selecciona un secreto...</option>
-                    {cloudSecrets.map((secreto) => (
+                    {filteredSecrets.map((secreto) => (
                       <option key={secreto.id} value={secreto.id}>
                         {secreto.nombre} ({secreto.tipo})
                       </option>
@@ -928,39 +984,112 @@ function CloudProviders() {
             <div className="mb-6">
               <Subtitle className="mb-3">Configuración Adicional</Subtitle>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {configSchemas[currentProvider.tipo].map((field) => (
-                  <div key={field.name}>
+                {/* Primero la selección de bucket (si estamos usando un secreto) */}
+                {currentProvider.usando_secreto && (
+                  <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      {field.label} {field.required && '*'}
+                      Bucket*
                     </label>
-                    {field.type === 'textarea' ? (
-                      <textarea
-                        name={`configuracion.${field.name}`}
-                        value={currentProvider.configuracion[field.name] || ''}
-                        onChange={handleInputChange}
-                        rows="4"
-                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                        required={field.required}
-                      />
-                    ) : field.type === 'checkbox' ? (
-                      <input
-                        type="checkbox"
-                        name={`configuracion.${field.name}`}
-                        checked={!!currentProvider.configuracion[field.name]}
-                        onChange={handleInputChange}
-                        className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
-                      />
-                    ) : (
-                      <input
-                        type={field.type}
-                        name={`configuracion.${field.name}`}
-                        value={currentProvider.configuracion[field.name] || ''}
-                        onChange={handleInputChange}
-                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                        required={field.required}
-                      />
-                    )}
+                    <div className="space-y-2">
+                      <div className="flex items-center">
+                        <label className="relative inline-flex items-center cursor-pointer mr-3">
+                          <input 
+                            type="checkbox" 
+                            className="sr-only peer"
+                            checked={useCustomBucketName}
+                            onChange={(e) => setUseCustomBucketName(e.target.checked)}
+                          />
+                          <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                          <span className="ml-1 text-sm font-medium text-gray-700">Usar nombre personalizado</span>
+                        </label>
+                      </div>
+                      
+                      {useCustomBucketName ? (
+                        <input
+                          type="text"
+                          name="configuracion.bucket"
+                          value={currentProvider.configuracion.bucket || ''}
+                          onChange={handleInputChange}
+                          className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                          placeholder="Ingrese nombre del bucket"
+                          required
+                        />
+                      ) : (
+                        <div>
+                          <select
+                            name="configuracion.bucket"
+                            value={currentProvider.configuracion.bucket || ''}
+                            onChange={handleInputChange}
+                            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                            required
+                            disabled={loadingBuckets || !currentProvider.secreto_id}
+                          >
+                            <option value="">Seleccione un bucket...</option>
+                            {availableBuckets.map((bucket) => (
+                              <option key={bucket} value={bucket}>
+                                {bucket}
+                              </option>
+                            ))}
+                          </select>
+                          {loadingBuckets && (
+                            <div className="mt-2 text-sm text-gray-500 flex items-center">
+                              <div className="animate-spin mr-2 h-4 w-4 border-b-2 border-indigo-500"></div>
+                              Cargando buckets...
+                            </div>
+                          )}
+                          {!loadingBuckets && availableBuckets.length === 0 && currentProvider.secreto_id && (
+                            <div className="mt-2 text-sm text-amber-600">
+                              No se encontraron buckets. Active "Usar nombre personalizado" para crear uno nuevo.
+                            </div>
+                          )}
+                          {!currentProvider.secreto_id && (
+                            <div className="mt-2 text-sm text-gray-500">
+                              Seleccione un secreto para cargar buckets disponibles.
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
+                )}
+                
+                {/* Resto de campos de configuración */}
+                {configSchemas[currentProvider.tipo].map((field) => (
+                  // Si estamos usando secreto y el campo es "bucket", no mostrarlo de nuevo
+                  (!(currentProvider.usando_secreto && field.name === 'bucket')) && (
+                    <div key={field.name}>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        {field.label} {field.required && '*'}
+                      </label>
+                      {field.type === 'textarea' ? (
+                        <textarea
+                          name={`configuracion.${field.name}`}
+                          value={currentProvider.configuracion[field.name] || ''}
+                          onChange={handleInputChange}
+                          rows="4"
+                          className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                          required={field.required}
+                        />
+                      ) : field.type === 'checkbox' ? (
+                        <input
+                          type="checkbox"
+                          name={`configuracion.${field.name}`}
+                          checked={!!currentProvider.configuracion[field.name]}
+                          onChange={handleInputChange}
+                          className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                        />
+                      ) : (
+                        <input
+                          type={field.type}
+                          name={`configuracion.${field.name}`}
+                          value={currentProvider.configuracion[field.name] || ''}
+                          onChange={handleInputChange}
+                          className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                          required={field.required}
+                        />
+                      )}
+                    </div>
+                  )
                 ))}
               </div>
             </div>
