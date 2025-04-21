@@ -110,12 +110,20 @@ async function listBuckets(req, res, id) {
         tiene_connection_string: secret.tipo === 'azure' ? !!credenciales.connection_string : undefined
       });
       
+      // Para Azure, configuración especial
+      let configuracionAzure = {};
+      if (secret.tipo === 'azure' && credenciales.connection_string && 
+          credenciales.connection_string.includes('blob.core.windows.net')) {
+        console.log('[Buckets API] Activando modo SAS para Azure en listBuckets');
+        configuracionAzure.use_sas = true;
+      }
+      
       const tempProvider = {
         id: 0,
         nombre: `Test de ${secret.nombre}`,
         tipo: secret.tipo,
         credenciales: credenciales,
-        configuracion: {}
+        configuracion: configuracionAzure
       };
       
       // Obtener adaptador y listar buckets
@@ -336,12 +344,20 @@ async function createBucket(req, res, id) {
         connection_string_length: secret.tipo === 'azure' && credenciales.connection_string ? credenciales.connection_string.length : 0
       });
       
+      // Para Azure, configuración especial
+      let configuracionAzure = {};
+      if (secret.tipo === 'azure' && credenciales.connection_string && 
+          credenciales.connection_string.includes('blob.core.windows.net')) {
+        console.log('[Buckets API] Activando modo SAS para Azure en createBucket');
+        configuracionAzure.use_sas = true;
+      }
+      
       const tempProvider = {
         id: 0,
         nombre: `Test de ${secret.nombre}`,
         tipo: secret.tipo,
         credenciales: credenciales,
-        configuracion: {}
+        configuracion: configuracionAzure
       };
       
       // Obtener adaptador y crear bucket
