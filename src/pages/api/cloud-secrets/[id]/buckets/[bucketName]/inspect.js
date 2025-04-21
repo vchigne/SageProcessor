@@ -1,208 +1,148 @@
 /**
- * API para inspeccionar contenido de un bucket específico de un secreto de nube
+ * API para inspeccionar el contenido de un bucket específico de un secreto de nube
  * 
- * Esta API utiliza la misma implementación que la API de inspección en SAGE CLOUDS
- * para garantizar consistencia en el comportamiento, especialmente para Azure.
+ * GET: Obtiene la estructura de carpetas y archivos en la ruta especificada
  */
-import { pool } from '@/utils/db';
-import { getAdapter } from '@/utils/cloud';
+
+import { pool } from '../../../../../../utils/db';
+import { getCloudAdapter } from '../../../../../../utils/cloud';
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({
-      success: false,
-      message: 'Método no permitido'
-    });
-  }
-  
-  const { id, bucketName } = req.query;
-  const { path = '' } = req.body;
-  
-  if (!id || isNaN(parseInt(id))) {
-    return res.status(400).json({
-      success: false,
-      message: 'ID de secreto de nube inválido'
-    });
-  }
-  
-  if (!bucketName) {
-    return res.status(400).json({
-      success: false,
-      message: 'Nombre de bucket requerido'
-    });
-  }
-  
-  const secretoId = parseInt(id);
-  let secreto = null;
-  
   try {
-    // Obtener detalles del secreto
+    const { id, bucketName } = req.query;
+    const path = req.query.path || '';
+    
+    // Validar que id sea un número válido
+    if (!id || isNaN(parseInt(id))) {
+      return res.status(400).json({ error: 'ID de secreto no válido' });
+    }
+    
+    if (!bucketName) {
+      return res.status(400).json({ error: 'Nombre de bucket no proporcionado' });
+    }
+    
+    if (req.method !== 'GET') {
+      return res.status(405).json({ error: 'Método no permitido' });
+    }
+    
+    return await inspectBucket(req, res, parseInt(id), bucketName, path);
+  } catch (error) {
+    console.error('Error en API de inspección de bucket:', error);
+    return res.status(500).json({ 
+      success: false, 
+      message: `Error interno del servidor: ${error.message}` 
+    });
+  }
+}
+
+/**
+ * Inspecciona el contenido de un bucket específico
+ */
+async function inspectBucket(req, res, id, bucketName, path) {
+  try {
     const client = await pool.connect();
     
     try {
-      const result = await client.query(
-        `SELECT id, nombre, descripcion, tipo as tipo_proveedor, secretos as credentials, activo, creado_en, modificado_en
+      // Obtener el secreto por ID
+      const secretResult = await client.query(
+        `SELECT id, nombre, tipo, secretos
          FROM cloud_secrets
          WHERE id = $1`,
-        [secretoId]
+        [id]
       );
       
-      if (result.rows.length === 0) {
-        return res.status(404).json({
-          success: false,
-          message: 'Secreto de nube no encontrado'
+      if (secretResult.rows.length === 0) {
+        return res.status(404).json({ 
+          success: false, 
+          message: 'Secreto no encontrado' 
         });
       }
       
-      secreto = result.rows[0];
+      const secret = secretResult.rows[0];
       
-      // Convertir credenciales de JSON string a objeto
-      if (typeof secreto.credentials === 'string') {
-        secreto.credentials = JSON.parse(secreto.credentials);
+      // Parsear credenciales si es necesario
+      let credenciales = typeof secret.secretos === 'string' 
+        ? JSON.parse(secret.secretos) 
+        : secret.secretos;
+      
+      // Asegurarse de que el bucket_name esté disponible
+      credenciales.bucket_name = bucketName;
+      
+      const tempProvider = {
+        id: 0,
+        nombre: `Explorador de ${secret.nombre}`,
+        tipo: secret.tipo,
+        credenciales: credenciales,
+        configuracion: {}
+      };
+      
+      // Obtener adaptador y explorar bucket
+      try {
+        const adapter = await getCloudAdapter(tempProvider.tipo);
+        
+        if (!adapter) {
+          return res.status(400).json({ 
+            success: false, 
+            message: `Tipo de proveedor no soportado: ${secret.tipo}` 
+          });
+        }
+        
+        // Si estamos trabajando con GCP, redirigimos a la API de clouds que ya funciona
+        if (secret.tipo === 'gcp') {
+          // Reutilizamos el adaptador GCP existente con la función listContents que ya funciona
+          console.log(`[GCP Cloud Secrets] Usando adaptador existente para explorar bucket ${bucketName} en ruta ${path}`);
+          const result = await adapter.listContents(tempProvider.credenciales, tempProvider.configuracion, path);
+          
+          // Actualizar fecha de última modificación
+          await client.query(
+            `UPDATE cloud_secrets 
+             SET modificado_en = NOW()
+             WHERE id = $1`,
+            [id]
+          );
+          
+          return res.status(200).json(result);
+        }
+        
+        // Verificar que el adaptador tenga el método listContents
+        if (!adapter.listContents) {
+          return res.status(400).json({ 
+            success: false, 
+            message: `El proveedor ${secret.tipo} no implementa el método listContents` 
+          });
+        }
+        
+        // Listar contenido del bucket en la ruta especificada
+        const result = await adapter.listContents(tempProvider.credenciales, tempProvider.configuracion, path);
+        
+        // Actualizar fecha de última modificación
+        await client.query(
+          `UPDATE cloud_secrets 
+           SET modificado_en = NOW()
+           WHERE id = $1`,
+          [id]
+        );
+        
+        return res.status(200).json(result);
+      } catch (error) {
+        console.error('Error al inspeccionar bucket:', error);
+        return res.status(200).json({
+          error: true,
+          errorMessage: error.message,
+          bucket: bucketName,
+          path: path || '/',
+          files: [],
+          folders: []
+        });
       }
     } finally {
       client.release();
     }
-    
-    // Determinar qué adaptador usar según el tipo de proveedor
-    const adapter = getAdapter(secreto.tipo_proveedor);
-    
-    if (!adapter) {
-      return res.status(400).json({
-        success: false,
-        message: `Tipo de proveedor no soportado: ${secreto.tipo_proveedor}`
-      });
-    }
-    
-    console.log(`[API] Inspeccionando bucket ${bucketName} para secreto tipo ${secreto.tipo_proveedor}`);
-    
-    // Aquí está el cambio clave: Estructurar exactamente como en SAGE CLOUDS
-    // En SAGE CLOUDS, las credenciales incluyen container_name y se pasa configuracion
-    // Vamos a recrear ese mismo formato aquí
-    let credentials = {};
-    let config = {};
-    
-    console.log(`[DEBUG] secret.credentials:`, JSON.stringify(secreto.credentials).substring(0, 50) + '...');
-    
-    // Configurar las credenciales y la configuración según el tipo de proveedor
-    if (secreto.tipo_proveedor === 'minio') {
-      credentials = {
-        ...secreto.credentials,
-        bucket: bucketName
-      };
-      config = {
-        endpoint: secreto.credentials.endpoint,
-        port: secreto.credentials.port,
-        secure: secreto.credentials.secure !== false
-      };
-    } else if (secreto.tipo_proveedor === 's3') {
-      credentials = {
-        ...secreto.credentials,
-        bucket: bucketName
-      };
-    } else if (secreto.tipo_proveedor === 'azure') {
-      // Caso especial para la URL de sagevidasoft con SAS token específico
-      if (secreto.credentials.connection_string && 
-          secreto.credentials.connection_string.includes('sagevidasoft.blob.core.windows.net') && 
-          secreto.credentials.connection_string.includes('SharedAccessSignature=')) {
-        
-        console.log('[API] Detectado caso especial de Azure: sagevidasoft con formato especial');
-        
-        // Es el formato específico con SharedAccessSignature=
-        const connString = secreto.credentials.connection_string;
-        
-        // Extraer el SAS token del formato SharedAccessSignature=sv=...
-        const sasStart = connString.indexOf('SharedAccessSignature=') + 'SharedAccessSignature='.length;
-        const sasToken = connString.substring(sasStart);
-        
-        // Crear estructura de credenciales para este caso específico
-        credentials = {
-          container_name: bucketName,
-          account_name: 'sagevidasoft',
-          sas_token: sasToken,
-          blob_endpoint: 'https://sagevidasoft.blob.core.windows.net/'
-        };
-        
-        console.log(`[API] Credentials caso especial - AccountName: sagevidasoft, SAS token: ${sasToken.substring(0, 30)}...`);
-      }
-      // Para Azure con SAS token a través de una URL normal
-      else if (secreto.credentials.connection_string && secreto.credentials.connection_string.startsWith('https://')) {
-        // Es un formato de URL con SAS token
-        const url = new URL(secreto.credentials.connection_string);
-        const hostname = url.hostname;
-        
-        // Extraer nombre de cuenta del hostname (account.blob.core.windows.net)
-        const accountName = hostname.split('.')[0];
-        
-        // Extraer SAS token de la parte query de la URL
-        const sasToken = url.search.startsWith('?') ? url.search.substring(1) : url.search;
-        
-        console.log(`[DEBUG] URL format - AccountName: ${accountName}, SAS token length: ${sasToken.length}`);
-        
-        // Crear estructura de credenciales para URL con SAS token
-        credentials = {
-          container_name: bucketName,
-          account_name: accountName,
-          sas_token: sasToken,
-          blob_endpoint: `https://${accountName}.blob.core.windows.net/`
-        };
-        
-        console.log(`[DEBUG] Azure URL-SAS credentials:`, JSON.stringify(credentials).substring(0, 50) + '...');
-      } else {
-        // Formato tradicional de connection string
-        credentials = {
-          connection_string: secreto.credentials.connection_string,
-          container_name: bucketName
-        };
-        
-        console.log(`[DEBUG] Azure connection string credentials:`, JSON.stringify(credentials).substring(0, 50) + '...');
-      }
-      
-      // Configuración para Azure
-      config = {
-        use_sas: true,
-        sas_expiry: "3600"
-      };
-      
-      console.log(`[DEBUG] Azure config:`, JSON.stringify(config));
-    } else if (secreto.tipo_proveedor === 'gcp') {
-      credentials = {
-        ...secreto.credentials,
-        bucket: bucketName
-      };
-    }
-    
-    // Llamar al adaptador igual que en SAGE CLOUDS
-    console.log(`[API] Llamando al adaptador ${secreto.tipo_proveedor} con container_name:`, credentials.container_name);
-    const contents = await adapter.listContents(credentials, config, path);
-    
-    // Incluir información adicional en la respuesta
-    return res.status(200).json({
-      ...contents,
-      details: {
-        secreto_id: secretoId,
-        secreto_nombre: secreto.nombre,
-        tipo_proveedor: secreto.tipo_proveedor,
-        bucket_name: bucketName
-      }
-    });
   } catch (error) {
-    console.error(`[API] Error al inspeccionar bucket ${bucketName} para secreto ID ${secretoId}:`, error);
-    
-    // Incluir detalles del error y mantener el formato consistente con exploradores funcionales
-    return res.status(200).json({
-      error: true,
-      errorMessage: error.message,
-      bucket: bucketName,
-      path: path || '/',
-      files: [],
-      folders: [],
-      details: {
-        secreto_id: secretoId,
-        secreto_nombre: secreto ? secreto.nombre : 'Desconocido',
-        tipo_proveedor: secreto ? secreto.tipo_proveedor : 'Desconocido',
-        bucket_name: bucketName
-      }
+    console.error('Error en inspectBucket:', error);
+    return res.status(500).json({ 
+      success: false, 
+      message: `Error al inspeccionar bucket: ${error.message}` 
     });
   }
 }

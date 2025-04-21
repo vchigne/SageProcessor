@@ -1,293 +1,166 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
-import { 
-  Card, Title, Text, Button, TextInput, 
-  Grid, Col, Badge, Flex, Divider,
-  Table, TableHead, TableHeaderCell, TableBody, TableRow, TableCell
-} from '@tremor/react';
-import { ArrowLeftIcon, PlusIcon, CheckCircleIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
+import Head from 'next/head';
+import { ArrowLeftIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
+import { Card, Text, Title, Button, Flex } from '@tremor/react';
 import { toast } from 'react-toastify';
 
-
-/**
- * Página para administrar buckets asociados a un Cloud Secret específico
- */
-export default function AdminCloudSecretBuckets() {
+export default function CloudSecretBuckets() {
   const router = useRouter();
   const { id } = router.query;
   
-  const [secreto, setSecreto] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [secret, setSecret] = useState(null);
   const [buckets, setBuckets] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [creatingBucket, setCreatingBucket] = useState(false);
-  const [newBucketName, setNewBucketName] = useState('');
   const [error, setError] = useState(null);
   
-  // Cargar detalles del secreto y buckets cuando cambia el ID
+  // Cargar detalles del secreto y buckets
   useEffect(() => {
-    if (id) {
-      loadSecretDetails();
-      loadBuckets();
-    }
-  }, [id]);
-  
-  // Cargar detalles del secreto
-  const loadSecretDetails = async () => {
-    try {
-      // Usar la API interna
-      const apiUrl = `/api/cloud-secrets/${id}`;
-      
-      const response = await fetch(apiUrl);
-      const data = await response.json();
-      
-      if (!response.ok) {
-        setError(data.message || 'Error al cargar los detalles del secreto');
-        return;
-      }
-      
-      setSecreto(data);
-      setError(null);
-    } catch (error) {
-      console.error('Error al cargar detalles del secreto:', error);
-      setError('Error de conexión al cargar detalles del secreto');
-    }
-  };
-  
-  // Cargar lista de buckets
-  const loadBuckets = async () => {
     if (!id) return;
     
-    setLoading(true);
-    try {
-      // Usar la API interna para todos los entornos
-      const apiUrl = `/api/cloud-secrets/${id}/buckets`;
-      
-      const response = await fetch(apiUrl);
-      const data = await response.json();
-      
-      if (!response.ok) {
-        setBuckets([]);
-        setError(data.message || 'Error al cargar los buckets');
-        return;
-      }
-      
-      console.log('Buckets recibidos:', data);
-      // Asegurarnos de que data.data sea un array
-      if (data.data && Array.isArray(data.data)) {
-        setBuckets(data.data);
-      } else {
-        console.error('Error: data.data no es un array:', data);
-        setBuckets([]);
-        setError('Formato de respuesta incorrecto');
-      }
+    async function loadData() {
+      setLoading(true);
       setError(null);
-    } catch (error) {
-      console.error('Error al cargar buckets:', error);
-      setError('Error de conexión al cargar buckets');
-      setBuckets([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-  
-  // Crear un nuevo bucket
-  const handleCreateBucket = async (e) => {
-    e.preventDefault();
-    
-    if (!newBucketName.trim()) {
-      toast.error('El nombre del bucket es requerido');
-      return;
-    }
-    
-    setCreatingBucket(true);
-    try {
-      // Usar la API interna para todos los entornos
-      const apiUrl = `/api/cloud-secrets/${id}/buckets`;
       
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ bucketName: newBucketName.trim() })
-      });
-      
-      const data = await response.json();
-      
-      if (!response.ok) {
-        toast.error(data.message || 'Error al crear el bucket');
-        return;
+      try {
+        // Cargar información del secreto
+        const secretRes = await fetch(`/api/cloud-secrets/${id}`);
+        
+        if (!secretRes.ok) {
+          throw new Error(`Error al cargar secreto: ${secretRes.status}`);
+        }
+        
+        const secretData = await secretRes.json();
+        setSecret(secretData);
+        
+        // Cargar buckets disponibles
+        const bucketsRes = await fetch(`/api/cloud-secrets/${id}/buckets`);
+        
+        if (!bucketsRes.ok) {
+          throw new Error(`Error al cargar buckets: ${bucketsRes.status}`);
+        }
+        
+        const bucketsData = await bucketsRes.json();
+        console.log('Buckets recibidos:', bucketsData);
+        
+        if (bucketsData.success) {
+          setBuckets(bucketsData.buckets || []);
+        } else {
+          setError(bucketsData.message || 'Error al cargar buckets');
+          setBuckets([]);
+        }
+      } catch (err) {
+        console.error('Error al cargar datos:', err);
+        setError(err.message);
+        toast.error(`Error: ${err.message}`);
+      } finally {
+        setLoading(false);
       }
-      
-      toast.success(`Bucket "${newBucketName}" creado con éxito`);
-      setNewBucketName('');
-      loadBuckets(); // Recargar la lista de buckets
-    } catch (error) {
-      console.error('Error al crear bucket:', error);
-      toast.error('Error de conexión al crear el bucket');
-    } finally {
-      setCreatingBucket(false);
+    }
+    
+    loadData();
+  }, [id]);
+  
+  // Manejar volver a la página de secretos
+  const handleBack = () => {
+    router.push('/admin/cloud-secrets');
+  };
+  
+  // Formatear fecha ISO
+  const formatDate = (isoDate) => {
+    if (!isoDate) return 'N/A';
+    try {
+      return new Date(isoDate).toLocaleString();
+    } catch (e) {
+      return isoDate;
     }
   };
   
-  // Formatear el tipo de proveedor para mostrar (nombre amigable)
-  const formatProviderType = (type) => {
-    const types = {
-      's3': 'Amazon S3',
-      'minio': 'MinIO',
-      'azure': 'Azure Blob Storage',
-      'gcp': 'Google Cloud Storage',
-      'sftp': 'SFTP'
-    };
-    
-    return types[type] || type;
-  };
-  
-  // Obtener el color del badge según el tipo de proveedor
-  const getProviderColor = (type) => {
-    const colors = {
-      's3': 'orange',
-      'minio': 'blue',
-      'azure': 'blue',
-      'gcp': 'green',
-      'sftp': 'purple'
-    };
-    
-    return colors[type] || 'gray';
-  };
+  // Generar breadcrumbs
+  const breadcrumbs = [
+    { name: 'Inicio', href: '/' },
+    { name: 'Administración', href: '/admin' },
+    { name: 'Secretos Cloud', href: '/admin/cloud-secrets' },
+    { name: secret?.nombre || 'Secreto', href: `/admin/cloud-secrets/${id}` },
+    { name: 'Buckets', href: `/admin/cloud-secrets/${id}/buckets` },
+  ];
   
   return (
-    <Card className="mt-4">
-      <div className="flex justify-between items-center mb-4">
-        <Link href="/admin/cloud-secrets" className="flex items-center text-blue-600 hover:text-blue-800">
-          <ArrowLeftIcon className="h-4 w-4 mr-1" />
-          <span>Volver a Cloud Secrets</span>
-        </Link>
+    <div className="container mx-auto px-4 py-6">
+      <Head>
+        <title>Buckets para {secret?.nombre || 'Secreto'} | SAGE</title>
+      </Head>
+      
+      <div className="py-4">
+        <Button
+          icon={ArrowLeftIcon}
+          onClick={handleBack}
+          size="xs"
+          color="gray"
+          className="mb-4"
+        >
+          Volver a Secretos Cloud
+        </Button>
         
-        {secreto && (
-          <Badge color={getProviderColor(secreto.tipo)}>
-            {formatProviderType(secreto.tipo)}
-          </Badge>
-        )}
-      </div>
-      
-      <Title>Gestión de Buckets</Title>
-      {secreto && (
-        <Text className="mt-2 mb-4">
-          Secreto: <span className="font-semibold">{secreto.nombre}</span>
-        </Text>
-      )}
-      
-      <Divider />
-      
-      <Grid numItems={1} numItemsMd={2} className="gap-6 mt-6">
-        <Col>
-          <Card decoration="top" decorationColor="blue">
-            <Title className="text-xl">Buckets Existentes</Title>
-            
-            {loading ? (
-              <div className="py-4 text-center">Cargando buckets...</div>
-            ) : error ? (
-              <div className="py-4 text-center text-red-500 flex items-center justify-center">
-                <ExclamationCircleIcon className="h-5 w-5 mr-2" />
-                {error}
-              </div>
+        <div className="mb-6">
+          <Title>Buckets disponibles</Title>
+          {secret && (
+            <Text>
+              Secreto: <span className="font-medium">{secret.nombre}</span>
+              {' - '}
+              Tipo: <span className="font-medium">{secret.tipo.toUpperCase()}</span>
+            </Text>
+          )}
+        </div>
+        
+        {loading ? (
+          <div className="flex justify-center items-center h-64">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500"></div>
+          </div>
+        ) : error ? (
+          <Card className="mt-4">
+            <div className="flex items-center text-red-500 mb-2">
+              <InformationCircleIcon className="h-5 w-5 mr-2" />
+              <Text>Error al cargar buckets</Text>
+            </div>
+            <Text>{error}</Text>
+          </Card>
+        ) : (
+          <>
+            {buckets.length === 0 ? (
+              <Card className="mt-4">
+                <Text>No se encontraron buckets disponibles.</Text>
+              </Card>
             ) : (
-              <div className="mt-4">
-                {buckets.length === 0 ? (
-                  <div className="py-4 text-center text-gray-500">
-                    No se encontraron buckets
-                  </div>
-                ) : (
-                  <Table>
-                    <TableHead>
-                      <TableRow>
-                        <TableHeaderCell>Nombre del Bucket</TableHeaderCell>
-                        <TableHeaderCell>Acciones</TableHeaderCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {buckets.map((bucket, index) => (
-                        <TableRow key={bucket.name || index}>
-                          <TableCell>{bucket.name}</TableCell>
-                          <TableCell>
-                            <Button 
-                              size="xs" 
-                              variant="secondary"
-                              color="blue"
-                              onClick={() => router.push(`/admin/cloud-secrets/${id}/buckets/${encodeURIComponent(bucket.name)}`)}
-                            >
-                              Examinar bucket
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
-                
-                <div className="mt-4 flex justify-end">
-                  <Button 
-                    size="sm"
-                    variant="light"
-                    color="blue"
-                    icon={CheckCircleIcon}
-                    onClick={loadBuckets}
-                    loading={loading}
-                    disabled={loading}
-                  >
-                    Actualizar lista
-                  </Button>
-                </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
+                {buckets.map((bucket) => (
+                  <Card key={bucket.name} className="hover:shadow-md transition-shadow">
+                    <Flex alignItems="start" className="h-full">
+                      <div className="flex-grow">
+                        <Title className="text-lg">{bucket.name}</Title>
+                        {bucket.creationDate && (
+                          <Text className="text-sm text-gray-500">
+                            Creado: {formatDate(bucket.creationDate)}
+                          </Text>
+                        )}
+                        <div className="mt-4">
+                          <Link 
+                            href={`/admin/cloud-secrets/${id}/buckets/${bucket.name}`} 
+                            className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                          >
+                            Explorar bucket →
+                          </Link>
+                        </div>
+                      </div>
+                    </Flex>
+                  </Card>
+                ))}
               </div>
             )}
-          </Card>
-        </Col>
-        
-        <Col>
-          <Card decoration="top" decorationColor="green">
-            <Title className="text-xl">Crear Nuevo Bucket</Title>
-            
-            <form onSubmit={handleCreateBucket} className="mt-4">
-              <div className="mb-4">
-                <Text className="mb-2">Nombre del bucket</Text>
-                <TextInput
-                  placeholder="Escriba el nombre del bucket"
-                  value={newBucketName}
-                  onChange={(e) => setNewBucketName(e.target.value)}
-                  disabled={creatingBucket}
-                  required
-                />
-                <Text className="mt-1 text-xs text-gray-500">
-                  El nombre del bucket debe ser único y no contener caracteres especiales.
-                </Text>
-              </div>
-              
-              <div className="flex justify-between">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setNewBucketName('rawmondelezperustrategiotradicional')}
-                  disabled={creatingBucket}
-                >
-                  Usar bucket predefinido
-                </Button>
-                
-                <Button
-                  type="submit"
-                  color="green"
-                  icon={PlusIcon}
-                  loading={creatingBucket}
-                  disabled={creatingBucket || !newBucketName.trim()}
-                >
-                  Crear Bucket
-                </Button>
-              </div>
-            </form>
-          </Card>
-        </Col>
-      </Grid>
-    </Card>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
