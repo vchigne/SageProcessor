@@ -327,6 +327,17 @@ async function createBucket(req, res, id) {
           result = await adapter.createBucket(tempProvider.credenciales, bucketName, options);
         }
         
+        // Verificar si la operación fue exitosa
+        if (result && result.success === false) {
+          // El adaptador reportó un error pero no lanzó una excepción
+          console.log(`[Buckets API] Error reportado por el adaptador: ${result.message || 'Error desconocido'}`);
+          return res.status(400).json({
+            success: false,
+            error: result.message || 'Error desconocido al crear el bucket',
+            details: result.error || result.details || {}
+          });
+        }
+
         // Actualizar fecha de última modificación
         await client.query(
           `UPDATE cloud_secrets 

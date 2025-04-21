@@ -1380,7 +1380,11 @@ export async function listBuckets(credentials, config = {}) {
 export async function createBucket(credentials, config = {}, bucketName) {
   try {
     if (!bucketName) {
-      throw new Error('Se requiere especificar el nombre del contenedor');
+      return {
+        success: false,
+        message: 'Se requiere especificar el nombre del contenedor',
+        error: 'MISSING_BUCKET_NAME'
+      };
     }
     
     console.log(`[Azure] Creando contenedor: ${bucketName}`);
@@ -1523,12 +1527,20 @@ export async function createBucket(credentials, config = {}, bucketName) {
       
       // Si no hay SAS token, mostramos un error específico para la creación
       if (!sasToken) {
-        throw new Error('Para crear un contenedor se requiere un SAS token con permisos de creación (sp=c o sp=a)');
+        return {
+          success: false,
+          message: 'Para crear un contenedor se requiere un SAS token con permisos de creación (sp=c o sp=a)',
+          error: 'MISSING_SAS_TOKEN'
+        };
       }
       
       // Verificar que el SAS token tenga permisos para crear contenedores
       if (!sasToken.toLowerCase().includes('sp=') || !sasToken.toLowerCase().includes('sp=c') && !sasToken.toLowerCase().includes('sp=a')) {
-        throw new Error('El token SAS proporcionado no tiene permisos para crear contenedores. Se requiere permiso "c" (create) o "a" (all).');
+        return {
+          success: false,
+          message: 'El token SAS proporcionado no tiene permisos para crear contenedores. Se requiere permiso "c" (create) o "a" (all).',
+          error: 'INSUFFICIENT_PERMISSIONS'
+        };
       }
       
       // Construir la URL con SAS token para crear contenedor

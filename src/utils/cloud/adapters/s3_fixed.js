@@ -1692,15 +1692,117 @@ async function createBucket(credentials, config = {}, bucketName) {
       };
     }
     
-    // Éxito al crear el bucket
-    return {
-      success: true,
-      message: `Bucket ${bucketName} creado con éxito`,
-      details: {
-        bucketName,
-        region
+    // Verificar explícitamente que el bucket fue creado antes de reportar éxito
+    try {
+      console.log(`[S3] Verificando que el bucket ${bucketName} haya sido creado correctamente`);
+      
+      // Construir URL para verificar el bucket (HEAD request)
+      const verifyUrl = `https://${bucketName}.s3.${region}.amazonaws.com/`;
+      
+      // Generar la fecha y credenciales para el HEAD request
+      const verifyDate = getAmzDate();
+      const verifyDateStamp = getDateStamp();
+      
+      // Headers para la verificación
+      const verifyHeaders = {
+        'host': `${bucketName}.s3.${region}.amazonaws.com`,
+        'x-amz-date': verifyDate,
+        'x-amz-content-sha256': 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+      };
+      
+      // Construir solicitud canónica para verificación
+      const verifyCanonicalRequest = [
+        'HEAD',
+        '/',
+        '',
+        Object.keys(verifyHeaders).sort().map(key => `${key}:${verifyHeaders[key]}\n`).join(''),
+        Object.keys(verifyHeaders).sort().join(';'),
+        'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+      ].join('\n');
+      
+      // String to sign para verificación
+      const verifyScope = `${verifyDateStamp}/${region}/s3/aws4_request`;
+      const verifyStringToSign = [
+        'AWS4-HMAC-SHA256',
+        verifyDate,
+        verifyScope,
+        await sha256(verifyCanonicalRequest)
+      ].join('\n');
+      
+      // Función auxiliar para firmar
+      async function sign(key, msg) {
+        const msgBuffer = new TextEncoder().encode(msg);
+        const keyBuffer = await crypto.subtle.importKey(
+          'raw',
+          key,
+          { name: 'HMAC', hash: { name: 'SHA-256' } },
+          false,
+          ['sign']
+        );
+        const signBuffer = await crypto.subtle.sign(
+          { name: 'HMAC', hash: { name: 'SHA-256' } },
+          keyBuffer,
+          msgBuffer
+        );
+        return new Uint8Array(signBuffer);
       }
-    };
+      
+      // Calcular firma para verificación
+      const kSecret = new TextEncoder().encode(`AWS4${credentials.secret_key}`);
+      const kDate = await sign(kSecret, verifyDateStamp);
+      const kRegion = await sign(kDate, region);
+      const kService = await sign(kRegion, 's3');
+      const kSigning = await sign(kService, 'aws4_request');
+      
+      const verifySignature = await sign(kSigning, verifyStringToSign);
+      const verifySignatureHex = Array.from(verifySignature)
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+      
+      // Header de autorización para verificación
+      const verifyAuthHeader = `AWS4-HMAC-SHA256 Credential=${credentials.access_key}/${verifyScope}, SignedHeaders=${Object.keys(verifyHeaders).sort().join(';')}, Signature=${verifySignatureHex}`;
+      
+      // Hacer la solicitud HEAD para verificar el bucket
+      const verifyResponse = await fetch(verifyUrl, {
+        method: 'HEAD',
+        headers: {
+          ...verifyHeaders,
+          'Authorization': verifyAuthHeader
+        }
+      });
+      
+      // Si el bucket existe (respuesta 200 OK), entonces sí se creó correctamente
+      if (verifyResponse.ok) {
+        console.log(`[S3] Verificación exitosa, el bucket ${bucketName} existe en la región ${region}`);
+        return {
+          success: true,
+          message: `Bucket ${bucketName} creado con éxito`,
+          details: {
+            bucketName,
+            region
+          }
+        };
+      } else {
+        // Bucket no existe a pesar de que la creación pareció exitosa
+        console.error(`[S3] Verificación fallida: El bucket ${bucketName} no existe a pesar de que la creación pareció exitosa`);
+        return {
+          success: false,
+          message: `Error al crear bucket: La API reportó éxito pero el bucket no pudo ser verificado`,
+          details: {
+            statusCode: verifyResponse.status,
+            statusText: verifyResponse.statusText
+          }
+        };
+      }
+    } catch (verifyError) {
+      // Error durante la verificación
+      console.error(`[S3] Error verificando la existencia del bucket:`, verifyError);
+      return {
+        success: false,
+        message: `Error al verificar la creación del bucket: ${verifyError.message}`,
+        details: { error: verifyError.message }
+      };
+    }
   } catch (error) {
     console.error('[S3] Error al crear bucket:', error);
     return {

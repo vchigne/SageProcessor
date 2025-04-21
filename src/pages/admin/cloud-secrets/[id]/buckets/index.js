@@ -99,13 +99,32 @@ export default function CloudSecretBuckets() {
       });
       
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || error.message || 'Error al crear bucket');
+        const errorData = await response.json();
+        let errorMessage = errorData.error || errorData.message || 'Error al crear bucket';
+        
+        // Si hay detalles adicionales en la respuesta, los incluimos
+        if (errorData.details) {
+          console.log('Detalles del error:', errorData.details);
+          if (typeof errorData.details === 'object') {
+            // Formatear detalles específicos (por ejemplo, para buckets duplicados)
+            if (errorData.details.error && errorData.details.error.includes('already exists')) {
+              errorMessage = `El bucket "${bucketName}" ya existe. Elija otro nombre.`;
+            }
+          }
+        }
+        
+        // En lugar de lanzar excepción, gestionamos el error con toast y terminamos la función
+        toast.error(`Error al crear bucket: ${errorMessage}`);
+        setLoading(false);
+        return; // Salimos de la función sin crashear
       }
       
       const result = await response.json();
       
       toast.success(`Bucket "${bucketName}" creado exitosamente`);
+      
+      // Resetear el campo del nombre del bucket solo cuando es exitoso
+      setNewBucketName('');
       
       // Recargar la lista de buckets
       const bucketsRes = await fetch(`/api/cloud-secrets/${id}/buckets`);
@@ -227,7 +246,8 @@ export default function CloudSecretBuckets() {
                     e.preventDefault();
                     if (newBucketName && newBucketName.trim()) {
                       createBucket(newBucketName.trim());
-                      setNewBucketName('');
+                      // No resetear el nombre del bucket aquí
+                      // Solo se reseteará cuando la creación sea exitosa
                     }
                   }}>
                     <div className="mb-3">

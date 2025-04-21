@@ -1541,17 +1541,24 @@ export async function createBucket(credentials, bucketName, config = {}) {
       console.error('[GCP] Error al crear bucket:', errorText);
       
       let errorMessage = `Error al crear bucket: ${createResponse.status} ${createResponse.statusText}`;
+      let errorDetails = {};
       
       try {
         const errorData = JSON.parse(errorText);
         if (errorData.error && errorData.error.message) {
           errorMessage = errorData.error.message;
+          errorDetails = errorData.error;
         }
       } catch (e) {
         // Si no podemos parsear el JSON, usamos el mensaje de error general
       }
       
-      throw new Error(errorMessage);
+      // En lugar de lanzar un error, devolvemos un objeto con información de error
+      return {
+        success: false,
+        message: errorMessage,
+        details: errorDetails
+      };
     }
     
     const bucketData = await createResponse.json();
@@ -1566,7 +1573,11 @@ export async function createBucket(credentials, bucketName, config = {}) {
     };
   } catch (error) {
     console.error('[GCP] Error al crear bucket:', error);
-    throw error;
+    return {
+      success: false,
+      message: `Error al crear bucket: ${error.message}`,
+      details: { error: error.toString() }
+    };
   }
 }
 
