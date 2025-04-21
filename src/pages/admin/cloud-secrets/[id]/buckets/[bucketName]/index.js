@@ -169,10 +169,13 @@ export default function ExplorarBucketCloudSecret() {
       <div className="flex items-center space-x-2 bg-gray-50 p-2 rounded mb-4">
         <button 
           className="p-1 rounded hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
-          disabled={!explorerData || !explorerData.parentPath}
+          disabled={!explorerData || !currentPath}
           onClick={() => {
-            if (explorerData && explorerData.parentPath !== undefined) {
-              setCurrentPath(explorerData.parentPath);
+            if (currentPath) {
+              // Obtener el path del directorio padre
+              const pathParts = currentPath.split('/').filter(part => part !== '');
+              pathParts.pop(); // Eliminar la última parte para ir al directorio padre
+              setCurrentPath(pathParts.join('/'));
             }
           }}
         >
