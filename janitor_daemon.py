@@ -779,6 +779,7 @@ class JanitorDaemon:
     def _upload_to_s3(self, local_path, cloud_path, provider):
         """Subir archivos a Amazon S3"""
         import boto3
+        import botocore
         from botocore.exceptions import ClientError
         
         # Parsear credenciales y configuración
@@ -789,72 +790,61 @@ class JanitorDaemon:
         logger.info(f"Credenciales S3: {list(credentials.keys()) if credentials else 'No hay credenciales'}")
         logger.info(f"Configuración S3: {list(config.keys()) if config else 'No hay configuración'}")
         
-        # Normalizar credenciales S3
-        credentials = {
-            **credentials,
-            'access_key': credentials.get('access_key') or credentials.get('accessKey'),
-            'secret_key': credentials.get('secret_key') or credentials.get('secretKey'),
-        }
-        
-        # Eliminar explícitamente aws_account_id si existe, ya que causa problemas con boto3
-        if 'aws_account_id' in credentials:
-            logger.info(f"Eliminando campo 'aws_account_id' no compatible con boto3")
-            credentials.pop('aws_account_id', None)
-            
         # Obtener solo los parámetros necesarios para S3
         endpoint_url = credentials.get('endpoint')
-        access_key = credentials.get('access_key')
-        secret_key = credentials.get('secret_key')
+        access_key = credentials.get('access_key') or credentials.get('accessKey')
+        secret_key = credentials.get('secret_key') or credentials.get('secretKey')
         region = credentials.get('region', 'us-east-1')  # Valor predeterminado como en el JavaScript
         
         # Logs específicos para S3
         logger.info(f"Usando endpoint S3: {endpoint_url or 'Default S3'}")
         logger.info(f"Usando región S3: {region}")
-        
-        # Crear cliente S3 - Ajustado para coincidir con la implementación JS
-        s3_params = {
-            'aws_access_key_id': access_key,
-            'aws_secret_access_key': secret_key,
-            'region_name': region
-        }
-        
-        # Solo añadir endpoint_url si existe
-        if endpoint_url:
-            s3_params['endpoint_url'] = endpoint_url
-            
-        # Depuración extendida
-        logger.info(f"Parámetros para cliente S3: {list(s3_params.keys())}")
-        logger.info(f"Contenido completo de credenciales antes de filtrar: {str(credentials)}")
-        
-        # Inspeccionar globales para detectar aws_account_id
-        global_vars = list(globals().keys())
-        if 'aws_account_id' in global_vars:
-            logger.warning(f"aws_account_id encontrado en el espacio global de nombres")
-            
-        # Crear cliente S3 directamente con parámetros explícitos
-        try:
-            logger.info("Intentando crear cliente S3 con parámetros explícitos...")
-            if endpoint_url:
-                s3_client = boto3.client(
-                    's3',
-                    aws_access_key_id=access_key,
-                    aws_secret_access_key=secret_key,
-                    region_name=region,
-                    endpoint_url=endpoint_url
-                )
-            else:
-                s3_client = boto3.client(
-                    's3',
-                    aws_access_key_id=access_key,
-                    aws_secret_access_key=secret_key,
-                    region_name=region
-                )
-        except Exception as e:
-            logger.error(f"Error creando cliente S3: {str(e)}")
-            raise
+        logger.info(f"Credenciales procesadas: access_key={access_key}, region={region}")
         
         # Bucket puede estar en credenciales o en configuración
         bucket = credentials.get('bucket') or config.get('bucket')
+        logger.info(f"Bucket a usar: {bucket}")
+        
+        if not bucket:
+            raise ValueError("No se pudo determinar el bucket desde las credenciales o configuración")
+        
+        # Crear cliente S3 usando Session para evitar problemas con parámetros globales
+        try:
+            logger.info("Creando cliente S3 directamente con boto3.client...")
+            
+            # Inspeccionar si hay variables globales o de entorno que puedan estar afectando
+            logger.info(f"Todas las keys de credenciales antes de filtrar: {list(credentials.keys())}")
+            
+            # Eliminar explícitamente cualquier parámetro no estándar
+            valid_params = {
+                'service_name': 's3',
+                'aws_access_key_id': access_key,
+                'aws_secret_access_key': secret_key,
+                'region_name': region
+            }
+            
+            # Añadir endpoint solo si está definido
+            if endpoint_url:
+                valid_params['endpoint_url'] = endpoint_url
+                
+            # Crear cliente con parámetros estrictamente controlados
+            # Esto asegura que no se arrastren parámetros globales o incorrectos
+            try:
+                import botocore.config
+                config = botocore.config.Config(signature_version='s3v4')
+                valid_params['config'] = config
+                
+                # Usar directamente el constructor de cliente sin sesión para más control
+                logger.info(f"Usando solo estos parámetros para boto3.client: {list(valid_params.keys())}")
+                s3_client = boto3.client(**valid_params)
+                logger.info("Cliente S3 creado exitosamente")
+            except Exception as e:
+                logger.error(f"Error creando cliente S3 (interno): {str(e)}")
+                raise
+            
+        except Exception as e:
+            logger.error(f"Error creando cliente S3: {str(e)}")
+            raise ValueError(f"No se pudo crear cliente S3: {str(e)}")
         
         # Subir todos los archivos en el directorio
         for root, dirs, files in os.walk(local_path):
