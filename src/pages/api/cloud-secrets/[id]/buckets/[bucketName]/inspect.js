@@ -76,36 +76,49 @@ export default async function handler(req, res) {
     
     console.log(`[API] Inspeccionando bucket ${bucketName} para secreto tipo ${secreto.tipo_proveedor}`);
     
-    // Crear un objeto de credenciales con la información necesaria
-    let credentials = { ...secreto.credentials };
+    // Aquí está el cambio clave: Estructurar exactamente como en SAGE CLOUDS
+    // En SAGE CLOUDS, las credenciales incluyen container_name y se pasa configuracion
+    // Vamos a recrear ese mismo formato aquí
+    let credentials = {};
     let config = {};
     
-    // Configurar credenciales según el tipo de proveedor
+    // Configurar las credenciales y la configuración según el tipo de proveedor
     if (secreto.tipo_proveedor === 'minio') {
+      credentials = {
+        ...secreto.credentials,
+        bucket: bucketName
+      };
       config = {
         endpoint: secreto.credentials.endpoint,
         port: secreto.credentials.port,
         secure: secreto.credentials.secure !== false
       };
-      credentials.bucket = bucketName;
     } else if (secreto.tipo_proveedor === 's3') {
-      credentials.bucket = bucketName;
+      credentials = {
+        ...secreto.credentials,
+        bucket: bucketName
+      };
     } else if (secreto.tipo_proveedor === 'azure') {
-      // Para Azure, configurar correctamente para que funcione con el adaptador
-      if (credentials.connection_string) {
-        // Preservar el bucket/container en las credenciales
-        credentials.container = bucketName;
-        credentials.container_name = bucketName;
-      } else {
-        credentials.container = bucketName;
-        credentials.container_name = bucketName;
-      }
+      // Para Azure, imitar exactamente el formato que funciona en SAGE CLOUDS
+      credentials = {
+        connection_string: secreto.credentials.connection_string,
+        container_name: bucketName
+      };
+      
+      // Configuración adicional para azure (igual que en SAGE CLOUDS)
+      config = {
+        use_sas: false,
+        sas_expiry: "3600"
+      };
     } else if (secreto.tipo_proveedor === 'gcp') {
-      credentials.bucket = bucketName;
+      credentials = {
+        ...secreto.credentials,
+        bucket: bucketName
+      };
     }
     
-    // Aquí es donde debemos asegurarnos de que estamos usando el mismo formato 
-    // que se usa en la API de SAGE CLOUDS
+    // Llamar al adaptador igual que en SAGE CLOUDS
+    console.log(`[API] Llamando al adaptador ${secreto.tipo_proveedor} con container_name:`, credentials.container_name);
     const contents = await adapter.listContents(credentials, config, path);
     
     // Incluir información adicional en la respuesta
