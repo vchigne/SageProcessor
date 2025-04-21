@@ -464,24 +464,37 @@ async function listContents(credentials, config = {}, path = '') {
       };
     });
     
-    // MEJORA: Extraer archivos utilizando múltiples patrones para capturar todos los formatos posibles
+    // SOLUCIÓN: Usar un enfoque más directo para extraer todos los archivos
+    // Primero, contar cuántos archivos informa el servidor
+    const keyCountMatch = responseText.match(/<KeyCount>(\d+)<\/KeyCount>/);
+    const reportedKeyCount = keyCountMatch ? parseInt(keyCountMatch[1], 10) : 0;
+    console.log(`[MinIO] Servidor informa ${reportedKeyCount} archivos en el bucket`);
+    
+    // Extraer todos los bloques <Contents>...</Contents>
+    const contentsBlocks = responseText.match(/<Contents>[\s\S]*?<\/Contents>/g) || [];
+    console.log(`[MinIO] Encontrados ${contentsBlocks.length} bloques de contenido`);
+    
+    // Extraer la información de cada bloque
     let contentMatches = [];
-    
-    // Patrón 1: Formato estándar completo (Key, Size, LastModified dentro de Contents)
-    const pattern1Matches = Array.from(responseText.matchAll(/<Contents>[\s\S]*?<Key>(.*?)<\/Key>[\s\S]*?<Size>(.*?)<\/Size>[\s\S]*?<LastModified>(.*?)<\/LastModified>[\s\S]*?<\/Contents>/g));
-    if (pattern1Matches.length > 0) {
-      contentMatches = contentMatches.concat(pattern1Matches);
-    }
-    
-    // Patrón 2: Key individual
-    if (contentMatches.length === 0) {
-      console.log('[MinIO] Usando patrón 2 (Key individual) para extraer archivos');
-      const pattern2Matches = Array.from(responseText.matchAll(/<Key>(.*?)<\/Key>/g))
-        .filter(match => !match[1].endsWith('/')) // No incluir carpetas
-        .map(match => [match[0], match[1], '0', new Date().toISOString()]); // Valores predeterminados
+    contentsBlocks.forEach((block, index) => {
+      // Extraer Key (obligatorio)
+      const keyMatch = block.match(/<Key>(.*?)<\/Key>/);
+      if (!keyMatch) return; // Sin Key, no es un archivo válido
       
-      contentMatches = contentMatches.concat(pattern2Matches);
-    }
+      const key = keyMatch[1];
+      
+      // Extraer Size (opcional)
+      const sizeMatch = block.match(/<Size>(.*?)<\/Size>/);
+      const size = sizeMatch ? sizeMatch[1] : '0';
+      
+      // Extraer LastModified (opcional)
+      const lastModifiedMatch = block.match(/<LastModified>(.*?)<\/LastModified>/);
+      const lastModified = lastModifiedMatch ? lastModifiedMatch[1] : new Date().toISOString();
+      
+      // Agregar a los resultados
+      contentMatches.push([block, key, size, lastModified]);
+      console.log(`[MinIO] Extraído archivo #${index+1}: "${key}" (size: ${size})`);
+    });
     
     // Eliminar duplicados basados en la ruta del archivo
     const uniqueFilePaths = new Set();
