@@ -87,10 +87,28 @@ async function testCloudSecret(req, res, id) {
           });
         }
         
-        // Anteriormente se simulaba GCP, pero ahora usamos API real conforme a directiva NO USAR SIMULACIONES
-      // No hay caso especial para GCP, usamos el mismo flujo para todos los proveedores
-      
+        // Para GCP, necesitamos asegurarnos de que el key_file esté parseado correctamente
+        if (secret.tipo === 'gcp' && credenciales.key_file && typeof credenciales.key_file === 'string') {
+          try {
+            console.log('[Test API] Intentando parsear key_file de GCP');
+            credenciales.key_file = JSON.parse(credenciales.key_file);
+            console.log('[Test API] key_file parseado correctamente');
+          } catch (error) {
+            console.error('[Test API] Error al parsear key_file:', error);
+            // Continuamos aunque haya error, el adaptador intentará manejarlo
+          }
+        }
+        
+        // Verificación especial para Azure
+        if (secret.tipo === 'azure') {
+          console.log('[Test API] Verificando credenciales de Azure:', {
+            tiene_connection_string: !!credenciales.connection_string,
+            connection_string_length: credenciales.connection_string ? credenciales.connection_string.length : 0
+          });
+        }
+        
         // Probar conexión pasando credenciales y configuración
+        console.log(`[Test API] Probando conexión para tipo: ${secret.tipo}`);
         const result = await adapter.testConnection(tempProvider.credenciales, tempProvider.configuracion);
         
         // Actualizar fecha de última prueba

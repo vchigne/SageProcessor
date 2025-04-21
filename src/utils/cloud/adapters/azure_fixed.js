@@ -7,6 +7,7 @@
  * - Credenciales tradicionales con AccountName y AccountKey
  * - Conexiones con SAS Token (SharedAccessSignature)
  * - URLs directas con SAS token, como las usadas en cloud-secrets
+ * - Connection strings con formato especial de URLs y SharedAccessSignature
  */
 
 /**
@@ -1544,6 +1545,41 @@ export async function createBucket(credentials, bucketName, config = {}) {
             useSasToken = true;
           } catch (error) {
             console.error('[Azure] Error al analizar URL:', error);
+          }
+        }
+        // Caso especial: formato URL + SharedAccessSignature (formato como el de cloud_secrets)
+        else if (normalizedConnString.includes('SharedAccessSignature=sv=') || 
+                 normalizedConnString.includes('SharedAccessSignature=')) {
+          console.log('[Azure] Formato identificado: Connection string con SharedAccessSignature');
+          
+          // Buscar la parte de la URL del blob storage
+          if (normalizedConnString.includes('blob.core.windows.net')) {
+            const blobMatch = normalizedConnString.match(/(https?:\/\/[^\/;]+\.blob\.core\.windows\.net)/i);
+            if (blobMatch && blobMatch[1]) {
+              blobEndpoint = blobMatch[1];
+              console.log(`[Azure] BlobEndpoint extraído: ${blobEndpoint}`);
+              
+              // Extraer nombre de cuenta del hostname
+              try {
+                const hostParts = new URL(blobEndpoint).hostname.split('.');
+                if (hostParts.length > 0) {
+                  accountName = hostParts[0];
+                  console.log(`[Azure] AccountName extraído: ${accountName}`);
+                }
+              } catch (err) {
+                console.error('[Azure] Error al extraer accountName de la URL:', err);
+              }
+            }
+          }
+          
+          // Buscar el SAS token
+          if (normalizedConnString.includes('SharedAccessSignature=')) {
+            const sasMatch = normalizedConnString.match(/SharedAccessSignature=([^;]+)/i);
+            if (sasMatch && sasMatch[1]) {
+              sasToken = sasMatch[1];
+              console.log('[Azure] SAS token extraído (longitud):', sasToken.length);
+              useSasToken = true;
+            }
           }
         }
         // Caso especial: solo SAS token directo
