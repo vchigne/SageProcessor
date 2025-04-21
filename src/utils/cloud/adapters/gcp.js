@@ -44,9 +44,33 @@ export async function testConnection(credentials, config = {}) {
     // Parsear el archivo de clave JSON
     let keyData;
     try {
-      keyData = JSON.parse(credentials.key_file);
+      // Verifica si el JSON ya está parseado (es un objeto) o es una cadena
+      if (typeof credentials.key_file === 'object' && credentials.key_file !== null) {
+        console.log('[GCP] La clave ya es un objeto, no necesita parsearse');
+        keyData = credentials.key_file;
+      } else {
+        console.log('[GCP] Intentando parsear la clave como string JSON');
+        
+        // Asegúrese de que esté trabajando con una cadena
+        const keyFileStr = String(credentials.key_file).trim();
+        console.log('[GCP] Primeros 30 caracteres de la clave:', keyFileStr.substring(0, 30) + '...');
+        
+        // Verificar si hay espacios o saltos de línea extras
+        if (keyFileStr.startsWith('{') && keyFileStr.endsWith('}')) {
+          try {
+            keyData = JSON.parse(keyFileStr);
+          } catch (jsonError) {
+            console.error('[GCP] Error al parsear JSON:', jsonError);
+            throw new Error(`Error al parsear JSON: ${jsonError.message}. Verifique que el formato sea correcto.`);
+          }
+        } else {
+          console.error('[GCP] La clave no parece ser un JSON válido:', keyFileStr.substring(0, 20) + '...');
+          throw new Error('El archivo de clave proporcionado no parece ser un JSON válido. Debe comenzar con { y terminar con }');
+        }
+      }
     } catch (e) {
-      throw new Error('El archivo de clave proporcionado no es un JSON válido');
+      console.error('[GCP] Error al procesar el archivo de clave:', e);
+      throw new Error(`Error al procesar el archivo de clave: ${e.message}`);
     }
     
     // Verificar que el archivo de clave tenga los campos necesarios
