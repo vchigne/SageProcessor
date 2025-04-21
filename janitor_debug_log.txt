@@ -1,0 +1,102 @@
+2025-04-21 20:44:42,002 - janitor_daemon - INFO - Cargando proveedores con IDs: [1, 3, 4, 2, 5]
+INFO:janitor_daemon:Cargando proveedores con IDs: [1, 3, 4, 2, 5]
+2025-04-21 20:44:42,002 - janitor_daemon - INFO - Ejecutando consulta: SELECT * FROM cloud_providers WHERE id IN (%s,%s,%s,%s,%s) con parámetros [1, 3, 4, 2, 5]
+INFO:janitor_daemon:Ejecutando consulta: SELECT * FROM cloud_providers WHERE id IN (%s,%s,%s,%s,%s) con parámetros [1, 3, 4, 2, 5]
+2025-04-21 20:44:42,066 - janitor_daemon - INFO - Proveedores obtenidos: 5
+INFO:janitor_daemon:Proveedores obtenidos: 5
+2025-04-21 20:44:42,066 - janitor_daemon - INFO - Columnas de proveedores en la BD: ['id', 'nombre', 'descripcion', 'tipo', 'credenciales', 'configuracion', 'activo', 'estado', 'ultimo_chequeo', 'mensaje_error', 'creado_en', 'modificado_en', 'secreto_id']
+INFO:janitor_daemon:Columnas de proveedores en la BD: ['id', 'nombre', 'descripcion', 'tipo', 'credenciales', 'configuracion', 'activo', 'estado', 'ultimo_chequeo', 'mensaje_error', 'creado_en', 'modificado_en', 'secreto_id']
+2025-04-21 20:44:42,066 - janitor_daemon - INFO - Estructura del proveedor 4 - SFTP Dreamhost: dict_keys(['id', 'nombre', 'descripcion', 'tipo', 'credenciales', 'configuracion', 'activo', 'estado', 'ultimo_chequeo', 'mensaje_error', 'creado_en', 'modificado_en', 'secreto_id'])
+INFO:janitor_daemon:Estructura del proveedor 4 - SFTP Dreamhost: dict_keys(['id', 'nombre', 'descripcion', 'tipo', 'credenciales', 'configuracion', 'activo', 'estado', 'ultimo_chequeo', 'mensaje_error', 'creado_en', 'modificado_en', 'secreto_id'])
+2025-04-21 20:44:42,066 - janitor_daemon - INFO - El proveedor 4 - SFTP Dreamhost usa credenciales directas
+INFO:janitor_daemon:El proveedor 4 - SFTP Dreamhost usa credenciales directas
+2025-04-21 20:44:42,066 - janitor_daemon - INFO - Estructura del proveedor 2 - Azure Backup Sage: dict_keys(['id', 'nombre', 'descripcion', 'tipo', 'credenciales', 'configuracion', 'activo', 'estado', 'ultimo_chequeo', 'mensaje_error', 'creado_en', 'modificado_en', 'secreto_id'])
+INFO:janitor_daemon:Estructura del proveedor 2 - Azure Backup Sage: dict_keys(['id', 'nombre', 'descripcion', 'tipo', 'credenciales', 'configuracion', 'activo', 'estado', 'ultimo_chequeo', 'mensaje_error', 'creado_en', 'modificado_en', 'secreto_id'])
+2025-04-21 20:44:42,067 - janitor_daemon - INFO - El proveedor 2 - Azure Backup Sage usa credenciales directas
+INFO:janitor_daemon:El proveedor 2 - Azure Backup Sage usa credenciales directas
+2025-04-21 20:44:42,067 - janitor_daemon - INFO - Estructura del proveedor 3 - GCP Backup SAGE : dict_keys(['id', 'nombre', 'descripcion', 'tipo', 'credenciales', 'configuracion', 'activo', 'estado', 'ultimo_chequeo', 'mensaje_error', 'creado_en', 'modificado_en', 'secreto_id'])
+INFO:janitor_daemon:Estructura del proveedor 3 - GCP Backup SAGE : dict_keys(['id', 'nombre', 'descripcion', 'tipo', 'credenciales', 'configuracion', 'activo', 'estado', 'ultimo_chequeo', 'mensaje_error', 'creado_en', 'modificado_en', 'secreto_id'])
+2025-04-21 20:44:42,067 - janitor_daemon - INFO - El proveedor 3 - GCP Backup SAGE  usa credenciales directas
+INFO:janitor_daemon:El proveedor 3 - GCP Backup SAGE  usa credenciales directas
+2025-04-21 20:44:42,067 - janitor_daemon - INFO - Estructura del proveedor 5 - MINIO en OVH: dict_keys(['id', 'nombre', 'descripcion', 'tipo', 'credenciales', 'configuracion', 'activo', 'estado', 'ultimo_chequeo', 'mensaje_error', 'creado_en', 'modificado_en', 'secreto_id'])
+INFO:janitor_daemon:Estructura del proveedor 5 - MINIO en OVH: dict_keys(['id', 'nombre', 'descripcion', 'tipo', 'credenciales', 'configuracion', 'activo', 'estado', 'ultimo_chequeo', 'mensaje_error', 'creado_en', 'modificado_en', 'secreto_id'])
+2025-04-21 20:44:42,067 - janitor_daemon - INFO - El proveedor 5 - MINIO en OVH usa credenciales directas
+INFO:janitor_daemon:El proveedor 5 - MINIO en OVH usa credenciales directas
+2025-04-21 20:44:42,067 - janitor_daemon - INFO - Estructura del proveedor 1 - AmazonBackup Executions: dict_keys(['id', 'nombre', 'descripcion', 'tipo', 'credenciales', 'configuracion', 'activo', 'estado', 'ultimo_chequeo', 'mensaje_error', 'creado_en', 'modificado_en', 'secreto_id'])
+INFO:janitor_daemon:Estructura del proveedor 1 - AmazonBackup Executions: dict_keys(['id', 'nombre', 'descripcion', 'tipo', 'credenciales', 'configuracion', 'activo', 'estado', 'ultimo_chequeo', 'mensaje_error', 'creado_en', 'modificado_en', 'secreto_id'])
+2025-04-21 20:44:42,067 - janitor_daemon - INFO - El proveedor 1 - AmazonBackup Executions usa credenciales directas
+INFO:janitor_daemon:El proveedor 1 - AmazonBackup Executions usa credenciales directas
+2025-04-21 20:44:42,068 - janitor_daemon - INFO - Proveedores cargados: [4, 2, 3, 5, 1]
+INFO:janitor_daemon:Proveedores cargados: [4, 2, 3, 5, 1]
+2025-04-21 20:44:42,068 - janitor_daemon - INFO - Iniciando Janitor Daemon
+INFO:janitor_daemon:Iniciando Janitor Daemon
+2025-04-21 20:44:42,068 - janitor_daemon - INFO - Configuración cargada: {'id': 1, 'nube_primaria_id': 1, 'nubes_alternativas': [3, 4, 2, 5], 'tiempo_retencion_local': 5, 'prefijo_ruta_nube': 'executions', 'migrar_automaticamente': True, 'fecha_creacion': datetime.datetime(2025, 4, 16, 18, 45, 54, 720422), 'fecha_actualizacion': datetime.datetime(2025, 4, 17, 2, 27, 44, 689092)}
+INFO:janitor_daemon:Configuración cargada: {'id': 1, 'nube_primaria_id': 1, 'nubes_alternativas': [3, 4, 2, 5], 'tiempo_retencion_local': 5, 'prefijo_ruta_nube': 'executions', 'migrar_automaticamente': True, 'fecha_creacion': datetime.datetime(2025, 4, 16, 18, 45, 54, 720422), 'fecha_actualizacion': datetime.datetime(2025, 4, 17, 2, 27, 44, 689092)}
+2025-04-21 20:44:42,068 - janitor_daemon - INFO - Proveedores de nube cargados: [4, 2, 3, 5, 1]
+INFO:janitor_daemon:Proveedores de nube cargados: [4, 2, 3, 5, 1]
+2025-04-21 20:44:42,068 - janitor_daemon - INFO - Iniciando migración de ejecuciones antiguas a la nube (solo existentes: True)
+INFO:janitor_daemon:Iniciando migración de ejecuciones antiguas a la nube (solo existentes: True)
+2025-04-21 20:44:42,068 - janitor_daemon - INFO - Usando tiempo de retención configurado: 5 horas
+INFO:janitor_daemon:Usando tiempo de retención configurado: 5 horas
+2025-04-21 20:44:42,068 - janitor_daemon - INFO - Fecha límite para migración: 2025-04-21 15:44:42.068880
+INFO:janitor_daemon:Fecha límite para migración: 2025-04-21 15:44:42.068880
+2025-04-21 20:44:42,069 - janitor_daemon - INFO - Fecha límite formateada: 2025-04-21 15:44:42
+INFO:janitor_daemon:Fecha límite formateada: 2025-04-21 15:44:42
+2025-04-21 20:44:42,069 - janitor_daemon - INFO - Ejecutando SQL: 
+                    SELECT id, nombre_yaml, ruta_directorio, fecha_ejecucion, casilla_id
+                    FROM ejecuciones_yaml
+                    WHERE (
+                        (migrado_a_nube = FALSE OR migrado_a_nube IS NULL)
+                        OR
+                        (migrado_a_nube = TRUE AND (ruta_nube IS NULL OR ruta_nube = ''))
+                    )
+                    AND ruta_directorio IS NOT NULL
+                    -- Comentado temporalmente para permitir migrar ejecuciones desde cloud://
+                    -- AND ruta_directorio NOT LIKE 'cloud://%'
+                    ORDER BY fecha_ejecucion DESC
+                    LIMIT 10  -- Solo tomar las 10 más recientes para probar
+                
+INFO:janitor_daemon:Ejecutando SQL: 
+                    SELECT id, nombre_yaml, ruta_directorio, fecha_ejecucion, casilla_id
+                    FROM ejecuciones_yaml
+                    WHERE (
+                        (migrado_a_nube = FALSE OR migrado_a_nube IS NULL)
+                        OR
+                        (migrado_a_nube = TRUE AND (ruta_nube IS NULL OR ruta_nube = ''))
+                    )
+                    AND ruta_directorio IS NOT NULL
+                    -- Comentado temporalmente para permitir migrar ejecuciones desde cloud://
+                    -- AND ruta_directorio NOT LIKE 'cloud://%'
+                    ORDER BY fecha_ejecucion DESC
+                    LIMIT 10  -- Solo tomar las 10 más recientes para probar
+                
+2025-04-21 20:44:42,132 - janitor_daemon - INFO - Se encontraron 10 ejecuciones para migrar.
+INFO:janitor_daemon:Se encontraron 10 ejecuciones para migrar.
+2025-04-21 20:44:42,132 - janitor_daemon - WARNING - La ruta local executions/b79715dd-27d8-42d3-ace9-f46f5bab6ebc no existe. Marcando ejecución 837 como migrada sin migrar archivos.
+WARNING:janitor_daemon:La ruta local executions/b79715dd-27d8-42d3-ace9-f46f5bab6ebc no existe. Marcando ejecución 837 como migrada sin migrar archivos.
+2025-04-21 20:44:42,257 - janitor_daemon - WARNING - La ruta local executions/41cb6acd-9267-43bd-901c-9f5abca7fdc2 no existe. Marcando ejecución 835 como migrada sin migrar archivos.
+WARNING:janitor_daemon:La ruta local executions/41cb6acd-9267-43bd-901c-9f5abca7fdc2 no existe. Marcando ejecución 835 como migrada sin migrar archivos.
+2025-04-21 20:44:42,445 - janitor_daemon - WARNING - La ruta local executions/9adf0f85-6c41-4d87-8a06-95bbde259335 no existe. Marcando ejecución 833 como migrada sin migrar archivos.
+WARNING:janitor_daemon:La ruta local executions/9adf0f85-6c41-4d87-8a06-95bbde259335 no existe. Marcando ejecución 833 como migrada sin migrar archivos.
+2025-04-21 20:44:42,633 - janitor_daemon - WARNING - La ruta local executions/0b16ab37-b64c-4697-bcec-d5a3e2f030ed no existe. Marcando ejecución 831 como migrada sin migrar archivos.
+WARNING:janitor_daemon:La ruta local executions/0b16ab37-b64c-4697-bcec-d5a3e2f030ed no existe. Marcando ejecución 831 como migrada sin migrar archivos.
+2025-04-21 20:44:42,820 - janitor_daemon - WARNING - La ruta local executions/ba0d3750-448c-4487-91f5-fd51f70ca724 no existe. Marcando ejecución 829 como migrada sin migrar archivos.
+WARNING:janitor_daemon:La ruta local executions/ba0d3750-448c-4487-91f5-fd51f70ca724 no existe. Marcando ejecución 829 como migrada sin migrar archivos.
+2025-04-21 20:44:43,008 - janitor_daemon - WARNING - La ruta local executions/fcdbb87d-f233-4857-b419-a9c6a23abf70 no existe. Marcando ejecución 827 como migrada sin migrar archivos.
+WARNING:janitor_daemon:La ruta local executions/fcdbb87d-f233-4857-b419-a9c6a23abf70 no existe. Marcando ejecución 827 como migrada sin migrar archivos.
+2025-04-21 20:44:43,195 - janitor_daemon - WARNING - La ruta local executions/41b02362-9d7f-4600-9dd8-9d7767d7453d no existe. Marcando ejecución 825 como migrada sin migrar archivos.
+WARNING:janitor_daemon:La ruta local executions/41b02362-9d7f-4600-9dd8-9d7767d7453d no existe. Marcando ejecución 825 como migrada sin migrar archivos.
+2025-04-21 20:44:43,382 - janitor_daemon - WARNING - La ruta local executions/547b04d4-794f-4936-bea3-12e5e12065e4 no existe. Marcando ejecución 823 como migrada sin migrar archivos.
+WARNING:janitor_daemon:La ruta local executions/547b04d4-794f-4936-bea3-12e5e12065e4 no existe. Marcando ejecución 823 como migrada sin migrar archivos.
+2025-04-21 20:44:43,568 - janitor_daemon - WARNING - La ruta local executions/ae402ba5-f626-432c-af09-41b3fbeebd23 no existe. Marcando ejecución 821 como migrada sin migrar archivos.
+WARNING:janitor_daemon:La ruta local executions/ae402ba5-f626-432c-af09-41b3fbeebd23 no existe. Marcando ejecución 821 como migrada sin migrar archivos.
+2025-04-21 20:44:43,755 - janitor_daemon - WARNING - La ruta local executions/e7be59c3-1d95-40fc-82dd-65b845316d69 no existe. Marcando ejecución 819 como migrada sin migrar archivos.
+WARNING:janitor_daemon:La ruta local executions/e7be59c3-1d95-40fc-82dd-65b845316d69 no existe. Marcando ejecución 819 como migrada sin migrar archivos.
+2025-04-21 20:44:43,943 - janitor_daemon - INFO - Después de filtrar, quedan 0 ejecuciones con directorios existentes para migrar.
+INFO:janitor_daemon:Después de filtrar, quedan 0 ejecuciones con directorios existentes para migrar.
+2025-04-21 20:44:43,943 - janitor_daemon - INFO - Iniciando limpieza de archivos temporales
+INFO:janitor_daemon:Iniciando limpieza de archivos temporales
+2025-04-21 20:44:43,943 - janitor_daemon - INFO - Limpieza completada. Se eliminaron 0 archivos temporales.
+INFO:janitor_daemon:Limpieza completada. Se eliminaron 0 archivos temporales.
+2025-04-21 20:44:43,943 - janitor_daemon - INFO - Janitor Daemon completado con éxito
+INFO:janitor_daemon:Janitor Daemon completado con éxito
