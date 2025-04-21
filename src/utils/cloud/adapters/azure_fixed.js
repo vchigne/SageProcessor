@@ -207,9 +207,14 @@ export async function testConnection(credentials, config = {}) {
               blobEndpoint = blobUrl;
               
               // Extraer nombre de cuenta
-              const hostParts = new URL(blobUrl).hostname.split('.');
-              if (hostParts.length > 0) {
-                accountName = hostParts[0];
+              try {
+                const hostParts = new URL(blobUrl).hostname.split('.');
+                if (hostParts.length > 0) {
+                  accountName = hostParts[0];
+                }
+                console.log(`[Azure] AccountName extraído de hostname: ${accountName}`);
+              } catch (err) {
+                console.error('[Azure] Error al extraer accountName:', err);
               }
             }
           }
@@ -220,6 +225,17 @@ export async function testConnection(credentials, config = {}) {
             if (sasMatch && sasMatch[1]) {
               sasToken = sasMatch[1];
               useSasToken = true;
+              console.log(`[Azure] SAS token extraído (longitud): ${sasToken.length}`);
+            }
+          }
+          
+          // Si no encontramos el SAS token con el método anterior, buscamos ?sv= que es parte del token SAS
+          if (!sasToken && connectionString.includes('?sv=')) {
+            const svIndex = connectionString.indexOf('?sv=');
+            if (svIndex !== -1) {
+              sasToken = connectionString.substring(svIndex + 1); // +1 para quitar el "?"
+              useSasToken = true;
+              console.log(`[Azure] SAS token alternativo extraído (longitud): ${sasToken.length}`);
             }
           }
           
@@ -313,7 +329,35 @@ export async function testConnection(credentials, config = {}) {
     // Según el modo elegido, construir URL y preparar autenticación
     if (useSasToken && sasToken) {
       console.log('[Azure] Probando conexión con SAS token');
-      url = `${urlBase}?restype=service&comp=list&${sasToken}`;
+      
+      // Asegurarnos de que el SAS token no comience con ?
+      if (sasToken.startsWith('?')) {
+        sasToken = sasToken.substring(1);
+      }
+      
+      // Si el SAS token no incluye sv= (parte obligatoria), probablemente esté mal formado
+      if (!sasToken.includes('sv=')) {
+        // Intentamos extraerlo nuevamente del connection string si está disponible
+        if (credentials.connection_string && credentials.connection_string.includes('sv=')) {
+          const svIndex = credentials.connection_string.indexOf('sv=');
+          const endIndex = credentials.connection_string.indexOf(';', svIndex);
+          if (endIndex !== -1) {
+            sasToken = credentials.connection_string.substring(svIndex, endIndex);
+          } else {
+            sasToken = credentials.connection_string.substring(svIndex);
+          }
+          console.log('[Azure] SAS token regenerado del connection string:', sasToken);
+        }
+      }
+      
+      // Para probar conexión con un SAS token, podemos simplemente listar los containers
+      // Algunos SAS tokens no tienen permisos para listar servicios completos (comp=list)
+      url = `${urlBase}?${sasToken}`;
+      
+      // Verificar si tenemos permisos explícitos de listado de servicios
+      if (sasToken.includes('srt=s') || sasToken.includes('srt=sc') || sasToken.includes('srt=sco')) {
+        url = `${urlBase}?restype=service&comp=list&${sasToken}`;
+      }
     } else {
       console.log('[Azure] Probando conexión con Shared Key');
       

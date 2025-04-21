@@ -76,10 +76,32 @@ async function listBuckets(req, res, id) {
         }
       }
       
+      // Para Azure, verificar la estructura de connection_string
+      if (secret.tipo === 'azure' && credenciales.connection_string) {
+        console.log('[Buckets API] Verificando formato del connection_string de Azure');
+        const connString = credenciales.connection_string;
+        
+        // Formato especial con URL + SharedAccessSignature
+        if ((connString.includes('SharedAccessSignature=sv=') || connString.includes('SharedAccessSignature=')) && 
+            connString.includes('blob.core.windows.net')) {
+          console.log('[Buckets API] Detectado formato connection_string con SharedAccessSignature y URL');
+        }
+        
+        // Mostrar información básica para diagnóstico
+        console.log('[Buckets API] Información de connection_string de Azure:', {
+          longitud: connString.length,
+          contiene_sharedaccesssignature: connString.includes('SharedAccessSignature='),
+          contiene_sv: connString.includes('sv='),
+          contiene_blob: connString.includes('blob.core.windows.net'),
+          empieza_con_http: connString.startsWith('http')
+        });
+      }
+      
       console.log('[Buckets API] Credenciales preparadas:', {
         tipo: secret.tipo,
         credenciales_type: typeof credenciales,
-        key_file_type: credenciales.key_file ? typeof credenciales.key_file : 'undefined'
+        key_file_type: credenciales.key_file ? typeof credenciales.key_file : 'undefined',
+        tiene_connection_string: secret.tipo === 'azure' ? !!credenciales.connection_string : undefined
       });
       
       const tempProvider = {
@@ -267,11 +289,45 @@ async function createBucket(req, res, id) {
         }
       }
       
+      // Para Azure, verificar la estructura de connection_string
+      if (secret.tipo === 'azure' && credenciales.connection_string) {
+        console.log('[Buckets API] Verificando formato del connection_string de Azure para crear bucket');
+        const connString = credenciales.connection_string;
+        
+        // Formato especial con URL + SharedAccessSignature
+        if ((connString.includes('SharedAccessSignature=sv=') || connString.includes('SharedAccessSignature=')) && 
+            connString.includes('blob.core.windows.net')) {
+          console.log('[Buckets API] Detectado formato connection_string con SharedAccessSignature y URL');
+          
+          // Verificar que el SAS token tenga permisos de creación (sp=c o sp=a)
+          if (!connString.includes('sp=c') && !connString.includes('sp=rwdlacup') && 
+              !connString.includes('sp=a') && !connString.includes('sp=racwdl')) {
+            console.warn('[Buckets API] Advertencia: El SAS token no parece tener permisos explícitos de creación');
+          }
+        }
+        
+        // Mostrar información básica para diagnóstico
+        console.log('[Buckets API] Información de connection_string de Azure:', {
+          longitud: connString.length,
+          contiene_sharedaccesssignature: connString.includes('SharedAccessSignature='),
+          contiene_sv: connString.includes('sv='),
+          contiene_blob: connString.includes('blob.core.windows.net'),
+          empieza_con_http: connString.startsWith('http'),
+          contiene_permisos_crear: 
+            connString.includes('sp=c') || 
+            connString.includes('sp=a') || 
+            connString.includes('sp=rwdlacup') || 
+            connString.includes('sp=racwdl')
+        });
+      }
+      
       console.log('[Buckets API] Credenciales preparadas para crear bucket:', {
         tipo: secret.tipo,
         credenciales_type: typeof credenciales,
         key_file_type: credenciales.key_file ? typeof credenciales.key_file : 'undefined',
-        bucket_name: bucketName
+        bucket_name: bucketName,
+        tiene_connection_string: secret.tipo === 'azure' ? !!credenciales.connection_string : undefined,
+        connection_string_length: secret.tipo === 'azure' && credenciales.connection_string ? credenciales.connection_string.length : 0
       });
       
       const tempProvider = {
