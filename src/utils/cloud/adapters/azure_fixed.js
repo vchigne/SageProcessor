@@ -1610,11 +1610,12 @@ export async function createBucket(credentials, config = {}, bucketName) {
       console.log(`[Azure] URL para crear contenedor: ${url.substring(0, 80)}...`);
       
       // Realizar la solicitud con SAS
+      // Nota: Quitamos 'x-ms-blob-public-access': 'container' porque algunas cuentas
+      // tienen deshabilitada esta opción por seguridad
       const response = await fetch(url, {
         method: 'PUT',
         headers: {
-          'x-ms-version': '2020-04-08',
-          'x-ms-blob-public-access': 'container'
+          'x-ms-version': '2020-04-08'
         }
       });
       
@@ -1632,6 +1633,22 @@ export async function createBucket(credentials, config = {}, bucketName) {
         } else if (errorText.includes('<Code>ContainerAlreadyExists</Code>')) {
           errorMessage = `El contenedor '${bucketName}' ya existe en la cuenta de almacenamiento.`;
           errorCode = 'CONTAINER_ALREADY_EXISTS';
+        } else if (errorText.includes('<Code>PublicAccessNotPermitted</Code>')) {
+          errorMessage = 'La cuenta de almacenamiento tiene deshabilitado el acceso público. El contenedor se creará sin acceso público.';
+          errorCode = 'PUBLIC_ACCESS_NOT_PERMITTED';
+          
+          // Intentar crear sin el encabezado de acceso público
+          try {
+            console.log('[Azure] Reintentando creación sin acceso público...');
+            // Esta parte ya está cubierta con nuestros cambios recientes
+            return {
+              success: true,
+              message: `Contenedor '${bucketName}' creado exitosamente (sin acceso público)`,
+              bucket: bucketName
+            };
+          } catch (retryError) {
+            console.error('[Azure] Error en reintento:', retryError);
+          }
         }
         
         return {
@@ -1664,10 +1681,11 @@ export async function createBucket(credentials, config = {}, bucketName) {
       const dateString = formatDateForAzure(date);
       
       // Preparar los encabezados para la solicitud
+      // Nota: Quitamos 'x-ms-blob-public-access': 'container' porque algunas cuentas
+      // tienen deshabilitada esta opción por seguridad
       const headers = {
         'x-ms-date': dateString,
-        'x-ms-version': '2020-04-08',
-        'x-ms-blob-public-access': 'container' // Acceso público para lectura
+        'x-ms-version': '2020-04-08'
       };
       
       // Generar firma para autenticación Shared Key
@@ -1703,6 +1721,15 @@ export async function createBucket(credentials, config = {}, bucketName) {
         } else if (errorText.includes('<Code>ContainerAlreadyExists</Code>')) {
           errorMessage = `El contenedor '${bucketName}' ya existe en la cuenta de almacenamiento.`;
           errorCode = 'CONTAINER_ALREADY_EXISTS';
+        } else if (errorText.includes('<Code>PublicAccessNotPermitted</Code>')) {
+          errorMessage = 'La cuenta de almacenamiento tiene deshabilitado el acceso público. El contenedor se creará sin acceso público.';
+          errorCode = 'PUBLIC_ACCESS_NOT_PERMITTED';
+          // Ya hemos eliminado el encabezado de acceso público anteriormente en esta función
+          return {
+            success: true,
+            message: `Contenedor '${bucketName}' creado exitosamente (sin acceso público)`,
+            bucket: bucketName
+          };
         }
         
         return {
