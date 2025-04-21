@@ -1403,56 +1403,111 @@ export async function createBucket(credentials, config = {}, bucketName) {
     }
     // Si no, tratamos de extraerlos de la connection_string
     else if (credentials.connection_string) {
-      // Código para extraer credenciales de connection_string (similar a listBuckets)
+      // Código para extraer credenciales de connection_string
       try {
+        const originalConnStr = credentials.connection_string;
         console.log('[Azure] Usando connection string para extraer credenciales');
-        const normalizedConnString = credentials.connection_string.trim();
+        console.log('[Azure] Longitud del connection string:', originalConnStr.length);
         
-        // Si es una URL directa con SAS token (formato especial)
-        if (normalizedConnString.startsWith('http')) {
-          console.log('[Azure] Detectada URL con SAS Token directa');
+        // Normalizar sin perder mayúsculas/minúsculas (importantes para AccountKey)
+        const normalizedConnString = originalConnStr.trim();
+        const normalizedConnStringLower = normalizedConnString.toLowerCase();
+        
+        // Verificar si es un connection string completo en formato Azure
+        if (normalizedConnStringLower.includes('accountname=') || normalizedConnStringLower.includes('defaultendpointsprotocol=')) {
+          console.log('[Azure] Formato identificado: Connection string estándar');
+          
+          // Extraer account name
+          const accountNameMatch = normalizedConnString.match(/AccountName=([^;]+)/i);
+          if (accountNameMatch && accountNameMatch[1]) {
+            accountName = accountNameMatch[1];
+            console.log(`[Azure] AccountName extraído: ${accountName}`);
+          }
+          
+          // Extraer account key
+          const accountKeyMatch = normalizedConnString.match(/AccountKey=([^;]+)/i);
+          if (accountKeyMatch && accountKeyMatch[1]) {
+            accountKey = accountKeyMatch[1];
+            console.log('[Azure] AccountKey extraído (longitud):', accountKey.length);
+          }
+          
+          // Extraer endpoint
+          const endpointMatch = normalizedConnString.match(/BlobEndpoint=([^;]+)/i);
+          if (endpointMatch && endpointMatch[1]) {
+            blobEndpoint = endpointMatch[1];
+            console.log(`[Azure] BlobEndpoint extraído: ${blobEndpoint}`);
+          }
+          
+          // Extraer SAS token
+          const sasMatch = normalizedConnString.match(/SharedAccessSignature=([^;]+)/i);
+          if (sasMatch && sasMatch[1]) {
+            sasToken = sasMatch[1];
+            console.log('[Azure] SAS token extraído de SharedAccessSignature (longitud):', sasToken.length);
+            useSasToken = true;
+          }
+        }
+        // Caso especial: URL directa con SAS token (formato especial)
+        else if (normalizedConnStringLower.startsWith('http')) {
+          console.log('[Azure] Formato identificado: URL directa con SAS Token');
           try {
             const url = new URL(normalizedConnString);
             blobEndpoint = `${url.protocol}//${url.hostname}`;
+            console.log(`[Azure] BlobEndpoint extraído de URL: ${blobEndpoint}`);
             
             // Para Azure, el SAS token podría estar en distintos formatos:
             // 1. Como parte de la query string directamente (tradicional)
             // 2. Como parte del path (más complejo) 
             // 3. Como un formato mixto que combina ambos
             
-            // Primero, intentamos obtener el SAS token de la query string
-            sasToken = url.search.startsWith('?') ? url.search.substring(1) : url.search;
-            
-            // Si no hay sasToken en la query, buscamos en el path
-            if (!sasToken || sasToken.length === 0) {
-              // El SAS token suele comenzar con "?sv=" en alguna parte del path
-              const fullPath = url.pathname;
-              const svIndex = fullPath.indexOf('?sv=');
-              if (svIndex !== -1) {
-                sasToken = fullPath.substring(svIndex + 1); // +1 para omitir el "?"
-              }
+            // Extraer SAS token de la query
+            if (url.search) {
+              sasToken = url.search.startsWith('?') ? url.search.substring(1) : url.search;
+              console.log('[Azure] SAS token extraído de URL.search (longitud):', sasToken.length);
             }
             
-            // Si aún no hay sasToken, buscamos el "?" en la connection string completa
-            if ((!sasToken || sasToken.length === 0) && normalizedConnString.includes('?sv=')) {
-              const svIndex = normalizedConnString.indexOf('?sv=');
-              sasToken = normalizedConnString.substring(svIndex + 1);
+            // Si no hay sasToken en la query, buscamos en la cadena completa
+            if (!sasToken || sasToken.length === 0) {
+              if (normalizedConnString.includes('?sv=')) {
+                const svIndex = normalizedConnString.indexOf('?sv=');
+                sasToken = normalizedConnString.substring(svIndex + 1); // +1 para quitar el ?
+                console.log('[Azure] SAS token extraído de índice ?sv= (longitud):', sasToken.length);
+              }
             }
             
             // Extraer accountName del hostname (cuenta.blob.core.windows.net)
             const hostParts = url.hostname.split('.');
             if (hostParts.length > 0) {
               accountName = hostParts[0];
+              console.log(`[Azure] AccountName extraído de hostname: ${accountName}`);
             }
             
-            // Si no tenemos SAS token pero tenemos una URL, forzamos a usarlo igual
-            // para permitir a la API explorar contenedores públicos
+            // Si encontramos hostname y token, usamos autenticación SAS
             useSasToken = true;
-            console.log(`[Azure] URL SAS extraído - BlobEndpoint: ${blobEndpoint}, AccountName: ${accountName}, SAS token presente: ${!!sasToken && sasToken.length > 0}`);
           } catch (error) {
-            console.error('[Azure] Error al procesar URL directa:', error);
+            console.error('[Azure] Error al analizar URL:', error);
           }
         }
+        // Caso especial: solo SAS token directo
+        else if (normalizedConnStringLower.startsWith('?sv=') || normalizedConnStringLower.startsWith('sv=')) {
+          console.log('[Azure] Formato identificado: SAS token directo');
+          
+          // Asegurarnos de que el token no comience con ?, pero preservando el token original
+          sasToken = normalizedConnString.startsWith('?') ? normalizedConnString.substring(1) : normalizedConnString;
+          console.log('[Azure] SAS token directo (longitud):', sasToken.length);
+          
+          // Necesitamos accountName y blobEndpoint para usar este token
+          if (!accountName) {
+            console.warn('[Azure] ADVERTENCIA: Se encontró SAS token pero falta accountName');
+          }
+          
+          useSasToken = true;
+        }
+        
+        console.log(`[Azure] Resultado de extracción - BlobEndpoint: ${blobEndpoint}, AccountName: ${accountName}, SAS token presente: ${!!sasToken && sasToken.length > 0}`);
+      } catch (error) {
+        console.error('[Azure] Error al procesar connection string:', error);
+      }
+    }
         
         // Procesamiento tradicional de connection string (solo si no hemos configurado SAS token via URL)
         if (!useSasToken && normalizedConnString.includes(';')) {
@@ -1534,10 +1589,34 @@ export async function createBucket(credentials, config = {}, bucketName) {
         const connStr = credentials.connection_string.toLowerCase();
         
         // Verificamos si es una conexión que sabemos que tiene permisos completos
-        if (connStr.includes('sp=rwdlacupiytfx') || connStr.includes('sp=racwdl')) {
-          console.log('[Azure] Detectada connection string con permisos completos');
-          sasToken = 'sv=2024-11-04&ss=bfqt&srt=sco&sp=rwdlacupiytfx';
+        if (connStr.includes('sp=rwdlacupiytfx') || connStr.includes('sp=racwdl') || 
+            connStr.includes('sv=2024') || connStr.includes('sv=2023') || 
+            connStr.includes('sv=2022') || connStr.includes('sv=2021')) {
+          
+          console.log('[Azure] Detectada connection string con posibles permisos completos');
+          
+          // Extraer el SAS token directamente de la URL
+          if (connStr.includes('?sv=')) {
+            const startIndex = connStr.indexOf('?sv=');
+            if (startIndex !== -1) {
+              sasToken = connStr.substring(startIndex + 1); // +1 para quitar el '?'
+              console.log('[Azure] Extraído SAS token directamente de la URL:', sasToken.substring(0, 30) + '...');
+            }
+          }
+          
+          // Si no se pudo extraer, usar un token predeterminado
+          if (!sasToken) {
+            console.log('[Azure] Usando SAS token predeterminado');
+            sasToken = 'sv=2024-11-04&ss=bfqt&srt=sco&sp=rwdlacupiytfx';
+          }
         }
+      }
+      
+      // Segundo intento: si todavía no tenemos SAS token pero tenemos accountName y accountKey,
+      // intentamos usar la autenticación por SharedKey en lugar de SAS
+      if (!sasToken && accountName && accountKey) {
+        console.log('[Azure] No se pudo extraer SAS token, usando autenticación SharedKey');
+        useSasToken = false;
       }
       
       // Si aún no hay SAS token, mostramos un error específico para la creación
@@ -1606,6 +1685,17 @@ export async function createBucket(credentials, config = {}, bucketName) {
       if (sasToken.startsWith('?')) {
         sasToken = sasToken.substring(1);
       }
+      
+      // Verificar que bucketName sea un string válido
+      if (typeof bucketName !== 'string') {
+        console.error(`[Azure] Error: bucketName no es un string, es: ${typeof bucketName}. Valor:`, bucketName);
+        return {
+          success: false,
+          message: 'Nombre de contenedor inválido. Debe ser un string.',
+          error: 'INVALID_BUCKET_NAME_TYPE'
+        };
+      }
+      
       const url = `${urlBase}${bucketName}?restype=container&${sasToken}`;
       console.log(`[Azure] URL para crear contenedor: ${url.substring(0, 80)}...`);
       

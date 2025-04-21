@@ -316,7 +316,45 @@ async function createBucket(req, res, id) {
         }
         else if (secret.tipo === 'azure') {
           console.log(`[Buckets API] Llamando a createBucket para Azure con credenciales, bucketName, config`);
-          result = await adapter.createBucket(tempProvider.credenciales, bucketName, options);
+          
+          // Verificaciones adicionales para Azure
+          if (typeof bucketName !== 'string') {
+            console.error(`[Buckets API] Error: bucketName no es string, es: ${typeof bucketName}`, bucketName);
+            return res.status(400).json({
+              success: false,
+              message: `Nombre de bucket inválido. Debe ser un string, se recibió: ${typeof bucketName}`
+            });
+          }
+          
+          // Verificar formato del nombre para Azure (letras minúsculas y números, sin puntos ni caracteres especiales)
+          if (!/^[a-z0-9-]+$/.test(bucketName)) {
+            console.error(`[Buckets API] Error: bucketName no cumple el formato para Azure:`, bucketName);
+            return res.status(400).json({
+              success: false,
+              message: `Nombre de contenedor inválido para Azure. Use sólo letras minúsculas, números y guiones. No se permiten puntos en Azure.`
+            });
+          }
+          
+          // Asegurarse de que las credenciales tengan la estructura correcta
+          if (!tempProvider.credenciales.connection_string) {
+            console.error('[Buckets API] Error: Faltan parámetros para Azure - connection_string es requerido');
+            return res.status(400).json({
+              success: false,
+              message: 'Las credenciales de Azure requieren connection_string'
+            });
+          }
+          
+          // Intentar crear el contenedor
+          try {
+            result = await adapter.createBucket(tempProvider.credenciales, bucketName, options);
+          } catch (error) {
+            console.error('[Buckets API] Error al crear contenedor Azure:', error);
+            return res.status(400).json({
+              success: false,
+              message: `Error al crear contenedor en Azure: ${error.message}`,
+              error: error.name || 'AZURE_ERROR'
+            });
+          }
         }
         else if (secret.tipo === 'sftp') {
           console.log(`[Buckets API] Llamando a createBucket para SFTP con credenciales, bucketName, config`);
