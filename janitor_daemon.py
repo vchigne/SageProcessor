@@ -195,7 +195,37 @@ class JanitorDaemon:
                             
                         # Reemplazar las credenciales del proveedor con las del secreto
                         logger.info(f"Reemplazando credenciales del proveedor {provider_name} con las del secreto {secret_dict['nombre']}")
-                        provider_dict['credenciales'] = secret_dict['secretos']
+                        credentials = secret_dict['secretos']
+                        
+                        # Normalizar las credenciales según el tipo de proveedor
+                        if provider_dict['tipo'] == 's3' or provider_dict['tipo'] == 'minio':
+                            # Asegurar formato uniforme para S3/MinIO
+                            normalized_credentials = {
+                                **credentials,
+                                'access_key': credentials.get('access_key') or credentials.get('accessKey'),
+                                'secret_key': credentials.get('secret_key') or credentials.get('secretKey')
+                            }
+                            # Eliminar campos no reconocidos por boto3
+                            if 'aws_account_id' in normalized_credentials:
+                                logger.info(f"Eliminando campo 'aws_account_id' no compatible con boto3")
+                                normalized_credentials.pop('aws_account_id', None)
+                            
+                            provider_dict['credenciales'] = normalized_credentials
+                        elif provider_dict['tipo'] == 'azure':
+                            # No se requiere normalización especial para Azure
+                            provider_dict['credenciales'] = credentials
+                        elif provider_dict['tipo'] == 'gcp':
+                            # Para GCP, asegurar que key_file sea un diccionario
+                            if 'key_file' in credentials and isinstance(credentials['key_file'], str):
+                                try:
+                                    credentials['key_file'] = json.loads(credentials['key_file'])
+                                    logger.info(f"Convertido key_file de formato string a diccionario para GCP")
+                                except:
+                                    logger.warning(f"No se pudo convertir key_file a diccionario para GCP, manteniendo formato original")
+                            provider_dict['credenciales'] = credentials
+                        else:
+                            # Para otros tipos, usar tal cual
+                            provider_dict['credenciales'] = credentials
                         
                         # Añadir información de que se usó un secreto
                         provider_dict['usa_secreto'] = True
@@ -652,7 +682,19 @@ class JanitorDaemon:
         logger.info(f"Credenciales S3: {list(credentials.keys()) if credentials else 'No hay credenciales'}")
         logger.info(f"Configuración S3: {list(config.keys()) if config else 'No hay configuración'}")
         
-        # Obtener solo los parámetros necesarios para S3 (evitar parámetros extras como aws_account_id)
+        # Normalizar credenciales S3
+        credentials = {
+            **credentials,
+            'access_key': credentials.get('access_key') or credentials.get('accessKey'),
+            'secret_key': credentials.get('secret_key') or credentials.get('secretKey'),
+        }
+        
+        # Eliminar explícitamente aws_account_id si existe, ya que causa problemas con boto3
+        if 'aws_account_id' in credentials:
+            logger.info(f"Eliminando campo 'aws_account_id' no compatible con boto3")
+            credentials.pop('aws_account_id', None)
+            
+        # Obtener solo los parámetros necesarios para S3
         endpoint_url = credentials.get('endpoint')
         access_key = credentials.get('access_key')
         secret_key = credentials.get('secret_key')
