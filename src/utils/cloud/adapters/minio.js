@@ -409,7 +409,9 @@ async function listContents(credentials, config = {}, path = '') {
     
     // Procesar la respuesta para extraer carpetas y archivos
     const responseText = await response.text();
-    console.log('[MinIO] Respuesta:', responseText.substring(0, 150) + '...');
+    console.log('[MinIO] Respuesta COMPLETA:', responseText);
+    // Guardar respuesta para análisis
+    console.log('[MinIO] Longitud de respuesta:', responseText.length);
     
     // Extraer información de carpetas (compatibilidad con diferentes formatos XML)
     // Intentar primero con etiquetas CommonPrefix y luego con Prefix dentro de CommonPrefixes
@@ -494,30 +496,50 @@ async function listContents(credentials, config = {}, path = '') {
     
     console.log(`[MinIO] Se encontraron ${contentMatches.length} archivos antes del filtrado`);
     
-    // MEJORA: Filtrado simplificado y más permisivo
+    // MEJORA: Filtrado simplificado y más permisivo con logging detallado
+    console.log(`[MinIO] Listando archivos en path: "${path}"`);
+    
+    // Registro de todos los archivos encontrados
+    contentMatches.forEach((match, index) => {
+      console.log(`[MinIO] Archivo ${index + 1}: "${match[1]}" (size: ${match[2] || 'N/A'})`);
+    });
+    
     const files = contentMatches
       .filter(match => {
         const filePath = match[1];
+        let shouldInclude = true;
+        let reason = "incluido";
         
         // 1. No incluir directorios (terminan en /)
         if (filePath.endsWith('/')) {
-          return false;
+          shouldInclude = false;
+          reason = "es directorio (termina en /)";
         }
         
         // 2. Si estamos en una ruta específica, el archivo debe estar en esa ruta
-        if (path && !filePath.startsWith(path)) {
-          return false;
+        else if (path && !filePath.startsWith(path)) {
+          shouldInclude = false;
+          reason = `no comienza con el path actual (${path})`;
         }
         
         // 3. Mostrar solo archivos del nivel actual, no de subcarpetas
-        if (path) {
+        else if (path) {
           const relativePath = filePath.substring(path.length);
           const slashCount = (relativePath.match(/\//g) || []).length;
-          return slashCount === 0; // Solo archivos del nivel actual
+          if (slashCount > 0) {
+            shouldInclude = false;
+            reason = `está en subcarpeta (${slashCount} niveles de profundidad)`;
+          }
         }
         
         // 4. En la raíz, mostrar solo archivos de la raíz (sin subcarpetas)
-        return !filePath.includes('/');
+        else if (filePath.includes('/')) {
+          shouldInclude = false;
+          reason = "está en subcarpeta (no en la raíz)";
+        }
+        
+        console.log(`[MinIO] Archivo "${filePath}": ${shouldInclude ? "✅" : "❌"} ${reason}`);
+        return shouldInclude;
       })
       .map(match => {
         const filePath = match[1];
