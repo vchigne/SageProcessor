@@ -10,6 +10,29 @@
  */
 
 /**
+ * Obtiene la ruta del directorio padre
+ * @param {string} path Ruta actual
+ * @returns {string} Ruta del directorio padre
+ */
+function getParentPath(path) {
+  if (!path || path === '' || path === '/') {
+    return '';
+  }
+  
+  // Eliminar la última barra si existe
+  const cleanPath = path.endsWith('/') ? path.slice(0, -1) : path;
+  
+  // Encontrar la última barra
+  const lastSlashIndex = cleanPath.lastIndexOf('/');
+  if (lastSlashIndex <= 0) {
+    return ''; // Si no hay barras o está en la primera posición, volver a la raíz
+  }
+  
+  // Devolver la ruta hasta la última barra
+  return cleanPath.substring(0, lastSlashIndex);
+}
+
+/**
  * Función helper para formatear la fecha en el formato requerido por Azure
  * @param {Date} date Fecha a formatear
  * @returns {string} Fecha formateada 

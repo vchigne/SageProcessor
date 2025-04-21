@@ -160,12 +160,15 @@ async function inspectBucket(req, res, id, bucketName) {
       
       // Para S3 y MinIO pueden necesitar el bucket en la configuración también
       if (secret.tipo === 's3' || secret.tipo === 'minio') {
+        if (!tempProvider.configuracion) {
+          tempProvider.configuracion = {};
+        }
         tempProvider.configuracion.bucket = bucketName;
       }
       
       // Obtener adaptador e inspeccionar bucket
       try {
-        const adapter = await getCloudAdapter(tempProvider.tipo);
+        const adapter = await getCloudAdapter(secret.tipo);
         
         if (!adapter) {
           return res.status(200).json({ 
@@ -373,14 +376,28 @@ async function inspectBucket(req, res, id, bucketName) {
           });
         }
         
-        // IMPORTANTE: Formato SAGE Clouds exacto
+        // Verificar si el adaptador ya devolvió el formato exacto de SAGE Clouds
+        if (result && 
+            result.bucket && 
+            result.path !== undefined && 
+            (result.folders !== undefined || result.directories !== undefined) && 
+            result.files !== undefined) {
+          // El adaptador ya devolvió el formato SAGE Clouds, lo usamos directamente
+          return res.status(200).json(result);
+        }
+        
+        // Si no, construimos una respuesta con formato SAGE Clouds exacto
         return res.status(200).json({
           bucket: bucketName,
           path: path || '/',
           parentPath: getParentPath(path),
           service: secret.tipo,
           folders: folders || [],
-          files: files || []
+          files: files || [],
+          // Incluir propiedades adicionales que podrían ser usadas por el componente
+          directories: folders || [],
+          region: result.region || "",
+          error: false
         });
       } catch (error) {
         console.error('Error al inspeccionar bucket:', error);
@@ -390,7 +407,8 @@ async function inspectBucket(req, res, id, bucketName) {
           bucket: bucketName,
           path: path || '/',
           folders: [],
-          files: []
+          files: [],
+          directories: [] // Asegurar formato consistente para compatibilidad
         });
       }
     } finally {
@@ -398,13 +416,14 @@ async function inspectBucket(req, res, id, bucketName) {
     }
   } catch (error) {
     console.error('Error en inspectBucket:', error);
-    return res.status(500).json({ 
+    return res.status(200).json({ 
       error: true,
       errorMessage: `Error al inspeccionar bucket: ${error.message}`,
       bucket: bucketName,
       path: path || '/',
       folders: [],
-      files: []
+      files: [],
+      directories: [] // Asegurar formato consistente para compatibilidad
     });
   }
 }
