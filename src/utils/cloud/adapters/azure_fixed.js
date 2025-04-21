@@ -162,7 +162,7 @@ export async function testConnection(credentials, config = {}) {
       throw new Error('Se requiere account_name o connection_string para conectar a Azure');
     }
     
-    // Si tenemos connection_string, extraer accountName y accountKey
+    // Si tenemos connection_string, extraer accountName y accountKey o tokens de acceso
     if (credentials.connection_string) {
       try {
         console.log('[Azure] Procesando connection_string');
@@ -192,6 +192,38 @@ export async function testConnection(credentials, config = {}) {
             console.error('[Azure] Error al parsear URL:', error);
           }
         } 
+        // Formato especial con URL + SharedAccessSignature
+        else if (connectionString.includes('SharedAccessSignature=sv=') || 
+                 connectionString.includes('SharedAccessSignature=')) {
+          console.log('[Azure] Procesando connection string con SharedAccessSignature');
+          
+          // Buscar la parte de la URL del blob storage
+          let blobUrl = '';
+          if (connectionString.includes('blob.core.windows.net')) {
+            const blobMatch = connectionString.match(/(https?:\/\/[^\/;]+\.blob\.core\.windows\.net)/i);
+            if (blobMatch && blobMatch[1]) {
+              blobUrl = blobMatch[1];
+              blobEndpoint = blobUrl;
+              
+              // Extraer nombre de cuenta
+              const hostParts = new URL(blobUrl).hostname.split('.');
+              if (hostParts.length > 0) {
+                accountName = hostParts[0];
+              }
+            }
+          }
+          
+          // Buscar el SAS token
+          if (connectionString.includes('SharedAccessSignature=')) {
+            const sasMatch = connectionString.match(/SharedAccessSignature=([^;]+)/i);
+            if (sasMatch && sasMatch[1]) {
+              sasToken = sasMatch[1];
+              useSasToken = true;
+            }
+          }
+          
+          console.log(`[Azure] Connection string procesado: Endpoint=${blobEndpoint}, AccountName=${accountName}, SAS presente: ${!!sasToken}`);
+        }
         // Formato tradicional con semicolons
         else if (connectionString.includes(';')) {
           console.log('[Azure] Procesando connection string tradicional');
