@@ -133,7 +133,7 @@ export default function CloudSecretBuckets() {
   return (
     <div className="container mx-auto px-4 py-6">
       <Head>
-        <title>Buckets para {secret?.nombre || 'Secreto'} | SAGE</title>
+        <title>{`Buckets para ${secret?.nombre || 'Secreto'} | SAGE`}</title>
       </Head>
       
       <div className="py-4">

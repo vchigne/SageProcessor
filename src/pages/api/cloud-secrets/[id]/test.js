@@ -87,22 +87,8 @@ async function testCloudSecret(req, res, id) {
           });
         }
         
-        // En lugar de intentar procesar la credencial GCP real, que sabemos que tiene problemas de formato,
-      // vamos a usar simulación exitosa para GCP en la sección de cloud-secrets
-      if (secret.tipo === 'gcp') {
-        console.log('Usando simulación para GCP en cloud-secrets...');
-        
-        // No ejecutamos el adaptador real, simulamos una respuesta exitosa
-        return res.status(200).json({
-          success: true,
-          message: `Conexión exitosa a ${secret.nombre}`,
-          details: {
-            project: "backups-2193",
-            serviceAccount: "sageaccount@backups-2193.iam.gserviceaccount.com",
-            simulated: true
-          }
-        });
-      }
+        // Anteriormente se simulaba GCP, pero ahora usamos API real conforme a directiva NO USAR SIMULACIONES
+      // No hay caso especial para GCP, usamos el mismo flujo para todos los proveedores
       
         // Probar conexión pasando credenciales y configuración
         const result = await adapter.testConnection(tempProvider.credenciales, tempProvider.configuracion);

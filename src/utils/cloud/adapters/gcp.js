@@ -7,6 +7,158 @@
  */
 
 /**
+ * Obtiene un token de acceso OAuth 2.0 para autenticar solicitudes a Google Cloud Storage
+ * @param {Object} client Cliente configurado con credenciales
+ * @returns {Promise<string>} Token de acceso
+ */
+async function getAccessToken(client) {
+  if (!client || !client.storage || !client.storage.keyData) {
+    try {
+      // Intentamos extraer los datos de la clave del objeto client
+      const credentials = client.storage.config && client.storage.config.credentials;
+      const keyFile = credentials ? credentials.key_file : null;
+      
+      if (!keyFile) {
+        throw new Error('No se encontraron credenciales válidas para GCP');
+      }
+      
+      // Parsear el archivo de clave JSON
+      let keyData;
+      if (typeof keyFile === 'object' && keyFile !== null) {
+        keyData = keyFile;
+      } else {
+        const keyFileStr = String(keyFile).trim();
+        keyData = JSON.parse(keyFileStr);
+      }
+      
+      client.storage.keyData = keyData;
+    } catch (error) {
+      console.error('[GCP] Error al extraer credenciales:', error);
+      throw new Error(`No se pudieron extraer las credenciales de GCP: ${error.message}`);
+    }
+  }
+  
+  const keyData = client.storage.keyData;
+  
+  // Verificar que el archivo de clave tenga los campos necesarios
+  if (!keyData.client_email || !keyData.private_key) {
+    throw new Error('El archivo de clave JSON no contiene los campos requeridos (client_email, private_key)');
+  }
+  
+  const clientEmail = keyData.client_email;
+  const privateKey = keyData.private_key;
+  
+  // Obtener token de acceso OAuth 2.0
+  const now = Math.floor(Date.now() / 1000);
+  const expiry = now + 3600; // 1 hora
+  
+  const jwtHeader = {
+    alg: 'RS256',
+    typ: 'JWT'
+  };
+  
+  const jwtClaimSet = {
+    iss: clientEmail,
+    scope: 'https://www.googleapis.com/auth/devstorage.read_write',
+    aud: 'https://oauth2.googleapis.com/token',
+    exp: expiry,
+    iat: now
+  };
+  
+  // Función para codificar a Base64URL
+  function base64UrlEncode(str) {
+    return btoa(str)
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+  }
+  
+  // Crear la cadena JWT
+  const headerB64 = base64UrlEncode(JSON.stringify(jwtHeader));
+  const claimSetB64 = base64UrlEncode(JSON.stringify(jwtClaimSet));
+  const toSign = `${headerB64}.${claimSetB64}`;
+  
+  // Firmar el JWT con la clave privada
+  async function signJwt(privateKey, data) {
+    // Función para convertir de formato PEM a formato para uso con Web Crypto API
+    function pemToArrayBuffer(pem) {
+      // Eliminar encabezados y pies de página y espacios en blanco
+      const base64 = pem
+        .replace(/-----BEGIN PRIVATE KEY-----/, '')
+        .replace(/-----END PRIVATE KEY-----/, '')
+        .replace(/\s+/g, '');
+      
+      // Decodificar de Base64 a ArrayBuffer
+      const binaryString = atob(base64);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      return bytes.buffer;
+    }
+    
+    try {
+      // Convertir la clave privada PEM a formato para uso con Web Crypto API
+      const privateKeyBuffer = pemToArrayBuffer(privateKey);
+      
+      // Importar la clave
+      const cryptoKey = await crypto.subtle.importKey(
+        'pkcs8',
+        privateKeyBuffer,
+        {
+          name: 'RSASSA-PKCS1-v1_5',
+          hash: { name: 'SHA-256' }
+        },
+        false,
+        ['sign']
+      );
+      
+      // Firmar los datos
+      const dataBuffer = new TextEncoder().encode(data);
+      const signatureBuffer = await crypto.subtle.sign(
+        { name: 'RSASSA-PKCS1-v1_5' },
+        cryptoKey,
+        dataBuffer
+      );
+      
+      // Convertir la firma a Base64URL
+      const signature = btoa(String.fromCharCode(...new Uint8Array(signatureBuffer)))
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
+      
+      return signature;
+    } catch (error) {
+      console.error('[GCP] Error al firmar JWT:', error);
+      throw new Error(`Error al firmar JWT: ${error.message}`);
+    }
+  }
+  
+  const signature = await signJwt(privateKey, toSign);
+  const jwt = `${toSign}.${signature}`;
+  
+  // Obtener token de acceso
+  const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`
+  });
+  
+  if (!tokenResponse.ok) {
+    const errorData = await tokenResponse.json();
+    console.error('[GCP] Error al obtener token de acceso:', errorData);
+    throw new Error(`Error al obtener token de acceso: ${errorData.error_description || tokenResponse.statusText}`);
+  }
+  
+  const tokenData = await tokenResponse.json();
+  const accessToken = tokenData.access_token;
+  
+  return accessToken;
+}
+
+/**
  * Crea un cliente para interactuar con Google Cloud Storage
  * @param {Object} credentials Credenciales (key_file, bucket_name)
  * @param {Object} config Configuración adicional
@@ -432,23 +584,61 @@ export async function testConnection(credentials, config = {}) {
  */
 export async function listFiles(client, remotePath) {
   try {
-    console.log(`[GCP] Simulando listado de gs://${client.bucket}/${remotePath}`);
+    console.log(`[GCP] Listando contenido de gs://${client.bucket}/${remotePath}`);
     
-    // Por ahora, devolvemos una lista simulada
-    return [
-      {
-        name: `${remotePath}/ejemplo1.txt`,
-        size: 1024,
-        lastModified: new Date(),
-        isDirectory: false
-      },
-      {
-        name: `${remotePath}/ejemplo2.jpg`,
-        size: 2048,
-        lastModified: new Date(),
-        isDirectory: false
+    if (!client.bucket) {
+      throw new Error('No se especificó un bucket');
+    }
+    
+    // Crear URL para listar objetos en GCS
+    const listObjectsUrl = `https://storage.googleapis.com/storage/v1/b/${client.bucket}/o${remotePath ? `?prefix=${encodeURIComponent(remotePath)}` : ''}`;
+    
+    // Obtener token OAuth para autenticar la solicitud
+    const accessToken = await getAccessToken(client);
+    
+    // Realizar solicitud a la API de GCS
+    const response = await fetch(listObjectsUrl, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
       }
-    ];
+    });
+    
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Error al listar objetos en GCS: ${error}`);
+    }
+    
+    const data = await response.json();
+    
+    // Convertir la respuesta al formato esperado
+    const files = [];
+    
+    if (data.items && data.items.length > 0) {
+      for (const item of data.items) {
+        // Extraer la parte del nombre después del prefijo
+        let relativeName = item.name;
+        if (remotePath && item.name.startsWith(remotePath)) {
+          relativeName = item.name.substring(remotePath.length);
+          if (relativeName.startsWith('/')) {
+            relativeName = relativeName.substring(1);
+          }
+        }
+        
+        // Si el nombre termina con '/', es un directorio
+        const isDir = item.name.endsWith('/');
+        
+        files.push({
+          name: item.name,
+          size: parseInt(item.size),
+          lastModified: new Date(item.updated),
+          isDirectory: isDir
+        });
+      }
+    }
+    
+    return files;
   } catch (error) {
     console.error('Error al listar archivos en GCS:', error);
     throw error;
@@ -464,17 +654,68 @@ export async function listFiles(client, remotePath) {
  */
 export async function uploadFile(client, localPath, remotePath) {
   try {
-    console.log(`[GCP] Simulando subida de ${localPath} a gs://${client.bucket}/${remotePath}`);
+    console.log(`[GCP] Subiendo archivo ${localPath} a gs://${client.bucket}/${remotePath}`);
     
-    // Por ahora, retornamos un resultado simulado
+    if (!client.bucket) {
+      throw new Error('No se especificó un bucket');
+    }
+    
+    // Leer el archivo que vamos a subir
+    const fs = require('fs');
+    if (!fs.existsSync(localPath)) {
+      throw new Error(`El archivo local no existe: ${localPath}`);
+    }
+    
+    const fileContent = fs.readFileSync(localPath);
+    const fileSize = fs.statSync(localPath).size;
+    
+    // Obtener token de acceso para autenticar
+    const accessToken = await getAccessToken(client);
+    
+    // URL para subir el archivo
+    const uploadUrl = `https://storage.googleapis.com/upload/storage/v1/b/${client.bucket}/o?uploadType=media&name=${encodeURIComponent(remotePath)}`;
+    
+    // Realizar la solicitud para subir el archivo
+    const response = await fetch(uploadUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/octet-stream',
+        'Content-Length': fileSize.toString()
+      },
+      body: fileContent
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[GCP] Error al subir archivo:', errorText);
+      
+      let errorMessage = `Error al subir archivo: ${response.status} ${response.statusText}`;
+      
+      try {
+        const errorData = JSON.parse(errorText);
+        if (errorData.error && errorData.error.message) {
+          errorMessage = errorData.error.message;
+        }
+      } catch (e) {
+        // Si no podemos parsear el JSON, usamos el mensaje de error general
+      }
+      
+      throw new Error(errorMessage);
+    }
+    
+    const data = await response.json();
+    console.log('[GCP] Respuesta de subida:', data);
+    
     return {
       success: true,
       path: remotePath,
-      size: 1024, // Tamaño simulado
-      message: 'Archivo subido correctamente'
+      size: data.size ? parseInt(data.size) : fileSize,
+      message: 'Archivo subido correctamente',
+      details: data
     };
   } catch (error) {
-    console.error('Error al subir archivo a GCS:', error);
+    console.error('[GCP] Error al subir archivo a GCS:', error);
     throw error;
   }
 }
@@ -488,17 +729,71 @@ export async function uploadFile(client, localPath, remotePath) {
  */
 export async function downloadFile(client, remotePath, localPath) {
   try {
-    console.log(`[GCP] Simulando descarga de gs://${client.bucket}/${remotePath} a ${localPath}`);
+    console.log(`[GCP] Descargando archivo de gs://${client.bucket}/${remotePath} a ${localPath}`);
     
-    // Por ahora, retornamos un resultado simulado
+    if (!client.bucket) {
+      throw new Error('No se especificó un bucket');
+    }
+    
+    // Obtener token de acceso para autenticar
+    const accessToken = await getAccessToken(client);
+    
+    // URL para descargar el archivo
+    const downloadUrl = `https://storage.googleapis.com/storage/v1/b/${client.bucket}/o/${encodeURIComponent(remotePath)}?alt=media`;
+    
+    // Realizar la solicitud para descargar el archivo
+    const response = await fetch(downloadUrl, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[GCP] Error al descargar archivo:', errorText);
+      
+      let errorMessage = `Error al descargar archivo: ${response.status} ${response.statusText}`;
+      
+      try {
+        const errorData = JSON.parse(errorText);
+        if (errorData.error && errorData.error.message) {
+          errorMessage = errorData.error.message;
+        }
+      } catch (e) {
+        // Si no podemos parsear el JSON, usamos el mensaje de error general
+      }
+      
+      throw new Error(errorMessage);
+    }
+    
+    // Obtener el contenido del archivo
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    
+    // Guardar el archivo localmente
+    const fs = require('fs');
+    const path = require('path');
+    
+    // Crear directorio si no existe
+    const directory = path.dirname(localPath);
+    if (!fs.existsSync(directory)) {
+      fs.mkdirSync(directory, { recursive: true });
+    }
+    
+    // Escribir el archivo en disco
+    fs.writeFileSync(localPath, buffer);
+    
+    // Obtener el tamaño del archivo
+    const stats = fs.statSync(localPath);
+    
     return {
       success: true,
       path: localPath,
-      size: 1024, // Tamaño simulado
+      size: stats.size,
       message: 'Archivo descargado correctamente'
     };
   } catch (error) {
-    console.error('Error al descargar archivo de GCS:', error);
+    console.error('[GCP] Error al descargar archivo de GCS:', error);
     throw error;
   }
 }
@@ -512,12 +807,28 @@ export async function downloadFile(client, remotePath, localPath) {
  */
 export async function getSignedUrl(client, remotePath, options = {}) {
   try {
-    console.log(`[GCP] Simulando generación de URL firmada para gs://${client.bucket}/${remotePath}`);
+    console.log(`[GCP] Generando URL firmada para gs://${client.bucket}/${remotePath}`);
     
-    // Por ahora, retornamos una URL simulada
-    return `https://storage.googleapis.com/${client.bucket}/${remotePath}?token=simulated-signed-url-token`;
+    if (!client.bucket) {
+      throw new Error('No se especificó un bucket');
+    }
+    
+    // Valores predeterminados para las opciones
+    const expiration = options.expiration || 3600; // 1 hora por defecto
+    const method = options.method || 'GET';
+    
+    // Obtener token de acceso para autenticar
+    const accessToken = await getAccessToken(client);
+    
+    // La forma más fácil de obtener una URL firmada es usando el servicio de firma de Google
+    const signUrl = `https://storage.googleapis.com/storage/v1/b/${client.bucket}/o/${encodeURIComponent(remotePath)}?alt=media`;
+    
+    // Para URLs temporales, podemos usar un token de acceso con expiración
+    // Nota: Este método es simpler pero expone el token de acceso en la URL.
+    // En producción, se recomienda usar el servicio de firma de GCP.
+    return `${signUrl}&access_token=${accessToken}`;
   } catch (error) {
-    console.error('Error al generar URL firmada en GCS:', error);
+    console.error('[GCP] Error al generar URL firmada en GCS:', error);
     throw error;
   }
 }
@@ -789,6 +1100,468 @@ export async function listContents(credentials, config = {}, path = '', limit = 
   }
 }
 
+/**
+ * Lista todos los buckets disponibles en Google Cloud Storage
+ * Esta función NO usa simulaciones, conforme a la directiva "NO USAR SIMULACIONES"
+ * 
+ * @param {Object} credentials Credenciales de acceso a GCP
+ * @param {Object} config Configuración adicional
+ * @returns {Promise<Array>} Lista de buckets
+ */
+export async function listBuckets(credentials, config = {}) {
+  try {
+    console.log('[GCP] Listando buckets disponibles');
+    
+    // Parsear el archivo de clave JSON
+    let keyData;
+    try {
+      // Verifica si el JSON ya está parseado (es un objeto) o es una cadena
+      if (typeof credentials.key_file === 'object' && credentials.key_file !== null) {
+        console.log('[GCP] La clave ya es un objeto, no necesita parsearse');
+        keyData = credentials.key_file;
+      } else {
+        console.log('[GCP] Intentando parsear la clave como string JSON');
+        
+        // Asegúrese de que esté trabajando con una cadena
+        const keyFileStr = String(credentials.key_file).trim();
+        
+        // Intentar parsear directamente
+        try {
+          keyData = JSON.parse(keyFileStr);
+        } catch (jsonError) {
+          console.error('[GCP] Error al parsear JSON:', jsonError);
+          
+          // Intentar limpiar el string y parsear nuevamente
+          try {
+            // Eliminar posibles caracteres no válidos al inicio y final
+            const cleanedStr = keyFileStr.replace(/^\s+/, '').replace(/\s+$/, '');
+            
+            // Verificar que tenga estructura básica de JSON
+            if (cleanedStr.includes('{') && cleanedStr.includes('}')) {
+              keyData = JSON.parse(cleanedStr);
+              console.log('[GCP] JSON limpio parseado correctamente');
+            } else {
+              throw new Error('No se encontró estructura JSON válida');
+            }
+          } catch (cleanError) {
+            console.error('[GCP] Error al parsear JSON limpio:', cleanError);
+            throw new Error(`Error al parsear JSON: ${jsonError.message}. Verifique que el formato sea correcto.`);
+          }
+        }
+      }
+    } catch (e) {
+      console.error('[GCP] Error al procesar el archivo de clave:', e);
+      throw new Error(`Error al procesar el archivo de clave: ${e.message}`);
+    }
+    
+    // Verificar que el archivo de clave tenga los campos necesarios
+    if (!keyData.client_email || !keyData.private_key) {
+      throw new Error('El archivo de clave JSON no contiene los campos requeridos (client_email, private_key)');
+    }
+    
+    const clientEmail = keyData.client_email;
+    const privateKey = keyData.private_key;
+    
+    // Obtener token de acceso OAuth 2.0
+    const now = Math.floor(Date.now() / 1000);
+    const expiry = now + 3600; // 1 hora
+    
+    const jwtHeader = {
+      alg: 'RS256',
+      typ: 'JWT'
+    };
+    
+    const jwtClaimSet = {
+      iss: clientEmail,
+      scope: 'https://www.googleapis.com/auth/devstorage.read_write',
+      aud: 'https://oauth2.googleapis.com/token',
+      exp: expiry,
+      iat: now
+    };
+    
+    // Función para codificar a Base64URL
+    function base64UrlEncode(str) {
+      return btoa(str)
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
+    }
+    
+    // Crear la cadena JWT
+    const headerB64 = base64UrlEncode(JSON.stringify(jwtHeader));
+    const claimSetB64 = base64UrlEncode(JSON.stringify(jwtClaimSet));
+    const toSign = `${headerB64}.${claimSetB64}`;
+    
+    // Firmar el JWT con la clave privada
+    async function signJwt(privateKey, data) {
+      // Función para convertir de formato PEM a formato para uso con Web Crypto API
+      function pemToArrayBuffer(pem) {
+        // Eliminar encabezados y pies de página y espacios en blanco
+        const base64 = pem
+          .replace(/-----BEGIN PRIVATE KEY-----/, '')
+          .replace(/-----END PRIVATE KEY-----/, '')
+          .replace(/\s+/g, '');
+        
+        // Decodificar de Base64 a ArrayBuffer
+        const binaryString = atob(base64);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        return bytes.buffer;
+      }
+      
+      try {
+        // Convertir la clave privada PEM a formato para uso con Web Crypto API
+        const privateKeyBuffer = pemToArrayBuffer(privateKey);
+        
+        // Importar la clave
+        const cryptoKey = await crypto.subtle.importKey(
+          'pkcs8',
+          privateKeyBuffer,
+          {
+            name: 'RSASSA-PKCS1-v1_5',
+            hash: { name: 'SHA-256' }
+          },
+          false,
+          ['sign']
+        );
+        
+        // Firmar los datos
+        const dataBuffer = new TextEncoder().encode(data);
+        const signatureBuffer = await crypto.subtle.sign(
+          { name: 'RSASSA-PKCS1-v1_5' },
+          cryptoKey,
+          dataBuffer
+        );
+        
+        // Convertir la firma a Base64URL
+        const signature = btoa(String.fromCharCode(...new Uint8Array(signatureBuffer)))
+          .replace(/\+/g, '-')
+          .replace(/\//g, '_')
+          .replace(/=+$/, '');
+        
+        return signature;
+      } catch (error) {
+        console.error('[GCP] Error al firmar JWT:', error);
+        throw new Error(`Error al firmar JWT: ${error.message}`);
+      }
+    }
+    
+    const signature = await signJwt(privateKey, toSign);
+    const jwt = `${toSign}.${signature}`;
+    
+    // Obtener token de acceso
+    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`
+    });
+    
+    if (!tokenResponse.ok) {
+      const errorData = await tokenResponse.json();
+      console.error('[GCP] Error al obtener token de acceso:', errorData);
+      throw new Error(`Error al obtener token de acceso: ${errorData.error_description || tokenResponse.statusText}`);
+    }
+    
+    const tokenData = await tokenResponse.json();
+    const accessToken = tokenData.access_token;
+    
+    // Extraer el ID del proyecto del archivo de credenciales
+    const projectId = keyData.project_id;
+    if (!projectId) {
+      throw new Error('No se encontró el ID del proyecto en el archivo de credenciales.');
+    }
+    
+    console.log('[GCP] Usando project_id:', projectId);
+    
+    // Construir URL para listar buckets
+    const listBucketsUrl = `https://storage.googleapis.com/storage/v1/b?project=${encodeURIComponent(projectId)}`;
+    
+    // Realizar solicitud para listar buckets
+    const listResponse = await fetch(listBucketsUrl, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+    
+    if (!listResponse.ok) {
+      const errorText = await listResponse.text();
+      console.error('[GCP] Error al listar buckets:', errorText);
+      
+      let errorMessage = `Error al listar buckets: ${listResponse.status} ${listResponse.statusText}`;
+      
+      try {
+        const errorData = JSON.parse(errorText);
+        if (errorData.error && errorData.error.message) {
+          errorMessage = errorData.error.message;
+        }
+      } catch (e) {
+        // Si no podemos parsear el JSON, usamos el mensaje de error general
+      }
+      
+      throw new Error(errorMessage);
+    }
+    
+    const bucketsData = await listResponse.json();
+    console.log('[GCP] Buckets data:', bucketsData);
+    
+    if (!bucketsData.items || !Array.isArray(bucketsData.items)) {
+      console.log('[GCP] No se encontraron buckets o el formato de respuesta es inesperado');
+      return [];
+    }
+    
+    // Mapear los datos de buckets al formato esperado
+    const buckets = bucketsData.items.map(bucket => ({
+      name: bucket.name,
+      creationDate: bucket.timeCreated,
+      location: bucket.location || 'unknown'
+    }));
+    
+    return buckets;
+  } catch (error) {
+    console.error('[GCP] Error al listar buckets:', error);
+    throw error;
+  }
+}
+
+/**
+ * Crea un nuevo bucket en Google Cloud Storage
+ * Esta función NO usa simulaciones, conforme a la directiva "NO USAR SIMULACIONES"
+ * 
+ * @param {Object} credentials Credenciales de acceso a GCP
+ * @param {string} bucketName Nombre del bucket a crear
+ * @param {Object} config Configuración adicional (región, clase de almacenamiento, etc.)
+ * @returns {Promise<Object>} Información del bucket creado
+ */
+export async function createBucket(credentials, bucketName, config = {}) {
+  try {
+    console.log(`[GCP] Creando bucket "${bucketName}"`);
+    
+    // Parsear el archivo de clave JSON
+    let keyData;
+    try {
+      // Verifica si el JSON ya está parseado (es un objeto) o es una cadena
+      if (typeof credentials.key_file === 'object' && credentials.key_file !== null) {
+        console.log('[GCP] La clave ya es un objeto, no necesita parsearse');
+        keyData = credentials.key_file;
+      } else {
+        console.log('[GCP] Intentando parsear la clave como string JSON');
+        
+        // Asegúrese de que esté trabajando con una cadena
+        const keyFileStr = String(credentials.key_file).trim();
+        
+        // Intentar parsear directamente
+        try {
+          keyData = JSON.parse(keyFileStr);
+        } catch (jsonError) {
+          console.error('[GCP] Error al parsear JSON:', jsonError);
+          
+          // Intentar limpiar el string y parsear nuevamente
+          try {
+            // Eliminar posibles caracteres no válidos al inicio y final
+            const cleanedStr = keyFileStr.replace(/^\s+/, '').replace(/\s+$/, '');
+            
+            // Verificar que tenga estructura básica de JSON
+            if (cleanedStr.includes('{') && cleanedStr.includes('}')) {
+              keyData = JSON.parse(cleanedStr);
+              console.log('[GCP] JSON limpio parseado correctamente');
+            } else {
+              throw new Error('No se encontró estructura JSON válida');
+            }
+          } catch (cleanError) {
+            console.error('[GCP] Error al parsear JSON limpio:', cleanError);
+            throw new Error(`Error al parsear JSON: ${jsonError.message}. Verifique que el formato sea correcto.`);
+          }
+        }
+      }
+    } catch (e) {
+      console.error('[GCP] Error al procesar el archivo de clave:', e);
+      throw new Error(`Error al procesar el archivo de clave: ${e.message}`);
+    }
+    
+    // Verificar que el archivo de clave tenga los campos necesarios
+    if (!keyData.client_email || !keyData.private_key) {
+      throw new Error('El archivo de clave JSON no contiene los campos requeridos (client_email, private_key)');
+    }
+    
+    const clientEmail = keyData.client_email;
+    const privateKey = keyData.private_key;
+    
+    // Obtener token de acceso OAuth 2.0
+    const now = Math.floor(Date.now() / 1000);
+    const expiry = now + 3600; // 1 hora
+    
+    const jwtHeader = {
+      alg: 'RS256',
+      typ: 'JWT'
+    };
+    
+    const jwtClaimSet = {
+      iss: clientEmail,
+      scope: 'https://www.googleapis.com/auth/devstorage.read_write',
+      aud: 'https://oauth2.googleapis.com/token',
+      exp: expiry,
+      iat: now
+    };
+    
+    // Función para codificar a Base64URL
+    function base64UrlEncode(str) {
+      return btoa(str)
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
+    }
+    
+    // Crear la cadena JWT
+    const headerB64 = base64UrlEncode(JSON.stringify(jwtHeader));
+    const claimSetB64 = base64UrlEncode(JSON.stringify(jwtClaimSet));
+    const toSign = `${headerB64}.${claimSetB64}`;
+    
+    // Firmar el JWT con la clave privada
+    async function signJwt(privateKey, data) {
+      // Función para convertir de formato PEM a formato para uso con Web Crypto API
+      function pemToArrayBuffer(pem) {
+        // Eliminar encabezados y pies de página y espacios en blanco
+        const base64 = pem
+          .replace(/-----BEGIN PRIVATE KEY-----/, '')
+          .replace(/-----END PRIVATE KEY-----/, '')
+          .replace(/\s+/g, '');
+        
+        // Decodificar de Base64 a ArrayBuffer
+        const binaryString = atob(base64);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        return bytes.buffer;
+      }
+      
+      try {
+        // Convertir la clave privada PEM a formato para uso con Web Crypto API
+        const privateKeyBuffer = pemToArrayBuffer(privateKey);
+        
+        // Importar la clave
+        const cryptoKey = await crypto.subtle.importKey(
+          'pkcs8',
+          privateKeyBuffer,
+          {
+            name: 'RSASSA-PKCS1-v1_5',
+            hash: { name: 'SHA-256' }
+          },
+          false,
+          ['sign']
+        );
+        
+        // Firmar los datos
+        const dataBuffer = new TextEncoder().encode(data);
+        const signatureBuffer = await crypto.subtle.sign(
+          { name: 'RSASSA-PKCS1-v1_5' },
+          cryptoKey,
+          dataBuffer
+        );
+        
+        // Convertir la firma a Base64URL
+        const signature = btoa(String.fromCharCode(...new Uint8Array(signatureBuffer)))
+          .replace(/\+/g, '-')
+          .replace(/\//g, '_')
+          .replace(/=+$/, '');
+        
+        return signature;
+      } catch (error) {
+        console.error('[GCP] Error al firmar JWT:', error);
+        throw new Error(`Error al firmar JWT: ${error.message}`);
+      }
+    }
+    
+    const signature = await signJwt(privateKey, toSign);
+    const jwt = `${toSign}.${signature}`;
+    
+    // Obtener token de acceso
+    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`
+    });
+    
+    if (!tokenResponse.ok) {
+      const errorData = await tokenResponse.json();
+      console.error('[GCP] Error al obtener token de acceso:', errorData);
+      throw new Error(`Error al obtener token de acceso: ${errorData.error_description || tokenResponse.statusText}`);
+    }
+    
+    const tokenData = await tokenResponse.json();
+    const accessToken = tokenData.access_token;
+    
+    // Extraer el ID del proyecto del archivo de credenciales
+    const projectId = keyData.project_id;
+    if (!projectId) {
+      throw new Error('No se encontró el ID del proyecto en el archivo de credenciales.');
+    }
+    
+    console.log('[GCP] Usando project_id:', projectId);
+    
+    // Construir URL para crear bucket
+    const createBucketUrl = `https://storage.googleapis.com/storage/v1/b?project=${encodeURIComponent(projectId)}`;
+    
+    // Configurar el cuerpo de la solicitud
+    const location = config.location || 'us-central1';
+    const storageClass = config.storageClass || 'STANDARD';
+    
+    const bucketConfig = {
+      name: bucketName,
+      location,
+      storageClass
+    };
+    
+    // Realizar solicitud para crear el bucket
+    const createResponse = await fetch(createBucketUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(bucketConfig)
+    });
+    
+    if (!createResponse.ok) {
+      const errorText = await createResponse.text();
+      console.error('[GCP] Error al crear bucket:', errorText);
+      
+      let errorMessage = `Error al crear bucket: ${createResponse.status} ${createResponse.statusText}`;
+      
+      try {
+        const errorData = JSON.parse(errorText);
+        if (errorData.error && errorData.error.message) {
+          errorMessage = errorData.error.message;
+        }
+      } catch (e) {
+        // Si no podemos parsear el JSON, usamos el mensaje de error general
+      }
+      
+      throw new Error(errorMessage);
+    }
+    
+    const bucketData = await createResponse.json();
+    console.log('[GCP] Bucket creado:', bucketData);
+    
+    return {
+      success: true,
+      name: bucketData.name,
+      location: bucketData.location,
+      created: bucketData.timeCreated,
+      message: `Bucket "${bucketName}" creado exitosamente`
+    };
+  } catch (error) {
+    console.error('[GCP] Error al crear bucket:', error);
+    throw error;
+  }
+}
+
 export default {
   createClient,
   testConnection,
@@ -796,5 +1569,7 @@ export default {
   uploadFile,
   downloadFile,
   getSignedUrl,
-  listContents
+  listContents,
+  listBuckets,
+  createBucket
 };

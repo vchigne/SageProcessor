@@ -1,33 +1,28 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
-import Head from 'next/head';
 import Link from 'next/link';
-import { ArrowLeftIcon, FolderIcon, DocumentIcon } from '@heroicons/react/24/outline';
-import { Card, Text, Title, Button, Flex } from '@tremor/react';
+import Head from 'next/head';
+import { ArrowLeftIcon, FolderIcon, DocumentIcon, ArrowUpIcon, ArrowDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
+import { Card, Text, Title, Button, Flex, Metric } from '@tremor/react';
 import { toast } from 'react-toastify';
+import { formatBytes } from '../../../../../../utils/formatters';
 
 export default function BucketExplorer() {
   const router = useRouter();
-  const { id, bucketName, path } = router.query;
-  
-  const currentPath = path || '';
+  const { id, bucketName } = router.query;
   
   const [loading, setLoading] = useState(true);
   const [secret, setSecret] = useState(null);
-  const [files, setFiles] = useState([]);
-  const [folders, setFolders] = useState([]);
+  const [currentPath, setCurrentPath] = useState('');
+  const [contents, setContents] = useState(null);
   const [error, setError] = useState(null);
   
-  // Cargar detalles del secreto y contenido del bucket
+  // Cargar detalles del secreto
   useEffect(() => {
-    if (!id || !bucketName) return;
+    if (!id) return;
     
-    async function loadData() {
-      setLoading(true);
-      setError(null);
-      
+    async function loadSecretDetails() {
       try {
-        // Cargar información del secreto
         const secretRes = await fetch(`/api/cloud-secrets/${id}`);
         
         if (!secretRes.ok) {
@@ -36,33 +31,49 @@ export default function BucketExplorer() {
         
         const secretData = await secretRes.json();
         setSecret(secretData);
+      } catch (err) {
+        console.error('Error al cargar datos del secreto:', err);
+        toast.error(`Error: ${err.message}`);
+      }
+    }
+    
+    loadSecretDetails();
+  }, [id]);
+  
+  // Cargar contenidos del bucket
+  useEffect(() => {
+    if (!id || !bucketName) return;
+    
+    const path = router.query.path || '';
+    setCurrentPath(path);
+    
+    async function loadBucketContents() {
+      setLoading(true);
+      setError(null);
+      
+      try {
+        // Construir la URL con parámetros de consulta
+        const queryParams = new URLSearchParams({ path });
+        const inspectUrl = `/api/cloud-secrets/${id}/buckets/${encodeURIComponent(bucketName)}/inspect?${queryParams}`;
         
-        // Construir URL con parámetros de consulta para la ruta actual
-        let inspectUrl = `/api/cloud-secrets/${id}/buckets/${bucketName}/inspect`;
-        if (currentPath) {
-          inspectUrl += `?path=${encodeURIComponent(currentPath)}`;
+        console.log('Consultando contenido en:', inspectUrl);
+        const contentsRes = await fetch(inspectUrl);
+        
+        if (!contentsRes.ok) {
+          throw new Error(`Error al cargar contenido: ${contentsRes.status}`);
         }
         
-        // Inspeccionar contenido del bucket
-        const contentRes = await fetch(inspectUrl);
+        const contentsData = await contentsRes.json();
+        console.log('Respuesta de API:', contentsData);
         
-        if (!contentRes.ok) {
-          throw new Error(`Error al inspeccionar bucket: ${contentRes.status}`);
-        }
-        
-        const contentData = await contentRes.json();
-        console.log('Contenido del bucket:', contentData);
-        
-        if (contentData.error) {
-          setError(contentData.errorMessage || 'Error al inspeccionar bucket');
-          setFiles([]);
-          setFolders([]);
+        if (contentsData.success) {
+          setContents(contentsData);
         } else {
-          setFiles(contentData.files || []);
-          setFolders(contentData.folders || []);
+          setError(contentsData.message || 'Error al cargar contenido del bucket');
+          setContents(null);
         }
       } catch (err) {
-        console.error('Error al cargar datos:', err);
+        console.error('Error al cargar contenido del bucket:', err);
         setError(err.message);
         toast.error(`Error: ${err.message}`);
       } finally {
@@ -70,57 +81,37 @@ export default function BucketExplorer() {
       }
     }
     
-    loadData();
-  }, [id, bucketName, currentPath]);
+    loadBucketContents();
+  }, [id, bucketName, router.query.path]);
   
-  // Manejar navegación a un subdirectorio
-  const handleFolderClick = (folderPath) => {
-    // Construir la nueva URL con el parámetro de ruta
+  // Manejar navegación a una carpeta
+  const handleNavigateToFolder = (folderPath) => {
+    // Actualizar la URL sin recargar la página
     router.push({
       pathname: router.pathname,
-      query: { 
-        ...router.query,
-        path: folderPath
-      }
-    });
+      query: { ...router.query, path: folderPath }
+    }, undefined, { shallow: true });
   };
   
-  // Manejar retroceso a directorio anterior
-  const handleGoBack = () => {
-    if (!currentPath) {
-      // Si estamos en la raíz, volver a la lista de buckets
-      router.push(`/admin/cloud-secrets/${id}/buckets`);
-      return;
-    }
+  // Manejar volver a la página de buckets
+  const handleBackToBuckets = () => {
+    router.push(`/admin/cloud-secrets/${id}/buckets`);
+  };
+  
+  // Manejar navegación a la carpeta superior
+  const handleNavigateUp = () => {
+    if (!currentPath) return; // Ya estamos en la raíz
     
-    // Navegar al directorio padre
-    const pathParts = currentPath.split('/');
-    pathParts.pop(); // Eliminar el último segmento
-    const parentPath = pathParts.join('/');
+    const parts = currentPath.split('/');
+    // Eliminar la última parte y reconstruir la ruta
+    parts.pop();
+    const newPath = parts.join('/');
     
+    // Actualizar la URL
     router.push({
       pathname: router.pathname,
-      query: { 
-        ...router.query,
-        path: parentPath || null // Si queda vacío, eliminamos el parámetro
-      }
-    });
-  };
-  
-  // Formatear tamaño en bytes a una representación legible
-  const formatSize = (bytes) => {
-    if (bytes === undefined || bytes === null) return 'N/A';
-    
-    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-    let size = bytes;
-    let unitIndex = 0;
-    
-    while (size >= 1024 && unitIndex < units.length - 1) {
-      size /= 1024;
-      unitIndex++;
-    }
-    
-    return `${size.toFixed(1)} ${units[unitIndex]}`;
+      query: { ...router.query, path: newPath }
+    }, undefined, { shallow: true });
   };
   
   // Formatear fecha ISO
@@ -133,145 +124,219 @@ export default function BucketExplorer() {
     }
   };
   
-  // Generar breadcrumbs
-  const generateBreadcrumbs = () => {
-    const items = [
-      { name: 'Inicio', href: '/' },
-      { name: 'Administración', href: '/admin' },
-      { name: 'Secretos Cloud', href: '/admin/cloud-secrets' },
-      { name: secret?.nombre || 'Secreto', href: `/admin/cloud-secrets/${id}` },
-      { name: 'Buckets', href: `/admin/cloud-secrets/${id}/buckets` },
-      { name: bucketName, href: `/admin/cloud-secrets/${id}/buckets/${bucketName}` },
-    ];
+  // Formatear ruta para navegación por migajas
+  const formatBreadcrumbs = () => {
+    if (!currentPath) {
+      return [{ name: '/', path: '' }];
+    }
     
-    // Agregar segmentos de ruta si hay una ruta actual
-    if (currentPath) {
-      const pathSegments = currentPath.split('/');
-      let accumulatedPath = '';
-      
-      pathSegments.forEach((segment, index) => {
-        if (!segment) return; // Saltar segmentos vacíos
-        
-        accumulatedPath += (accumulatedPath ? '/' : '') + segment;
-        items.push({
-          name: segment,
-          href: `/admin/cloud-secrets/${id}/buckets/${bucketName}?path=${encodeURIComponent(accumulatedPath)}`
-        });
+    const parts = currentPath.split('/').filter(Boolean);
+    const breadcrumbs = [{ name: '/', path: '' }];
+    
+    let currentBuildPath = '';
+    for (const part of parts) {
+      currentBuildPath += (currentBuildPath ? '/' : '') + part;
+      breadcrumbs.push({
+        name: part,
+        path: currentBuildPath
       });
     }
     
-    return items;
+    return breadcrumbs;
+  };
+  
+  // Generar breadcrumbs
+  const pageBreadcrumbs = [
+    { name: 'Inicio', href: '/' },
+    { name: 'Administración', href: '/admin' },
+    { name: 'Secretos Cloud', href: '/admin/cloud-secrets' },
+    { name: secret?.nombre || 'Secreto', href: `/admin/cloud-secrets/${id}` },
+    { name: 'Buckets', href: `/admin/cloud-secrets/${id}/buckets` },
+    { name: bucketName || 'Bucket', href: `/admin/cloud-secrets/${id}/buckets/${bucketName}` },
+  ];
+  
+  // Icono basado en el tipo de archivo
+  const getFileIcon = (item) => {
+    if (item.isDirectory) {
+      return <FolderIcon className="h-5 w-5 text-yellow-500" />;
+    }
+    
+    return <DocumentIcon className="h-5 w-5 text-blue-500" />;
   };
   
   return (
     <div className="container mx-auto px-4 py-6">
       <Head>
-        <title>Explorador: {bucketName} | SAGE</title>
+        <title>{`Explorador de Bucket ${bucketName || ''} | SAGE`}</title>
       </Head>
       
-      <div className="py-4">
+      <div className="mb-6">
         <Button
           icon={ArrowLeftIcon}
-          onClick={handleGoBack}
+          onClick={handleBackToBuckets}
           size="xs"
           color="gray"
           className="mb-4"
         >
-          {currentPath ? 'Subir un nivel' : 'Volver a Buckets'}
+          Volver a Buckets
         </Button>
         
-        <div className="mb-6">
-          <Title>Explorador de Bucket: {bucketName}</Title>
-          {secret && (
-            <Text>
-              Secreto: <span className="font-medium">{secret.nombre}</span>
-              {' - '}
-              Tipo: <span className="font-medium">{secret.tipo.toUpperCase()}</span>
-            </Text>
-          )}
-          {currentPath && (
-            <Text className="mt-1 text-gray-500">
-              Ruta actual: <span className="font-mono bg-gray-100 px-1 rounded">{currentPath || '/'}</span>
-            </Text>
-          )}
-        </div>
-        
-        {loading ? (
-          <div className="flex justify-center items-center h-64">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500"></div>
-          </div>
-        ) : error ? (
-          <Card className="mt-4">
-            <div className="flex items-center text-red-500 mb-2">
-              <Text>Error al cargar contenido del bucket</Text>
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4">
+          <div>
+            <Title>Explorador de Bucket</Title>
+            <div className="flex items-center">
+              <Text className="font-medium">{bucketName}</Text>
+              {secret && (
+                <Text className="ml-2 text-gray-500">
+                  ({secret.tipo.toUpperCase()})
+                </Text>
+              )}
             </div>
-            <Text>{error}</Text>
-          </Card>
-        ) : (
-          <>
-            {folders.length === 0 && files.length === 0 ? (
-              <Card className="mt-4">
-                <Text>Este directorio está vacío.</Text>
-              </Card>
-            ) : (
-              <div className="space-y-4 mt-4">
-                {folders.length > 0 && (
-                  <div>
-                    <Title className="text-md mb-2">Carpetas</Title>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {folders.map((folder) => (
-                        <Card 
-                          key={folder.path} 
-                          className="cursor-pointer hover:bg-gray-50 hover:shadow-md transition-all"
-                          onClick={() => handleFolderClick(folder.path)}
-                        >
-                          <Flex alignItems="center">
-                            <FolderIcon className="h-5 w-5 text-yellow-500 mr-2" />
-                            <div>
-                              <Text>{folder.name}</Text>
-                            </div>
-                          </Flex>
-                        </Card>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                
-                {files.length > 0 && (
-                  <div>
-                    <Title className="text-md mb-2">Archivos</Title>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm text-left text-gray-700">
-                        <thead className="text-xs text-gray-700 uppercase bg-gray-100">
-                          <tr>
-                            <th className="px-4 py-2">Nombre</th>
-                            <th className="px-4 py-2">Tamaño</th>
-                            <th className="px-4 py-2">Tipo</th>
-                            <th className="px-4 py-2">Última modificación</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {files.map((file) => (
-                            <tr key={file.path} className="bg-white border-b hover:bg-gray-50">
-                              <td className="px-4 py-2 flex items-center">
-                                <DocumentIcon className="h-4 w-4 text-blue-500 mr-2" />
-                                {file.name}
-                              </td>
-                              <td className="px-4 py-2">{formatSize(file.size)}</td>
-                              <td className="px-4 py-2">{file.contentType || 'N/A'}</td>
-                              <td className="px-4 py-2">{formatDate(file.lastModified)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
+          </div>
+          
+          {/* Navegación por migajas de pan */}
+          <div className="mt-2 md:mt-0 flex items-center overflow-x-auto whitespace-nowrap">
+            {formatBreadcrumbs().map((crumb, index, arr) => (
+              <div key={crumb.path} className="flex items-center">
+                <Button
+                  size="xs"
+                  variant={index === arr.length - 1 ? "light" : "light"}
+                  color={index === arr.length - 1 ? "indigo" : "gray"}
+                  onClick={() => handleNavigateToFolder(crumb.path)}
+                  className="px-2 py-1"
+                >
+                  {crumb.name || '/'}
+                </Button>
+                {index < arr.length - 1 && (
+                  <ChevronRightIcon className="h-3 w-3 text-gray-400 mx-1" />
                 )}
               </div>
-            )}
-          </>
-        )}
+            ))}
+          </div>
+        </div>
       </div>
+      
+      {loading ? (
+        <div className="flex justify-center items-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500"></div>
+        </div>
+      ) : error ? (
+        <Card className="mt-4">
+          <div className="flex items-center text-red-500 mb-2">
+            <div className="h-5 w-5 mr-2"></div>
+            <Text>Error al cargar contenido</Text>
+          </div>
+          <Text>{error}</Text>
+        </Card>
+      ) : contents ? (
+        <Card className="overflow-hidden">
+          {currentPath && (
+            <div className="p-4 border-b border-gray-200">
+              <Button
+                icon={ArrowUpIcon}
+                size="xs"
+                color="gray"
+                onClick={handleNavigateUp}
+              >
+                Subir un nivel
+              </Button>
+            </div>
+          )}
+          
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Nombre
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Tamaño
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Última modificación
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Acciones
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {contents.contents && contents.contents.directories && contents.contents.directories.map((dir) => (
+                  <tr key={`dir-${dir.name}`} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center">
+                        <FolderIcon className="h-5 w-5 text-yellow-500 mr-2" />
+                        <button 
+                          onClick={() => handleNavigateToFolder(dir.path)} 
+                          className="text-indigo-600 hover:text-indigo-900"
+                        >
+                          {dir.name}/
+                        </button>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      -
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {dir.lastModified ? formatDate(dir.lastModified) : '-'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <button 
+                        onClick={() => handleNavigateToFolder(dir.path)}
+                        className="text-indigo-600 hover:text-indigo-900 mr-3"
+                      >
+                        Explorar
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                
+                {contents.contents && contents.contents.files && contents.contents.files.map((file) => (
+                  <tr key={`file-${file.name}`} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center">
+                        <DocumentIcon className="h-5 w-5 text-blue-500 mr-2" />
+                        <span className="text-gray-900">{file.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {typeof file.size === 'number' ? formatBytes(file.size) : '-'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {file.lastModified ? formatDate(file.lastModified) : '-'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      {file.url && (
+                        <a 
+                          href={file.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-indigo-600 hover:text-indigo-900"
+                        >
+                          Ver
+                        </a>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                
+                {(!contents.contents?.directories?.length && !contents.contents?.files?.length) && (
+                  <tr>
+                    <td colSpan="4" className="px-6 py-4 text-center text-sm text-gray-500">
+                      No hay contenido en esta ubicación
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      ) : (
+        <Card>
+          <Text>No se pudo cargar el contenido del bucket.</Text>
+        </Card>
+      )}
     </div>
   );
 }
