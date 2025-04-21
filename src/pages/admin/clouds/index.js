@@ -126,6 +126,10 @@ function CloudProviders() {
   const [testingAll, setTestingAll] = useState(false);
   const [cloudSecrets, setCloudSecrets] = useState([]);
   const [loadingSecrets, setLoadingSecrets] = useState(false);
+  const [filteredSecrets, setFilteredSecrets] = useState([]);
+  const [availableBuckets, setAvailableBuckets] = useState([]);
+  const [loadingBuckets, setLoadingBuckets] = useState(false);
+  const [useCustomBucketName, setUseCustomBucketName] = useState(false);
   
   // Estados para el explorador de archivos
   const [showExplorer, setShowExplorer] = useState(false);
