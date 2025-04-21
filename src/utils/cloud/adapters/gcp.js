@@ -38,9 +38,8 @@ export async function testConnection(credentials, config = {}) {
       throw new Error('No se proporcionó el archivo de clave JSON');
     }
     
-    if (!credentials.bucket_name) {
-      throw new Error('No se proporcionó el nombre del bucket');
-    }
+    // Para la sección de cloud_secrets, no requerimos bucket_name durante la prueba de conexión
+    // Ya que solo estamos validando las credenciales de acceso a GCP
     
     // Parsear el archivo de clave JSON
     let keyData;
@@ -61,7 +60,13 @@ export async function testConnection(credentials, config = {}) {
     const bucketName = credentials.bucket_name;
     
     console.log(`[GCP] Usando cuenta de servicio: ${clientEmail}`);
-    console.log(`[GCP] Probando acceso al bucket: ${bucketName}`);
+    
+    // Solo mostrar mensaje de acceso al bucket si se proporcionó un nombre de bucket
+    if (bucketName) {
+      console.log(`[GCP] Probando acceso al bucket: ${bucketName}`);
+    } else {
+      console.log('[GCP] Modo de validación de credenciales (sin bucket específico)');
+    }
     
     // Preparar solicitud para la API de Google Cloud Storage 
     // Usaremos la API REST con autenticación OAuth 2.0
@@ -185,52 +190,101 @@ export async function testConnection(credentials, config = {}) {
     const tokenData = await tokenResponse.json();
     const accessToken = tokenData.access_token;
     
-    // Paso 3: Usar el token de acceso para probar el acceso al bucket
-    console.log('[GCP] Probando acceso al bucket');
-    const bucketUrl = `https://storage.googleapis.com/storage/v1/b/${bucketName}/o?maxResults=1`;
-    
-    const bucketResponse = await fetch(bucketUrl, {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`
-      }
-    });
-    
-    if (!bucketResponse.ok) {
-      const errorText = await bucketResponse.text();
-      console.error('[GCP] Error al acceder al bucket:', errorText);
+    // Si no se proporcionó un bucket específico (por ejemplo, en la sección cloud_secrets),
+    // verificamos solo que tengamos un token válido
+    if (!bucketName) {
+      console.log('[GCP] No se proporcionó bucket para verificar - solo validando credenciales');
       
-      let errorMessage = `Error al acceder al bucket: ${bucketResponse.status} ${bucketResponse.statusText}`;
+      // Paso 3 (alternativo): Listar buckets disponibles en el proyecto
+      console.log('[GCP] Listando buckets disponibles en el proyecto');
+      const listBucketsUrl = 'https://storage.googleapis.com/storage/v1/b';
       
-      try {
-        const errorData = JSON.parse(errorText);
-        if (errorData.error && errorData.error.message) {
-          if (errorData.error.message.includes('The specified bucket does not exist')) {
-            errorMessage = `El bucket '${bucketName}' no existe o no es accesible con las credenciales proporcionadas.`;
-          } else if (errorData.error.message.includes('Permission')) {
-            errorMessage = `No tiene permisos suficientes para acceder al bucket '${bucketName}'. Verifique los roles asignados a la cuenta de servicio.`;
-          } else {
-            errorMessage = errorData.error.message;
-          }
+      const listResponse = await fetch(listBucketsUrl, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
         }
-      } catch (e) {
-        // Si no podemos parsear el JSON, usamos el mensaje de error general
+      });
+      
+      if (!listResponse.ok) {
+        const errorText = await listResponse.text();
+        console.error('[GCP] Error al listar buckets:', errorText);
+        
+        let errorMessage = `Error al listar buckets: ${listResponse.status} ${listResponse.statusText}`;
+        
+        try {
+          const errorData = JSON.parse(errorText);
+          if (errorData.error && errorData.error.message) {
+            if (errorData.error.message.includes('Permission')) {
+              errorMessage = `No tiene permisos suficientes para listar buckets. Verifique los roles asignados a la cuenta de servicio.`;
+            } else {
+              errorMessage = errorData.error.message;
+            }
+          }
+        } catch (e) {
+          // Si no podemos parsear el JSON, usamos el mensaje de error general
+        }
+        
+        throw new Error(errorMessage);
       }
       
-      throw new Error(errorMessage);
+      console.log('[GCP] Acceso exitoso al servicio de Google Cloud Storage');
+    } 
+    // Si se proporcionó un bucket, verificamos el acceso a ese bucket específico
+    else {
+      // Paso 3: Usar el token de acceso para probar el acceso al bucket
+      console.log('[GCP] Probando acceso al bucket');
+      const bucketUrl = `https://storage.googleapis.com/storage/v1/b/${bucketName}/o?maxResults=1`;
+      
+      const bucketResponse = await fetch(bucketUrl, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      });
+      
+      if (!bucketResponse.ok) {
+        const errorText = await bucketResponse.text();
+        console.error('[GCP] Error al acceder al bucket:', errorText);
+        
+        let errorMessage = `Error al acceder al bucket: ${bucketResponse.status} ${bucketResponse.statusText}`;
+        
+        try {
+          const errorData = JSON.parse(errorText);
+          if (errorData.error && errorData.error.message) {
+            if (errorData.error.message.includes('The specified bucket does not exist')) {
+              errorMessage = `El bucket '${bucketName}' no existe o no es accesible con las credenciales proporcionadas.`;
+            } else if (errorData.error.message.includes('Permission')) {
+              errorMessage = `No tiene permisos suficientes para acceder al bucket '${bucketName}'. Verifique los roles asignados a la cuenta de servicio.`;
+            } else {
+              errorMessage = errorData.error.message;
+            }
+          }
+        } catch (e) {
+          // Si no podemos parsear el JSON, usamos el mensaje de error general
+        }
+        
+        throw new Error(errorMessage);
+      }
+      
+      const bucketData = await bucketResponse.json();
+      console.log(`[GCP] Acceso exitoso al bucket ${bucketName}`);
     }
     
-    const bucketData = await bucketResponse.json();
-    console.log(`[GCP] Acceso exitoso al bucket ${bucketName}`);
-    
-    return {
+    // Construir el objeto de respuesta, omitiendo el bucket si no se proporcionó
+    const response = {
       success: true,
       message: 'Conexión exitosa con Google Cloud Storage',
       details: {
-        bucket: bucketName,
         project: projectId,
         serviceAccount: clientEmail
       }
     };
+    
+    // Solo incluir el bucket en la respuesta si se proporcionó
+    if (bucketName) {
+      response.details.bucket = bucketName;
+    }
+    
+    return response;
   } catch (error) {
     console.error('[GCP] Error en prueba de conexión:', error);
     return {
