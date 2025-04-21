@@ -335,6 +335,49 @@ export async function testConnection(credentials, config = {}) {
  * @param {number} limit Límite de elementos a devolver
  * @returns {Promise<Object>} Estructura organizada del contenido
  */
+/**
+ * Lista los directorios de primer nivel (tratados como buckets)
+ * 
+ * @param {object} credentials - Credenciales SFTP
+ * @param {object} config - Configuración adicional
+ * @returns {Promise<Array>} - Lista de buckets virtuales (directorios de primer nivel)
+ */
+export async function listBuckets(credentials, config = {}) {
+  console.log(`[SFTP] Listando buckets (directorios de primer nivel) en ${credentials.host}:${credentials.port || 22}`);
+  
+  try {
+    // Si estamos en un contexto de Node.js (server-side), usamos el cliente SFTP del servidor
+    if (typeof window === 'undefined') {
+      try {
+        const sftpClient = require('../../../server/sftp/client');
+        // En el cliente real, esto sería manejado por una función específica para listar buckets
+        // Por ahora, aprovechamos la función existente para listar directorios, pero solo de primer nivel
+        const result = await sftpClient.listDirectory(credentials, '');
+        
+        // Convertimos los directorios de primer nivel en "buckets"
+        if (result && result.folders && Array.isArray(result.folders)) {
+          return result.folders.map(folder => ({
+            name: folder.name,
+            path: folder.path,
+            creationDate: folder.lastModified || new Date().toISOString()
+          }));
+        }
+        return [];
+      } catch (clientError) {
+        console.error('[SFTP] Error con el cliente SFTP del servidor al listar buckets:', clientError);
+        throw new Error(`Error del cliente SFTP: ${clientError.message}`);
+      }
+    } else {
+      // ESTO NUNCA DEBERÍA EJECUTARSE EN NAVEGADOR
+      console.error('[SFTP] Error: Intento de conectar a SFTP directamente desde el navegador');
+      throw new Error('La conexión SFTP debe ser manejada por el servidor');
+    }
+  } catch (error) {
+    console.error('[SFTP] Error al listar buckets:', error);
+    return [];
+  }
+}
+
 export async function listContents(credentials, config = {}, path = '', limit = 50) {
   console.log(`[SFTP] Listando contenido en ${credentials.host}:${credentials.port || 22}${path ? '/' + path : ''}`);
   
@@ -344,6 +387,8 @@ export async function listContents(credentials, config = {}, path = '', limit = 
     path: path || '/',
     files: [],
     folders: [],
+    directories: [], // Añadimos esto para compatibilidad con otros adaptadores
+    parentPath: getParentPath(path || '/'),
     service: 'sftp'
   };
   
@@ -360,7 +405,15 @@ export async function listContents(credentials, config = {}, path = '', limit = 
       // Esto solo funcionará en el contexto de API Routes de Next.js
       try {
         const sftpClient = require('../../../server/sftp/client');
-        return await sftpClient.listDirectory(credentials, path);
+        const result = await sftpClient.listDirectory(credentials, path);
+        
+        // Aseguramos formato consistente con otros adaptadores
+        return {
+          ...result,
+          parentPath: getParentPath(path || '/'),
+          directories: result.folders || [], // Para compatibilidad con otros adaptadores
+          error: false
+        };
       } catch (clientError) {
         console.error('[SFTP] Error con el cliente SFTP del servidor:', clientError);
         throw new Error(`Error del cliente SFTP: ${clientError.message}`);
@@ -381,6 +434,64 @@ export async function listContents(credentials, config = {}, path = '', limit = 
   }
 }
 
+/**
+ * Obtiene la ruta del directorio padre
+ * @param {string} path - Ruta actual
+ * @returns {string} - Ruta del directorio padre
+ */
+function getParentPath(path) {
+  if (!path || path === '/' || path === '') {
+    return '';
+  }
+  
+  // Normalizar la ruta para manejar tanto /path como path/
+  const normalizedPath = path.endsWith('/') ? path.slice(0, -1) : path;
+  
+  // Obtener la última ocurrencia de '/'
+  const lastSlashIndex = normalizedPath.lastIndexOf('/');
+  
+  if (lastSlashIndex <= 0) {
+    // Si no hay más directorios arriba o estamos en la raíz
+    return '';
+  }
+  
+  // Devolver la parte hasta el último slash
+  return normalizedPath.substring(0, lastSlashIndex);
+}
+
+/**
+ * Crea un nuevo "bucket" (directorio) en el servidor SFTP
+ * 
+ * @param {object} credentials - Credenciales SFTP
+ * @param {string} bucketName - Nombre del directorio a crear
+ * @param {object} config - Configuración adicional
+ * @returns {Promise<object>} - Resultado de la operación
+ */
+export async function createBucket(credentials, bucketName, config = {}) {
+  console.log(`[SFTP] Creando bucket (directorio) "${bucketName}" en ${credentials.host}:${credentials.port || 22}`);
+  
+  try {
+    // Si estamos en un contexto de Node.js (server-side), usamos el cliente SFTP del servidor
+    if (typeof window === 'undefined') {
+      try {
+        const sftpClient = require('../../../server/sftp/client');
+        // Creamos un directorio en la ruta raíz
+        return await sftpClient.createDirectory(credentials, bucketName);
+      } catch (clientError) {
+        console.error('[SFTP] Error con el cliente SFTP del servidor al crear directorio:', clientError);
+        throw new Error(`Error del cliente SFTP: ${clientError.message}`);
+      }
+    } else {
+      // ESTO NUNCA DEBERÍA EJECUTARSE EN NAVEGADOR
+      console.error('[SFTP] Error: Intento de conectar a SFTP directamente desde el navegador');
+      throw new Error('La conexión SFTP debe ser manejada por el servidor');
+    }
+  } catch (error) {
+    console.error('[SFTP] Error al crear bucket (directorio):', error);
+    throw error;
+  }
+}
+
 export default {
   createClient,
   uploadFile,
@@ -388,5 +499,7 @@ export default {
   listFiles,
   getSignedUrl,
   testConnection,
-  listContents
+  listContents,
+  listBuckets,
+  createBucket
 };
