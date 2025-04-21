@@ -132,23 +132,38 @@ async function listBuckets(req, res, id) {
           [id]
         );
         
-        // Usar el resultado devuelto por el adaptador o un formato predeterminado
+        // Procesar los resultados y garantizar que cada bucket tenga name y path
+        let buckets = [];
         if (result && Array.isArray(result)) {
-          return res.status(200).json({
-            success: true,
-            buckets: result
-          });
+          buckets = result;
         } else if (result && result.buckets && Array.isArray(result.buckets)) {
-          return res.status(200).json({
-            success: true,
-            buckets: result.buckets
-          });
-        } else {
-          return res.status(200).json({
-            success: true,
-            buckets: []
-          });
+          buckets = result.buckets;
         }
+        
+        // Normalizar los resultados: garantizar que cada bucket tenga name y path
+        // IMPORTANTE: Exactamente el mismo formato que SAGE Clouds original
+        const normalizedBuckets = buckets.map(bucket => {
+          // Si es un string simple
+          if (typeof bucket === 'string') {
+            return { name: bucket, path: bucket };
+          }
+          
+          // Si ya es un objeto, asegurarse que tenga path
+          const name = bucket.name || bucket.nombre || '';
+          return {
+            ...bucket,
+            name: name,
+            path: bucket.path || name // Si no tiene path, usar name
+          };
+        });
+        
+        console.log(`[Buckets API] Buckets normalizados (${normalizedBuckets.length}):`, 
+          normalizedBuckets.map(b => b.name).join(', '));
+          
+        return res.status(200).json({
+          success: true,
+          buckets: normalizedBuckets
+        });
       } catch (error) {
         console.error('Error al listar buckets:', error);
         return res.status(200).json({

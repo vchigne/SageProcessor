@@ -337,7 +337,7 @@ export async function testConnection(credentials, config = {}) {
  */
 export async function listContents(credentials, config = {}, path = '', limit = 50) {
   try {
-    const containerName = credentials.container_name;
+    let containerName = credentials.container_name || credentials.containerName || credentials.bucket || config.container_name || config.bucket;
     console.log(`[Azure] Listando contenido en contenedor ${containerName}${path ? '/' + path : ''}`);
     
     // Variables para almacenar los datos de conexión extraídos
@@ -513,14 +513,26 @@ export async function listContents(credentials, config = {}, path = '', limit = 
       const sasToken = connString.substring(sasStart);
       
       // Asegurarse de que tenemos un nombre de contenedor válido
-      const bucketOrContainer = credentials.bucket || credentials.container_name || credentials.containerName || config.bucket || config.container_name;
+      const bucketOrContainer = credentials.bucket || credentials.container_name || credentials.containerName || 
+                                config.bucket || config.container_name || config.containerName;
       
       if (!bucketOrContainer) {
+        console.error('[Azure] Error: No se encontró nombre de contenedor en ninguna de las propiedades (sagevidasoft)', {
+          'credentials.bucket': credentials.bucket,
+          'credentials.container_name': credentials.container_name,
+          'credentials.containerName': credentials.containerName,
+          'config.bucket': config.bucket,
+          'config.container_name': config.container_name,
+          'config.containerName': config.containerName
+        });
         throw new Error('Falta especificar el nombre del contenedor. Por favor, proporciona un valor en bucket, container_name o en la configuración.');
       }
       
       // Actualizar el containerName para esta sesión
       containerName = bucketOrContainer;
+      
+      // Debug logs para verificar el valor asignado
+      console.log(`[Azure] sagevidasoft - Valor containerName asignado correctamente: ${containerName}`);
       
       console.log(`[Azure] Usando contenedor: ${containerName}`);
       
@@ -530,6 +542,13 @@ export async function listContents(credentials, config = {}, path = '', limit = 
       
       // Construir URL directamente siguiendo el formato del documento
       const baseUrl = 'https://sagevidasoft.blob.core.windows.net/';
+      
+      // Si no hay containerName, esto podría ser una solicitud para listar los contenedores
+      if (!containerName) {
+        console.error('[Azure] ERROR: Se intento acceder a un contenedor sin especificar su nombre');
+        throw new Error('Falta especificar el nombre del contenedor. Por favor, proporciona un valor en bucket, container_name o en la configuración.');
+      }
+      
       const url = `${baseUrl}${containerName}?restype=container&comp=list&delimiter=${delimiter}&prefix=${encodeURIComponent(prefix)}&maxresults=${limit}&${sasToken}`;
       
       console.log(`[Azure] URL especial para listar contenedor (truncada): ${url.substring(0, 60)}...`);
@@ -637,14 +656,26 @@ export async function listContents(credentials, config = {}, path = '', limit = 
     const delimiter = '/';
     
     // Asegurarse de que tenemos un nombre de contenedor válido para todos los casos
-    const bucketOrContainer = credentials.bucket || credentials.container_name || credentials.containerName || config.bucket || config.container_name;
+    const bucketOrContainer = credentials.bucket || credentials.container_name || credentials.containerName || 
+                             config.bucket || config.container_name || config.containerName;
     
     if (!bucketOrContainer) {
+      console.error('[Azure] Error: No se encontró nombre de contenedor en ninguna de las propiedades', {
+        'credentials.bucket': credentials.bucket,
+        'credentials.container_name': credentials.container_name,
+        'credentials.containerName': credentials.containerName,
+        'config.bucket': config.bucket,
+        'config.container_name': config.container_name,
+        'config.containerName': config.containerName
+      });
       throw new Error('Falta especificar el nombre del contenedor. Por favor, proporciona un valor en bucket, container_name o en la configuración.');
     }
     
     // Actualizar el containerName para esta sesión
     containerName = bucketOrContainer;
+    
+    // Debug logs para verificar el valor asignado
+    console.log(`[Azure] Valor containerName asignado correctamente: ${containerName}`);
     
     console.log(`[Azure] Usando contenedor general: ${containerName}`);
     
@@ -973,10 +1004,11 @@ export async function listBuckets(credentials, config = {}) {
       
       if (!response.ok) {
         console.error('[Azure] Error en respuesta:', await response.text());
+        // Cuando hay error, usamos contenedores predeterminados con formato SAGE Clouds (name, path)
         return [
-          { name: 'sage-vidasoft', tipo: 'contenedor' },
-          { name: 'sage-informes', tipo: 'contenedor' },
-          { name: 'procesados', tipo: 'contenedor' }
+          { name: 'sage-vidasoft', path: 'sage-vidasoft', tipo: 'contenedor' },
+          { name: 'sage-informes', path: 'sage-informes', tipo: 'contenedor' },
+          { name: 'procesados', path: 'procesados', tipo: 'contenedor' }
         ];
       }
       

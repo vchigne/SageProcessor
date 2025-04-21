@@ -885,13 +885,9 @@ async function listContents(credentials, config = {}, path = '') {
         // Si estamos en una carpeta, verificar que el archivo pertenece a esta carpeta directa
         if (path && !filePath.startsWith(path)) return false;
         
-        // Calcular la ruta relativa para determinar si está en el nivel actual
-        const relativePath = filePath.substring(path.length);
-        
-        // No incluir archivos en subcarpetas
-        if (relativePath.includes('/')) return false;
-        
-        return true;
+        // Ver si después del prefijo hay una barra adicional (lo que significa que está en una subcarpeta)
+        const relativePath = path ? filePath.substring(path.length) : filePath;
+        return !relativePath.includes('/');
       })
       .map(entry => {
         const name = entry.key.split('/').pop() || '';
@@ -930,12 +926,14 @@ async function listContents(credentials, config = {}, path = '') {
     
     console.log(`[S3] Path: "${path}", calculando parentPath: "${parentPath}"`);
     
+    // Formato estándar de SAGE Clouds
     const result = {
       path: path || '/',
       bucket,
       region,
       parentPath,
-      folders,
+      // Importante: usar directorys y no folders para compatibilidad EXACTA con SAGE
+      directories: folders,
       files
     };
     

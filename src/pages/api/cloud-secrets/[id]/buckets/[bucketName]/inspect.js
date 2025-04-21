@@ -130,6 +130,17 @@ async function inspectBucket(req, res, id, bucketName) {
       } else if (secret.tipo === 'azure') {
         // Azure requiere cuenta de almacenamiento y clave
         credenciales.containerName = bucketName;
+        credenciales.container_name = bucketName;
+        credenciales.bucket = bucketName;
+        
+        // Configuración específica para Azure
+        const configAzure = {
+          containerName: bucketName,
+          container_name: bucketName,
+          bucket: bucketName
+        };
+        
+        console.log(`[Inspect API] Azure adaptador - bucket preparado como: ${bucketName}`);
       } else if (secret.tipo === 'sftp') {
         // SFTP necesita bucket (directorio remoto)
         credenciales.remoteDir = bucketName;
@@ -203,6 +214,9 @@ async function inspectBucket(req, res, id, bucketName) {
         // IMPORTANTE: Formato de respuesta EXACTAMENTE igual que en SAGE Clouds
         let folders = [];
         let files = [];
+        
+        // Logs de diagnóstico para ayudar a resolver problemas
+        console.log('[Inspect API] Respuesta del adaptador:', JSON.stringify(result).substring(0, 200) + '...');
         
         // Normalizar formato según el tipo de proveedor para tener EXACTAMENTE el mismo formato
         if (secret.tipo === 'gcp') {
