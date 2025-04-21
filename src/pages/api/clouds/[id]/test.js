@@ -36,7 +36,7 @@ export default async function handler(req, res) {
     if (provider.secreto_id) {
       // Obtener credenciales desde el secreto
       const secretResult = await pool.query(`
-        SELECT credenciales
+        SELECT secretos
         FROM cloud_secrets
         WHERE id = $1
       `, [provider.secreto_id]);
@@ -45,9 +45,9 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'El secreto asociado no existe' });
       }
       
-      credentials = typeof secretResult.rows[0].credenciales === 'string'
-        ? JSON.parse(secretResult.rows[0].credenciales)
-        : secretResult.rows[0].credenciales;
+      credentials = typeof secretResult.rows[0].secretos === 'string'
+        ? JSON.parse(secretResult.rows[0].secretos)
+        : secretResult.rows[0].secretos;
         
       console.log(`Usando credenciales del secreto #${provider.secreto_id} para proveedor ${providerId}`);
     } else {
