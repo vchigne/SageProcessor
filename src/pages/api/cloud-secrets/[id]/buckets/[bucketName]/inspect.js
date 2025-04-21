@@ -101,8 +101,32 @@ export default async function handler(req, res) {
         bucket: bucketName
       };
     } else if (secreto.tipo_proveedor === 'azure') {
-      // Para Azure con SAS token a través de una URL
-      if (secreto.credentials.connection_string && secreto.credentials.connection_string.startsWith('https://')) {
+      // Caso especial para la URL de sagevidasoft con SAS token específico
+      if (secreto.credentials.connection_string && 
+          secreto.credentials.connection_string.includes('sagevidasoft.blob.core.windows.net') && 
+          secreto.credentials.connection_string.includes('SharedAccessSignature=')) {
+        
+        console.log('[API] Detectado caso especial de Azure: sagevidasoft con formato especial');
+        
+        // Es el formato específico con SharedAccessSignature=
+        const connString = secreto.credentials.connection_string;
+        
+        // Extraer el SAS token del formato SharedAccessSignature=sv=...
+        const sasStart = connString.indexOf('SharedAccessSignature=') + 'SharedAccessSignature='.length;
+        const sasToken = connString.substring(sasStart);
+        
+        // Crear estructura de credenciales para este caso específico
+        credentials = {
+          container_name: bucketName,
+          account_name: 'sagevidasoft',
+          sas_token: sasToken,
+          blob_endpoint: 'https://sagevidasoft.blob.core.windows.net/'
+        };
+        
+        console.log(`[API] Credentials caso especial - AccountName: sagevidasoft, SAS token: ${sasToken.substring(0, 30)}...`);
+      }
+      // Para Azure con SAS token a través de una URL normal
+      else if (secreto.credentials.connection_string && secreto.credentials.connection_string.startsWith('https://')) {
         // Es un formato de URL con SAS token
         const url = new URL(secreto.credentials.connection_string);
         const hostname = url.hostname;
