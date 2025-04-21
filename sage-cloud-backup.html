@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Backup de SAGE Cloud</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        h1 {
+            color: #3949ab;
+            border-bottom: 2px solid #e0e0e0;
+            padding-bottom: 10px;
+        }
+        .download-box {
+            background-color: #f5f5f5;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .download-button {
+            display: inline-block;
+            background-color: #4caf50;
+            color: white;
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 4px;
+            font-weight: bold;
+            margin-top: 15px;
+        }
+        .download-button:hover {
+            background-color: #388e3c;
+        }
+        .content {
+            margin-top: 30px;
+        }
+        .file-info {
+            background-color: #e8f5e9;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 20px;
+        }
+        ul {
+            padding-left: 20px;
+        }
+        li {
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Backup de SAGE Cloud y Janitor Daemon</h1>
+    
+    <div class="download-box">
+        <h2>Archivo de respaldo</h2>
+        <p>Este archivo contiene una copia de todos los archivos modificados relacionados con la funcionalidad de Cloud y los daemons.</p>
+        <a href="sage-cloud-backups.zip" download class="download-button">Descargar Backup</a>
+        <div class="file-info">
+            <p><strong>Tamaño:</strong> ~149 KB</p>
+            <p><strong>Fecha:</strong> 21 de abril, 2025</p>
+        </div>
+    </div>
+    
+    <div class="content">
+        <h2>Contenido del backup</h2>
+        <p>El respaldo incluye los siguientes componentes:</p>
+        
+        <h3>Adaptadores Cloud</h3>
+        <ul>
+            <li><strong>MinIO Adapter</strong> - Con las correcciones para listar archivos correctamente</li>
+            <li><strong>S3 Adapter</strong> - Implementación optimizada</li>
+            <li><strong>Azure Adapter</strong> - Versión fija para compatibilidad</li>
+            <li><strong>GCP Adapter</strong> - Soporte completo para Google Cloud Storage</li>
+            <li><strong>SFTP Adapter</strong> - Para conexiones seguras a servidores SFTP</li>
+        </ul>
+        
+        <h3>APIs</h3>
+        <ul>
+            <li><strong>Cloud APIs</strong> - Endpoints para gestión directa de nubes</li>
+            <li><strong>Cloud Files APIs</strong> - Manipulación de archivos en la nube</li>
+            <li><strong>Cloud Secrets APIs</strong> - Gestión de credenciales de proveedores</li>
+        </ul>
+        
+        <h3>Daemons</h3>
+        <ul>
+            <li><strong>Janitor Daemon</strong> - Daemon para migración de archivos a la nube</li>
+        </ul>
+    </div>
+</body>
+</html>
