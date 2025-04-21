@@ -210,6 +210,17 @@ class JanitorDaemon:
                                 logger.info(f"Eliminando campo 'aws_account_id' no compatible con boto3")
                                 normalized_credentials.pop('aws_account_id', None)
                             
+                            # SOLUCIÓN: Para MinIO, transferir el bucket desde la configuración a las credenciales
+                            if provider_dict['tipo'] == 'minio':
+                                # Obtener el bucket desde la configuración
+                                if 'configuracion' in provider_dict and isinstance(provider_dict['configuracion'], dict):
+                                    bucket_from_config = provider_dict['configuracion'].get('bucket')
+                                    if bucket_from_config:
+                                        logger.info(f"Transferido bucket '{bucket_from_config}' desde configuración a credenciales para MinIO con secreto")
+                                        normalized_credentials['bucket'] = bucket_from_config
+                                else:
+                                    logger.warning(f"Proveedor MinIO con secreto sin configuración para obtener bucket")
+                            
                             provider_dict['credenciales'] = normalized_credentials
                         elif provider_dict['tipo'] == 'azure':
                             # No se requiere normalización especial para Azure
