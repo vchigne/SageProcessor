@@ -2,6 +2,7 @@
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import type { Portal, Emisor } from '@/types';
+import PortalLayout from '@/components/Portal/PortalLayout';
 
 export default function PortalExterno() {
   const router = useRouter();
