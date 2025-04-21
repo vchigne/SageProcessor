@@ -137,21 +137,79 @@ class JanitorDaemon:
                 provider_dict = dict(zip(columns, provider))
                 
                 # Log para depuración - Mostrar estructura de cada proveedor
-                logger.info(f"Estructura del proveedor {provider_dict.get('id')} - {provider_dict.get('nombre')}: {provider_dict.keys()}")
+                provider_id = provider_dict.get('id')
+                provider_name = provider_dict.get('nombre')
+                logger.info(f"Estructura del proveedor {provider_id} - {provider_name}: {provider_dict.keys()}")
                 
                 # Si credenciales o configuración son strings JSON, convertirlos a dict
                 if 'credenciales' in provider_dict and isinstance(provider_dict['credenciales'], str):
                     try:
                         provider_dict['credenciales'] = json.loads(provider_dict['credenciales'])
                     except:
-                        logger.warning(f"No se pudo parsear las credenciales del proveedor {provider_dict.get('nombre')}")
+                        logger.warning(f"No se pudo parsear las credenciales del proveedor {provider_name}")
                         
                 if 'configuracion' in provider_dict and isinstance(provider_dict['configuracion'], str):
                     try:
                         provider_dict['configuracion'] = json.loads(provider_dict['configuracion'])
                     except:
-                        logger.warning(f"No se pudo parsear la configuración del proveedor {provider_dict.get('nombre')}")
+                        logger.warning(f"No se pudo parsear la configuración del proveedor {provider_name}")
                 
+                # NUEVA FUNCIONALIDAD: Verificar si este proveedor usa secreto_id
+                if 'secreto_id' in provider_dict and provider_dict['secreto_id'] is not None:
+                    secreto_id = provider_dict['secreto_id']
+                    logger.info(f"El proveedor {provider_id} - {provider_name} usa secreto_id: {secreto_id}")
+                    
+                    try:
+                        # Obtener el secreto correspondiente
+                        cursor.execute(
+                            "SELECT id, nombre, tipo, secretos FROM cloud_secrets WHERE id = %s AND activo = TRUE",
+                            (secreto_id,)
+                        )
+                        secret_result = cursor.fetchone()
+                        
+                        if not secret_result:
+                            logger.error(f"No se encontró el secreto activo con ID {secreto_id} para el proveedor {provider_name}")
+                            # Continuar con el siguiente proveedor
+                            continue
+                            
+                        # Convertir a diccionario
+                        secret_dict = dict(zip(
+                            ['id', 'nombre', 'tipo', 'secretos'], 
+                            secret_result
+                        ))
+                        
+                        # Si el secreto está en formato string JSON, convertirlo a dict
+                        if isinstance(secret_dict['secretos'], str):
+                            try:
+                                secret_dict['secretos'] = json.loads(secret_dict['secretos'])
+                            except:
+                                logger.error(f"No se pudo parsear el secreto del proveedor {provider_name}")
+                                # Continuar con el siguiente proveedor
+                                continue
+                        
+                        # Verificar que los tipos coincidan
+                        if secret_dict['tipo'] != provider_dict['tipo']:
+                            logger.warning(
+                                f"El tipo del secreto ({secret_dict['tipo']}) no coincide con el tipo del proveedor ({provider_dict['tipo']})"
+                            )
+                            
+                        # Reemplazar las credenciales del proveedor con las del secreto
+                        logger.info(f"Reemplazando credenciales del proveedor {provider_name} con las del secreto {secret_dict['nombre']}")
+                        provider_dict['credenciales'] = secret_dict['secretos']
+                        
+                        # Añadir información de que se usó un secreto
+                        provider_dict['usa_secreto'] = True
+                        provider_dict['secreto_nombre'] = secret_dict['nombre']
+                        
+                    except Exception as e:
+                        logger.error(f"Error cargando secreto para proveedor {provider_name}: {e}")
+                        # No añadir el proveedor al diccionario si hubo un error con el secreto
+                        continue
+                else:
+                    # El proveedor NO usa secreto, continúa con el flujo normal
+                    logger.info(f"El proveedor {provider_id} - {provider_name} usa credenciales directas")
+                
+                # Guardar el proveedor en el diccionario
                 self.cloud_providers[provider_dict['id']] = provider_dict
                 
             logger.info(f"Proveedores cargados: {list(self.cloud_providers.keys())}")
