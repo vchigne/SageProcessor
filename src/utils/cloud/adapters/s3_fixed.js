@@ -252,42 +252,55 @@ function getDateStamp() {
  * @returns {Promise<object>} - Resultado de la prueba con estado y mensaje
  */
 async function testConnection(credentials, config = {}) {
+  // Normalizar credenciales - pueden venir de varias fuentes
+  const accessKey = credentials.access_key || credentials.accessKey;
+  const secretKey = credentials.secret_key || credentials.secretKey;
+  const bucket = credentials.bucket || credentials.bucket_name || config.bucket;
+  const region = config.region || credentials.region || 'us-east-1';
+  
   // Validar credenciales mínimas requeridas
-  if (!credentials.access_key || !credentials.secret_key) {
+  if (!accessKey || !secretKey) {
     return {
       success: false,
       message: 'Faltan credenciales requeridas (access_key, secret_key)'
     };
   }
   
+  // Crear un objeto de credenciales normalizado para usar en las operaciones
+  const normalizedCredentials = {
+    access_key: accessKey,
+    secret_key: secretKey,
+    bucket: bucket,
+    region: region
+  };
+  
   if (USE_MOCK_DATA) {
     // Para pruebas, simulamos una respuesta positiva
     await new Promise(resolve => setTimeout(resolve, 800)); // Simular demora
-    const bucketInfo = credentials.bucket ? 
-      { bucketName: credentials.bucket } : 
+    const bucketInfo = bucket ? 
+      { bucketName: bucket } : 
       { message: 'Conexión establecida, pero no se especificó bucket' };
     
     return {
       success: true,
-      message: credentials.bucket ? 
-        `Conexión exitosa al bucket ${credentials.bucket}` : 
+      message: bucket ? 
+        `Conexión exitosa al bucket ${bucket}` : 
         'Credenciales de AWS válidas',
       details: {
         ...bucketInfo,
-        region: config.region || credentials.region || 'us-east-1'
+        region: region
       }
     };
   }
   
   try {
     console.log('[S3] Probando conexión con credenciales:', 
-      `access_key=${credentials.access_key?.substring(0, 4)}***, ` +
+      `access_key=${accessKey?.substring(0, 4)}***, ` +
       `secret_key=*****, ` + 
-      `bucket=${credentials.bucket || 'no especificado'}`
+      `bucket=${bucket || 'no especificado'}`
     );
     
-    // Asegurarnos de tomar la región de las credenciales si no está en config
-    const region = config.region || credentials.region || 'us-east-1';
+    credentials = normalizedCredentials;
     console.log('[S3] Usando región:', region);
     
     // Si no hay bucket, probamos listando los buckets en su lugar
@@ -639,8 +652,8 @@ async function listContents(credentials, config = {}, path = '') {
         // Intentar nuevamente con la región correcta
         try {
           const redirectResponse = await listBucketContentsInRegion(
-            credentials.access_key, 
-            credentials.secret_key, 
+            accessKey, 
+            secretKey, 
             bucket, 
             prefix,
             regionHint
@@ -964,22 +977,36 @@ async function listContents(credentials, config = {}, path = '') {
  * @returns {Object} Cliente configurado para Amazon S3
  */
 export function createClient(credentials, config = {}) {
+  // Normalizar credenciales - pueden venir de cloud_secrets o directamente
+  const accessKey = credentials.access_key || credentials.accessKey;
+  const secretKey = credentials.secret_key || credentials.secretKey;
+  const bucket = credentials.bucket || credentials.bucket_name || config.bucket;
+  const region = config.region || credentials.region || 'us-east-1';
+  
   // Validar credenciales antes de crear el cliente
-  if (!credentials.access_key || !credentials.secret_key) {
+  if (!accessKey || !secretKey) {
     throw new Error('Se requieren access_key y secret_key para crear un cliente S3');
   }
   
-  if (!credentials.bucket) {
+  if (!bucket) {
     console.warn('[S3] Creando cliente sin especificar bucket. Asegúrate de especificar el bucket en las operaciones.');
   }
+  
+  // Crear objeto de credenciales normalizado
+  const normalizedCredentials = {
+    access_key: accessKey,
+    secret_key: secretKey,
+    bucket: bucket,
+    region: region
+  };
   
   // Devolver objeto cliente con referencias a las credenciales y configuración
   return {
     type: 's3',
-    credentials,
+    credentials: normalizedCredentials,
     config,
-    bucket: credentials.bucket,
-    region: config.region || credentials.region || 'us-east-1'
+    bucket: bucket,
+    region: region
   };
 }
 

@@ -146,25 +146,49 @@ async function inspectBucket(req, res, id, bucketName) {
         credenciales.remoteDir = bucketName;
       }
       
+      // Normalizar las credenciales según el tipo de proveedor
+      let normalizedCredentials = { ...credenciales };
+      
+      // Asegurarnos de que todas las credenciales tengan formato uniforme
+      if (secret.tipo === 's3' || secret.tipo === 'minio') {
+        normalizedCredentials = {
+          ...normalizedCredentials,
+          access_key: normalizedCredentials.access_key || normalizedCredentials.accessKey,
+          secret_key: normalizedCredentials.secret_key || normalizedCredentials.secretKey,
+          bucket: bucketName,
+          bucket_name: bucketName
+        };
+      } else if (secret.tipo === 'azure') {
+        normalizedCredentials = {
+          ...normalizedCredentials,
+          containerName: bucketName,
+          container_name: bucketName,
+          bucket: bucketName
+        };
+      } else if (secret.tipo === 'gcp') {
+        normalizedCredentials = {
+          ...normalizedCredentials,
+          bucket: bucketName,
+          bucket_name: bucketName
+        };
+      } else if (secret.tipo === 'sftp') {
+        normalizedCredentials = {
+          ...normalizedCredentials,
+          remoteDir: bucketName, 
+          bucket: bucketName
+        };
+      }
+      
       // Configuración por defecto del proveedor temporal
       const tempProvider = {
         id: 0,
         nombre: `Test de ${secret.nombre}`,
         tipo: secret.tipo,
-        credenciales: {
-          ...credenciales,
-          bucket_name: bucketName // Asegurarnos de que el adaptador sepa qué bucket consultar
-        },
-        configuracion: {}
-      };
-      
-      // Para S3 y MinIO pueden necesitar el bucket en la configuración también
-      if (secret.tipo === 's3' || secret.tipo === 'minio') {
-        if (!tempProvider.configuracion) {
-          tempProvider.configuracion = {};
+        credenciales: normalizedCredentials,
+        configuracion: {
+          bucket: bucketName // Asegurarnos de que el adaptador sepa qué bucket consultar
         }
-        tempProvider.configuracion.bucket = bucketName;
-      }
+      };
       
       // Obtener adaptador e inspeccionar bucket
       try {
