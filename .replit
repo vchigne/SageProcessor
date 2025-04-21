@@ -35,7 +35,11 @@ args = "Janitor Manual Run"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Next.js Development Server with Turbopack"
+args = "Next.js Development Server"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Next.js Server"
 
 [[workflows.workflow]]
 name = "SAGE Daemon 2"
@@ -91,8 +95,38 @@ task = "packager.installForAll"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd /home/runner/workspace && npx next dev -p 3000"
-waitForPort = 3000
+args = "cd /home/runner/workspace && npx next dev -p 5000"
+waitForPort = 5000
+
+[[workflows.workflow]]
+name = "Next.js Development Server"
+author = "agent"
+
+[workflows.workflow.metadata]
+agentRequireRestartOnSave = false
+
+[[workflows.workflow.tasks]]
+task = "packager.installForAll"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd /home/runner/workspace && npx next dev -p 3001"
+waitForPort = 3001
+
+[[workflows.workflow]]
+name = "Next.js Server"
+author = "agent"
+
+[workflows.workflow.metadata]
+agentRequireRestartOnSave = false
+
+[[workflows.workflow.tasks]]
+task = "packager.installForAll"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd /home/runner/workspace && ps aux | grep node | grep -v grep | awk '{print $2}' | xargs kill -9 || true && npx next dev -p 5000 --hostname 0.0.0.0"
+waitForPort = 5000
 
 [deployment]
 run = ["sh", "-c", "npm run dev"]

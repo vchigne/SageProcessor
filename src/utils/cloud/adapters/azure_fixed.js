@@ -1522,7 +1522,11 @@ export async function createBucket(credentials, config = {}, bucketName) {
       // Para conexiones sin SAS token explícito (URL simple) permitimos continuar
       // ya que podrían ser contenedores públicos
       if (!accountName || !blobEndpoint) {
-        throw new Error('Faltan parámetros para la conexión con Azure. Se requiere accountName y blobEndpoint.');
+        return { 
+          success: false, 
+          message: 'Faltan parámetros para la conexión con Azure. Se requiere accountName y blobEndpoint.',
+          error: 'MISSING_PARAMETERS' 
+        };
       }
       
       // Si no hay SAS token, mostramos un error específico para la creación
@@ -1535,13 +1539,34 @@ export async function createBucket(credentials, config = {}, bucketName) {
       }
       
       // Verificar que el SAS token tenga permisos para crear contenedores
-      if (!sasToken.toLowerCase().includes('sp=') || !sasToken.toLowerCase().includes('sp=c') && !sasToken.toLowerCase().includes('sp=a')) {
+      // Necesitamos verificar permisos como sp=c, sp=a o permisos combinados como sp=rwdlacupiytfx
+      const sasTokenLower = sasToken.toLowerCase();
+      if (!sasTokenLower.includes('sp=')) {
+        return {
+          success: false,
+          message: 'El token SAS proporcionado no tiene formato válido. Se requiere el parámetro "sp=".',
+          error: 'INVALID_SAS_FORMAT'
+        };
+      }
+      
+      // Extraer el valor de sp= del SAS token
+      let spPermissions = '';
+      const spMatch = sasTokenLower.match(/sp=([^&]+)/);
+      if (spMatch && spMatch[1]) {
+        spPermissions = spMatch[1];
+      }
+      
+      // Verificar si tiene permiso de creación (c) o todos los permisos (a)
+      if (!spPermissions.includes('c') && !spPermissions.includes('a')) {
         return {
           success: false,
           message: 'El token SAS proporcionado no tiene permisos para crear contenedores. Se requiere permiso "c" (create) o "a" (all).',
           error: 'INSUFFICIENT_PERMISSIONS'
         };
       }
+      
+      console.log(`[Azure] SAS token con permisos válidos para crear contenedores: ${spPermissions}`);
+      
       
       // Construir la URL con SAS token para crear contenedor
       let urlBase = '';
@@ -1568,14 +1593,21 @@ export async function createBucket(credentials, config = {}, bucketName) {
         
         // Analizar el error XML para proporcionar información más útil
         let errorMessage = `Error HTTP ${response.status}: ${response.statusText}`;
+        let errorCode = 'HTTP_ERROR';
         
         if (errorText.includes('<Code>AuthenticationFailed</Code>')) {
           errorMessage = 'Error de autenticación: El token SAS proporcionado no es válido, ha expirado o no tiene permisos suficientes.';
+          errorCode = 'AUTHENTICATION_FAILED';
         } else if (errorText.includes('<Code>ContainerAlreadyExists</Code>')) {
           errorMessage = `El contenedor '${bucketName}' ya existe en la cuenta de almacenamiento.`;
+          errorCode = 'CONTAINER_ALREADY_EXISTS';
         }
         
-        throw new Error(errorMessage);
+        return {
+          success: false,
+          message: errorMessage,
+          error: errorCode
+        };
       }
       
       return {
@@ -1586,7 +1618,11 @@ export async function createBucket(credentials, config = {}, bucketName) {
     } else {
       // Autenticación tradicional con Shared Key
       if (!accountName || !accountKey) {
-        throw new Error('Para crear contenedores con Shared Key se requiere accountName y accountKey');
+        return {
+          success: false,
+          message: 'Para crear contenedores con Shared Key se requiere accountName y accountKey',
+          error: 'MISSING_CREDENTIALS'
+        };
       }
       
       // Construir la URL para crear contenedor
@@ -1628,14 +1664,21 @@ export async function createBucket(credentials, config = {}, bucketName) {
         
         // Analizar el error XML para proporcionar información más útil
         let errorMessage = `Error HTTP ${response.status}: ${response.statusText}`;
+        let errorCode = 'HTTP_ERROR';
         
         if (errorText.includes('<Code>AuthenticationFailed</Code>')) {
           errorMessage = 'Error de autenticación: La firma generada no es válida. Verifique la clave de cuenta.';
+          errorCode = 'AUTHENTICATION_FAILED';
         } else if (errorText.includes('<Code>ContainerAlreadyExists</Code>')) {
           errorMessage = `El contenedor '${bucketName}' ya existe en la cuenta de almacenamiento.`;
+          errorCode = 'CONTAINER_ALREADY_EXISTS';
         }
         
-        throw new Error(errorMessage);
+        return {
+          success: false,
+          message: errorMessage,
+          error: errorCode
+        };
       }
       
       return {
