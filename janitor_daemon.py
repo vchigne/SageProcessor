@@ -780,6 +780,8 @@ class JanitorDaemon:
         """Subir archivos a Amazon S3"""
         import boto3
         import botocore
+        import os
+        import subprocess
         from botocore.exceptions import ClientError
         
         # Parsear credenciales y configuración
@@ -808,60 +810,113 @@ class JanitorDaemon:
         if not bucket:
             raise ValueError("No se pudo determinar el bucket desde las credenciales o configuración")
         
-        # Crear cliente S3 usando Session para evitar problemas con parámetros globales
+        # ============ SOLUCIÓN ALTERNATIVA USANDO AWS CLI ============
+        # Al tener problemas persistentes con boto3 y el parámetro aws_account_id,
+        # usaremos la AWS CLI directamente como solución alternativa
         try:
-            logger.info("Creando cliente S3 directamente con boto3.client...")
+            logger.info("Usando AWS CLI como alternativa a boto3...")
             
-            # Inspeccionar si hay variables globales o de entorno que puedan estar afectando
-            logger.info(f"Todas las keys de credenciales antes de filtrar: {list(credentials.keys())}")
+            # Crear archivo temporal para credenciales AWS
+            import tempfile
+            aws_dir = os.path.expanduser('~/.aws')
+            os.makedirs(aws_dir, exist_ok=True)
             
-            # Eliminar explícitamente cualquier parámetro no estándar
-            valid_params = {
-                'service_name': 's3',
+            # Escribir configuración temporal
+            with open(os.path.join(aws_dir, 'credentials'), 'w') as f:
+                f.write(f"[default]\n")
+                f.write(f"aws_access_key_id = {access_key}\n")
+                f.write(f"aws_secret_access_key = {secret_key}\n")
+                
+            with open(os.path.join(aws_dir, 'config'), 'w') as f:
+                f.write(f"[default]\n")
+                f.write(f"region = {region}\n")
+                
+            # Comando base para AWS CLI
+            aws_cmd = ["aws", "s3"]
+            
+            # Añadir endpoint si es necesario (para MinIO/otros proveedores)
+            if endpoint_url:
+                aws_cmd.extend(["--endpoint-url", endpoint_url])
+                
+            # Subir todos los archivos en el directorio recursivamente
+            sync_cmd = aws_cmd + ["sync", local_path, f"s3://{bucket}/{cloud_path}"]
+            logger.info(f"Ejecutando comando: {' '.join(sync_cmd)}")
+            
+            # Ejecutar comando
+            result = subprocess.run(sync_cmd, 
+                                   stdout=subprocess.PIPE, 
+                                   stderr=subprocess.PIPE,
+                                   text=True)
+            
+            # Verificar resultado
+            if result.returncode != 0:
+                logger.error(f"Error al ejecutar AWS CLI: {result.stderr}")
+                raise ValueError(f"Error al subir archivos con AWS CLI: {result.stderr}")
+            else:
+                logger.info(f"Archivos sincronizados exitosamente usando AWS CLI")
+                logger.info(f"Salida: {result.stdout}")
+                
+            return  # Terminar aquí si la sincronización fue exitosa
+                
+        except Exception as e:
+            logger.error(f"Error usando AWS CLI: {str(e)}")
+            logger.warning("Intentando con método alternativo (boto3)...")
+        
+        # Fallback a boto3 si AWS CLI falla
+        try:
+            # Crear un entorno limpio para boto3
+            # Usamos un enfoque muy específico para evitar contaminación de variables
+            logger.info("Intentando con boto3 en entorno limpio...")
+            
+            # Limpiar variables de entorno que puedan interferir
+            boto3_env = os.environ.copy()
+            for key in list(boto3_env.keys()):
+                if key.startswith('AWS_'):
+                    del boto3_env[key]
+            
+            # Crear cliente boto3 con los parámetros mínimos necesarios
+            import importlib
+            import sys
+            
+            # Importar boto3 limpio
+            if 'boto3' in sys.modules:
+                del sys.modules['boto3']
+            if 'botocore' in sys.modules:
+                del sys.modules['botocore']
+                
+            # Reimportar boto3 limpio
+            boto3_clean = importlib.import_module('boto3')
+            
+            # Crear cliente con solo los parámetros necesarios
+            s3_params = {
                 'aws_access_key_id': access_key,
                 'aws_secret_access_key': secret_key,
                 'region_name': region
             }
             
-            # Añadir endpoint solo si está definido
             if endpoint_url:
-                valid_params['endpoint_url'] = endpoint_url
+                s3_params['endpoint_url'] = endpoint_url
                 
-            # Crear cliente con parámetros estrictamente controlados
-            # Esto asegura que no se arrastren parámetros globales o incorrectos
-            try:
-                import botocore.config
-                config = botocore.config.Config(signature_version='s3v4')
-                valid_params['config'] = config
-                
-                # Usar directamente el constructor de cliente sin sesión para más control
-                logger.info(f"Usando solo estos parámetros para boto3.client: {list(valid_params.keys())}")
-                s3_client = boto3.client(**valid_params)
-                logger.info("Cliente S3 creado exitosamente")
-            except Exception as e:
-                logger.error(f"Error creando cliente S3 (interno): {str(e)}")
-                raise
+            logger.info(f"Parámetros boto3: {s3_params.keys()}")
+            s3_client = boto3_clean.client('s3', **s3_params)
+            
+            # Subir los archivos
+            for root, dirs, files in os.walk(local_path):
+                for file in files:
+                    local_file_path = os.path.join(root, file)
+                    
+                    # Calcular la ruta relativa para el objeto S3
+                    rel_path = os.path.relpath(local_file_path, local_path)
+                    s3_key = f"{cloud_path}/{rel_path}"
+                    
+                    # Subir el archivo
+                    logger.info(f"Subiendo archivo {local_file_path} -> s3://{bucket}/{s3_key}")
+                    s3_client.upload_file(local_file_path, bucket, s3_key)
+                    logger.info(f"Archivo subido correctamente")
             
         except Exception as e:
-            logger.error(f"Error creando cliente S3: {str(e)}")
-            raise ValueError(f"No se pudo crear cliente S3: {str(e)}")
-        
-        # Subir todos los archivos en el directorio
-        for root, dirs, files in os.walk(local_path):
-            for file in files:
-                local_file_path = os.path.join(root, file)
-                
-                # Calcular la ruta relativa para el objeto S3
-                rel_path = os.path.relpath(local_file_path, local_path)
-                s3_key = f"{cloud_path}/{rel_path}"
-                
-                # Subir el archivo
-                try:
-                    s3_client.upload_file(local_file_path, bucket, s3_key)
-                    logger.debug(f"Archivo {local_file_path} subido a s3://{bucket}/{s3_key}")
-                except ClientError as e:
-                    logger.error(f"Error subiendo archivo a S3: {e}")
-                    raise
+            logger.error(f"Error con boto3: {str(e)}")
+            raise ValueError(f"No se pudieron subir los archivos a S3: {str(e)}")
     
     def _upload_to_minio(self, local_path, cloud_path, provider):
         """Subir archivos a MinIO Storage"""
