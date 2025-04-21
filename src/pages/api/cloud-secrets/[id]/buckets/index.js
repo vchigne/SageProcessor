@@ -113,6 +113,15 @@ async function listBuckets(req, res, id) {
         }
         
         // Listar buckets
+        console.log(`[Buckets API] Listando buckets para proveedor tipo: ${secret.tipo}`);
+        if (secret.tipo === 'gcp') {
+          const keyData = typeof tempProvider.credenciales.key_file === 'string' 
+            ? JSON.parse(tempProvider.credenciales.key_file) 
+            : tempProvider.credenciales.key_file;
+            
+          console.log('[Buckets API] Project ID de GCP:', keyData.project_id);
+        }
+        
         const result = await adapter.listBuckets(tempProvider.credenciales, tempProvider.configuracion);
         
         // Actualizar fecha de última modificación

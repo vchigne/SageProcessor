@@ -478,7 +478,15 @@ export async function testConnection(credentials, config = {}) {
       
       // Paso 3 (alternativo): Listar buckets disponibles en el proyecto
       console.log('[GCP] Listando buckets disponibles en el proyecto');
-      const listBucketsUrl = 'https://storage.googleapis.com/storage/v1/b';
+      
+      // El parámetro project es requerido por la API
+      const projectId = keyData.project_id;
+      if (!projectId) {
+        throw new Error('No se encontró el ID del proyecto en el archivo de credenciales.');
+      }
+      
+      console.log('[GCP] Usando project_id:', projectId);
+      const listBucketsUrl = `https://storage.googleapis.com/storage/v1/b?project=${encodeURIComponent(projectId)}`;
       
       const listResponse = await fetch(listBucketsUrl, {
         headers: {
