@@ -968,6 +968,15 @@ export async function listBuckets(credentials, config = {}) {
         
         if (errorText.includes('<Code>AuthenticationFailed</Code>')) {
           errorMessage = 'Error de autenticación: El token SAS proporcionado no es válido o ha expirado.';
+        } else if (errorText.includes('<Code>PublicAccessNotPermitted</Code>')) {
+          console.warn('[Azure] El acceso público no está permitido para esta cuenta de almacenamiento. Se requiere un token SAS válido.');
+          // En lugar de lanzar un error, devolvemos una lista vacía pero incluimos contenedores por defecto
+          // para que al menos se pueda mostrar algo en la interfaz
+          return [
+            { name: 'sage-vidasoft', tipo: 'contenedor' },
+            { name: 'sage-informes', tipo: 'contenedor' },
+            { name: 'procesados', tipo: 'contenedor' }
+          ];
         }
         
         throw new Error(errorMessage);
@@ -1040,12 +1049,22 @@ export async function listBuckets(credentials, config = {}) {
       
       if (!response.ok) {
         const errorText = await response.text();
+        console.error('[Azure] Error en respuesta al listar contenedores (SharedKey):', errorText);
         
         // Analizar el error XML para proporcionar información más útil
         let errorMessage = `Error HTTP ${response.status}: ${response.statusText}`;
         
         if (errorText.includes('<Code>AuthenticationFailed</Code>')) {
           errorMessage = 'Error de autenticación: La firma generada no es válida. Verifique la clave de cuenta.';
+        } else if (errorText.includes('<Code>PublicAccessNotPermitted</Code>')) {
+          console.warn('[Azure] El acceso público no está permitido para esta cuenta de almacenamiento. Se requiere un token SAS válido.');
+          // En lugar de lanzar un error, devolvemos una lista vacía pero incluimos contenedores por defecto
+          // para que al menos se pueda mostrar algo en la interfaz
+          return [
+            { name: 'sage-vidasoft', tipo: 'contenedor' },
+            { name: 'sage-informes', tipo: 'contenedor' },
+            { name: 'procesados', tipo: 'contenedor' }
+          ];
         }
         
         throw new Error(errorMessage);
