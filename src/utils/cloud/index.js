@@ -117,6 +117,56 @@ export async function getCloudProvider(id) {
       provider.configuracion = JSON.parse(provider.configuracion);
     }
     
+    // Si el proveedor usa un secreto, obtener las credenciales del secreto
+    if (provider.secreto_id) {
+      console.log(`[Cloud Provider] Proveedor ${provider.id} - ${provider.nombre} usa secreto_id: ${provider.secreto_id}`);
+      
+      try {
+        const secretResult = await pool.query(
+          `SELECT id, nombre, tipo, secretos
+           FROM cloud_secrets
+           WHERE id = $1`,
+          [provider.secreto_id]
+        );
+        
+        if (secretResult.rows.length > 0) {
+          const secret = secretResult.rows[0];
+          let secretos = typeof secret.secretos === 'string' 
+            ? JSON.parse(secret.secretos) 
+            : secret.secretos;
+            
+          console.log(`[Cloud Provider] Reemplazando credenciales del proveedor ${provider.nombre} con las del secreto ${secret.nombre}`);
+          
+          // Para GCP, parseamos el key_file si es necesario
+          if (provider.tipo === 'gcp' && secretos.key_file && typeof secretos.key_file === 'string') {
+            try {
+              secretos.key_file = JSON.parse(secretos.key_file);
+            } catch (keyError) {
+              console.error(`[Cloud Provider] Error al parsear key_file de GCP:`, keyError);
+              // Continuamos aunque haya error
+            }
+          }
+          
+          // Reemplazar credenciales
+          provider.credenciales = secretos;
+          
+          // Para Azure, podemos necesitar configuración especial
+          if (provider.tipo === 'azure' && 
+              secretos.connection_string && 
+              secretos.connection_string.includes('blob.core.windows.net')) {
+            if (!provider.configuracion) {
+              provider.configuracion = {};
+            }
+            provider.configuracion.use_sas = true;
+          }
+        } else {
+          console.error(`[Cloud Provider] No se encontró el secreto con ID ${provider.secreto_id}`);
+        }
+      } catch (secretError) {
+        console.error(`[Cloud Provider] Error al obtener secreto ${provider.secreto_id}:`, secretError);
+      }
+    }
+    
     return provider;
   } catch (error) {
     console.error(`Error al obtener proveedor de nube ${id}:`, error);

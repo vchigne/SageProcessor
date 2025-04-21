@@ -500,14 +500,26 @@ async function listContents(credentials, config = {}, path = '') {
     path = path.substring(1);
   }
   
-  // Si path tiene barra al final y no está vacío, la conservamos
-  // Esto es importante para navegar por "carpetas" en S3
+  // Normalizar credenciales - el objeto puede tener varios formatos según sea de credenciales directas o de cloud_secrets
+  // Para S3, necesitamos: access_key, secret_key y bucket
+  let accessKey = credentials.access_key || credentials.accessKey;
+  let secretKey = credentials.secret_key || credentials.secretKey;
   
-  const bucket = credentials.bucket;
+  // El bucket puede estar en varios lugares diferentes
+  let bucket = credentials.bucket || credentials.bucket_name || config.bucket;
+  
+  // Si no tenemos las credenciales necesarias, lanzamos un error
+  if (!accessKey || !secretKey || !bucket) {
+    console.error('[S3] Faltan credenciales requeridas:', { 
+      accessKey: !!accessKey, 
+      secretKey: !!secretKey, 
+      bucket: !!bucket 
+    });
+    throw new Error('Faltan credenciales requeridas para S3');
+  }
+  
   const region = config.region || credentials.region || 'us-east-1';
   console.log('[S3] Listando bucket:', bucket, 'en región:', region);
-  
-  // No usamos datos simulados en producción
   
   try {
     // Construir la URL para listar el contenido 
@@ -581,7 +593,7 @@ async function listContents(credentials, config = {}, path = '') {
     }
     
     // Derivar la clave de firma
-    const kSecret = new TextEncoder().encode(`AWS4${credentials.secret_key}`);
+    const kSecret = new TextEncoder().encode(`AWS4${secretKey}`);
     const kDate = await sign(kSecret, dateStamp);
     const kRegion = await sign(kDate, region);
     const kService = await sign(kRegion, 's3');
@@ -594,7 +606,7 @@ async function listContents(credentials, config = {}, path = '') {
       .join('');
     
     // Crear el header de autorización
-    const authorizationHeader = `${algorithm} Credential=${credentials.access_key}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signatureHex}`;
+    const authorizationHeader = `${algorithm} Credential=${accessKey}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signatureHex}`;
     
     // Realizar la petición
     const response = await fetch(url, {
