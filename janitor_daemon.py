@@ -449,6 +449,37 @@ class JanitorDaemon:
             except:
                 logger.warning(f"No se pudo parsear las credenciales del proveedor {proveedor_primario['nombre']}")
         
+        # Normalizar credenciales del proveedor primario antes de usarlo
+        if 'credenciales' in proveedor_primario and isinstance(proveedor_primario['credenciales'], dict):
+            credentials = proveedor_primario['credenciales']
+            provider_type = proveedor_primario['tipo'].lower()
+            
+            # Normalizar credenciales para S3/MinIO
+            if provider_type in ['s3', 'minio']:
+                normalized_credentials = {
+                    **credentials,
+                    'access_key': credentials.get('access_key') or credentials.get('accessKey'),
+                    'secret_key': credentials.get('secret_key') or credentials.get('secretKey')
+                }
+                
+                # Eliminar campo aws_account_id que causa problemas con boto3
+                if 'aws_account_id' in normalized_credentials:
+                    logger.info(f"Eliminando campo 'aws_account_id' no compatible con boto3 del proveedor primario")
+                    normalized_credentials.pop('aws_account_id', None)
+                
+                proveedor_primario['credenciales'] = normalized_credentials
+            
+            # Normalizar credenciales para GCP
+            elif provider_type == 'gcp':
+                # Para GCP, asegurar que key_file sea un diccionario
+                if 'key_file' in credentials and isinstance(credentials['key_file'], str):
+                    try:
+                        credentials['key_file'] = json.loads(credentials['key_file'])
+                        logger.info(f"Convertido key_file de formato string a diccionario para GCP en proveedor primario")
+                    except Exception as e:
+                        logger.warning(f"No se pudo convertir key_file a diccionario para GCP en proveedor primario: {e}")
+                proveedor_primario['credenciales'] = credentials
+        
         # Debug para ver qué tiene el proveedor
         logger.info(f"Estructura del proveedor primario: {proveedor_primario.keys()}")
         
@@ -569,7 +600,37 @@ class JanitorDaemon:
                                 proveedor_alt['credenciales'] = json.loads(proveedor_alt['credenciales'])
                             except:
                                 logger.warning(f"No se pudo parsear las credenciales del proveedor alternativo {proveedor_alt['nombre']}")
+                        
+                        # Normalizar credenciales del proveedor alternativo antes de usarlo
+                        if 'credenciales' in proveedor_alt and isinstance(proveedor_alt['credenciales'], dict):
+                            credentials = proveedor_alt['credenciales']
+                            provider_type = proveedor_alt['tipo'].lower()
+                            
+                            # Normalizar credenciales para S3/MinIO
+                            if provider_type in ['s3', 'minio']:
+                                normalized_credentials = {
+                                    **credentials,
+                                    'access_key': credentials.get('access_key') or credentials.get('accessKey'),
+                                    'secret_key': credentials.get('secret_key') or credentials.get('secretKey')
+                                }
                                 
+                                # Eliminar campo aws_account_id que causa problemas con boto3
+                                if 'aws_account_id' in normalized_credentials:
+                                    logger.info(f"Eliminando campo 'aws_account_id' no compatible con boto3 del proveedor alternativo")
+                                    normalized_credentials.pop('aws_account_id', None)
+                                
+                                proveedor_alt['credenciales'] = normalized_credentials
+                            
+                            # Normalizar credenciales para GCP
+                            elif provider_type == 'gcp':
+                                # Para GCP, asegurar que key_file sea un diccionario
+                                if 'key_file' in credentials and isinstance(credentials['key_file'], str):
+                                    try:
+                                        credentials['key_file'] = json.loads(credentials['key_file'])
+                                        logger.info(f"Convertido key_file de formato string a diccionario para GCP en proveedor alternativo")
+                                    except Exception as e:
+                                        logger.warning(f"No se pudo convertir key_file a diccionario para GCP en proveedor alternativo: {e}")
+                                proveedor_alt['credenciales'] = credentials
                         # CORRECCIÓN CRÍTICA: Extraer el nombre real del bucket para nubes alternativas
                         # Al igual que con la nube primaria, debemos usar el bucket real, no el nombre descriptivo
                         bucket_alt_real = None
@@ -652,6 +713,52 @@ class JanitorDaemon:
         
         # Log de proveedor para depuración
         logger.info(f"Detalles del proveedor: ID={provider.get('id')}, Nombre={provider.get('nombre')}, Tipo={provider.get('tipo')}")
+        
+        # Asegurar que tenemos las credenciales y configuración como diccionarios
+        if 'credenciales' in provider and not isinstance(provider['credenciales'], dict):
+            try:
+                provider['credenciales'] = json.loads(provider['credenciales'])
+            except Exception as e:
+                logger.error(f"Error parseando credenciales: {e}")
+                raise ValueError(f"No se pudieron parsear las credenciales del proveedor {provider.get('nombre')}")
+        
+        if 'configuracion' in provider and not isinstance(provider['configuracion'], dict):
+            try:
+                provider['configuracion'] = json.loads(provider['configuracion'])
+            except Exception as e:
+                logger.error(f"Error parseando configuración: {e}")
+                provider['configuracion'] = {}
+        
+        # Normalizar credenciales según el tipo de proveedor para evitar errores
+        if 'credenciales' in provider and isinstance(provider['credenciales'], dict):
+            credentials = provider['credenciales']
+            provider_type = provider['tipo'].lower()
+            
+            # Normalizar credenciales para S3/MinIO
+            if provider_type in ['s3', 'minio']:
+                normalized_credentials = {
+                    **credentials,
+                    'access_key': credentials.get('access_key') or credentials.get('accessKey'),
+                    'secret_key': credentials.get('secret_key') or credentials.get('secretKey')
+                }
+                
+                # Eliminar campo aws_account_id que causa problemas con boto3
+                if 'aws_account_id' in normalized_credentials:
+                    logger.info(f"Eliminando campo 'aws_account_id' no compatible con boto3")
+                    normalized_credentials.pop('aws_account_id', None)
+                
+                provider['credenciales'] = normalized_credentials
+            
+            # Normalizar credenciales para GCP
+            elif provider_type == 'gcp':
+                # Para GCP, asegurar que key_file sea un diccionario
+                if 'key_file' in credentials and isinstance(credentials['key_file'], str):
+                    try:
+                        credentials['key_file'] = json.loads(credentials['key_file'])
+                        logger.info(f"Normalizado: key_file convertido de formato string a diccionario para GCP")
+                    except Exception as e:
+                        logger.warning(f"No se pudo convertir key_file a diccionario para GCP: {e}")
+                provider['credenciales'] = credentials
         
         # La lógica de subida dependerá del tipo de proveedor
         provider_type = provider['tipo'].lower()
