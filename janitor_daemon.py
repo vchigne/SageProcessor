@@ -822,10 +822,36 @@ class JanitorDaemon:
         if endpoint_url:
             s3_params['endpoint_url'] = endpoint_url
             
+        # Depuración extendida
         logger.info(f"Parámetros para cliente S3: {list(s3_params.keys())}")
+        logger.info(f"Contenido completo de credenciales antes de filtrar: {str(credentials)}")
         
-        # Crear cliente S3 con parámetros depurados
-        s3_client = boto3.client('s3', **s3_params)
+        # Inspeccionar globales para detectar aws_account_id
+        global_vars = list(globals().keys())
+        if 'aws_account_id' in global_vars:
+            logger.warning(f"aws_account_id encontrado en el espacio global de nombres")
+            
+        # Crear cliente S3 directamente con parámetros explícitos
+        try:
+            logger.info("Intentando crear cliente S3 con parámetros explícitos...")
+            if endpoint_url:
+                s3_client = boto3.client(
+                    's3',
+                    aws_access_key_id=access_key,
+                    aws_secret_access_key=secret_key,
+                    region_name=region,
+                    endpoint_url=endpoint_url
+                )
+            else:
+                s3_client = boto3.client(
+                    's3',
+                    aws_access_key_id=access_key,
+                    aws_secret_access_key=secret_key,
+                    region_name=region
+                )
+        except Exception as e:
+            logger.error(f"Error creando cliente S3: {str(e)}")
+            raise
         
         # Bucket puede estar en credenciales o en configuración
         bucket = credentials.get('bucket') or config.get('bucket')
