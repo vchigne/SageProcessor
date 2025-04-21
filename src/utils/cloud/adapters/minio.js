@@ -258,33 +258,10 @@ async function testConnection(credentials, config = {}) {
  */
 async function listContents(credentials, config = {}, path = '') {
   try {
-    console.log('[MinIO] Listando contenido con credenciales:', JSON.stringify({
-      ...credentials,
-      secret_key: credentials.secret_key ? '***' : undefined,
-      secretKey: credentials.secretKey ? '***' : undefined,
-    }));
-    
-    // Obtener credenciales y configuración de múltiples ubicaciones posibles
-    const accessKey = credentials.access_key || credentials.accessKey;
-    const secretKey = credentials.secret_key || credentials.secretKey;
-    
-    // Buscar bucket en múltiples ubicaciones
-    let bucket = credentials.bucket || credentials.bucket_name || config.bucket;
-    
-    // Si el bucket está en configuración, moverlo a credenciales
-    if (!credentials.bucket && bucket) {
-      credentials.bucket = bucket;
-    }
-    
     // Validar credenciales
-    if (!accessKey || !secretKey || !bucket) {
-      console.error('[MinIO] Faltan credenciales:', { accessKey: !!accessKey, secretKey: !!secretKey, bucket: !!bucket });
+    if (!credentials.access_key || !credentials.secret_key || !credentials.bucket) {
       throw new Error('Faltan credenciales requeridas para MinIO');
     }
-    
-    // Asignar credenciales corregidas para uso posterior
-    credentials.access_key = accessKey;
-    credentials.secret_key = secretKey;
 
     // Verificar si el endpoint está en credenciales en lugar de config
     if (!config.endpoint) {
@@ -317,9 +294,9 @@ async function listContents(credentials, config = {}, path = '') {
     const port = config.port ? `:${config.port}` : '';
     const baseUrl = `${endpoint}${port}`;
     
-    // Ya tenemos 'bucket' en credentials.bucket asignado anteriormente
+    const bucket = credentials.bucket;
     const prefix = path ? encodeURIComponent(path + (path.endsWith('/') ? '' : '/')) : '';
-    const url = `${baseUrl}/${credentials.bucket}?delimiter=%2F&list-type=2&max-keys=100&prefix=${prefix}`;
+    const url = `${baseUrl}/${bucket}?delimiter=%2F&list-type=2&max-keys=100&prefix=${prefix}`;
     
     // Fecha y timestamp para la firma
     const amzDate = getAmzDate();
@@ -485,36 +462,62 @@ async function listContents(credentials, config = {}, path = '') {
       };
     });
     
-    // Extraer archivos
-    let contentMatches = Array.from(responseText.matchAll(/<Contents>[\s\S]*?<Key>(.*?)<\/Key>[\s\S]*?<Size>(.*?)<\/Size>[\s\S]*?<LastModified>(.*?)<\/LastModified>[\s\S]*?<\/Contents>/g));
+    // MEJORA: Extraer archivos utilizando múltiples patrones para capturar todos los formatos posibles
+    let contentMatches = [];
     
-    // Si no hay coincidencias con el patrón completo, intentar extraer solo las claves
-    if (contentMatches.length === 0) {
-      contentMatches = Array.from(responseText.matchAll(/<Key>(.*?)<\/Key>/g))
-        .filter(match => {
-          const filePath = match[1];
-          // Filtrar directorios (terminan en /) y quedarse con los archivos del nivel actual
-          return !filePath.endsWith('/') && 
-            (path === '' || filePath.startsWith(path)) &&
-            (path === '' || filePath.split('/').length === path.split('/').length + (path.endsWith('/') ? 0 : 1));
-        })
-        .map(match => [match[0], match[1], '0', new Date().toISOString()]); // Valores predeterminados para tamaño y fecha
+    // Patrón 1: Formato estándar completo (Key, Size, LastModified dentro de Contents)
+    const pattern1Matches = Array.from(responseText.matchAll(/<Contents>[\s\S]*?<Key>(.*?)<\/Key>[\s\S]*?<Size>(.*?)<\/Size>[\s\S]*?<LastModified>(.*?)<\/LastModified>[\s\S]*?<\/Contents>/g));
+    if (pattern1Matches.length > 0) {
+      contentMatches = contentMatches.concat(pattern1Matches);
     }
     
+    // Patrón 2: Key individual
+    if (contentMatches.length === 0) {
+      console.log('[MinIO] Usando patrón 2 (Key individual) para extraer archivos');
+      const pattern2Matches = Array.from(responseText.matchAll(/<Key>(.*?)<\/Key>/g))
+        .filter(match => !match[1].endsWith('/')) // No incluir carpetas
+        .map(match => [match[0], match[1], '0', new Date().toISOString()]); // Valores predeterminados
+      
+      contentMatches = contentMatches.concat(pattern2Matches);
+    }
+    
+    // Eliminar duplicados basados en la ruta del archivo
+    const uniqueFilePaths = new Set();
+    contentMatches = contentMatches.filter(match => {
+      const filePath = match[1];
+      if (uniqueFilePaths.has(filePath)) {
+        return false;
+      }
+      uniqueFilePaths.add(filePath);
+      return true;
+    });
+    
+    console.log(`[MinIO] Se encontraron ${contentMatches.length} archivos antes del filtrado`);
+    
+    // MEJORA: Filtrado simplificado y más permisivo
     const files = contentMatches
       .filter(match => {
         const filePath = match[1];
-        // Solo incluir archivos en el nivel actual (no subcarpetas)
-        if (filePath.endsWith('/')) return false; // Es un directorio
-        if (path && !filePath.startsWith(path)) return false; // No está en la ruta actual
         
-        // Si estamos en una carpeta, solo mostrar archivos de ese nivel (no de subcarpetas)
-        if (path) {
-          const relativePath = filePath.substring(path.length);
-          return !relativePath.includes('/');
+        // 1. No incluir directorios (terminan en /)
+        if (filePath.endsWith('/')) {
+          return false;
         }
         
-        return !filePath.includes('/'); // En la raíz, solo mostrar archivos de la raíz
+        // 2. Si estamos en una ruta específica, el archivo debe estar en esa ruta
+        if (path && !filePath.startsWith(path)) {
+          return false;
+        }
+        
+        // 3. Mostrar solo archivos del nivel actual, no de subcarpetas
+        if (path) {
+          const relativePath = filePath.substring(path.length);
+          const slashCount = (relativePath.match(/\//g) || []).length;
+          return slashCount === 0; // Solo archivos del nivel actual
+        }
+        
+        // 4. En la raíz, mostrar solo archivos de la raíz (sin subcarpetas)
+        return !filePath.includes('/');
       })
       .map(match => {
         const filePath = match[1];
@@ -539,49 +542,10 @@ async function listContents(credentials, config = {}, path = '') {
     const sortedFolders = folders.sort((a, b) => a.name.localeCompare(b.name));
     const sortedFiles = files.sort((a, b) => a.name.localeCompare(b.name));
     
-    // Calcular la ruta padre para navegación
-    let parentPath = '';
-    if (path) {
-      if (path.endsWith('/')) {
-        // Si la ruta termina con /, quitar el último segmento
-        const segments = path.split('/').filter(Boolean);
-        if (segments.length > 0) {
-          // Quitar el último segmento y mantener formato con / al final
-          parentPath = segments.slice(0, -1).join('/');
-          if (parentPath) parentPath += '/';
-        }
-      } else {
-        // Si no termina con /, quitar todo después del último /
-        const lastSlashIndex = path.lastIndexOf('/');
-        if (lastSlashIndex > 0) {
-          parentPath = path.substring(0, lastSlashIndex + 1);
-        }
-      }
-    }
-    
-    console.log(`[MinIO] Path: "${path}", calculando parentPath: "${parentPath}"`);
-    
-    // Estructurar respuesta para ser EXACTAMENTE compatible con SAGE Clouds
-    // Devolver TODOS los formatos posibles que podrían utilizarse
     return {
-      // Formato estándar del adaptador
       folders: sortedFolders,
       files: sortedFiles,
-      path: path,
-      parentPath: parentPath,
-      
-      // Formato S3 compatible
-      CommonPrefixes: sortedFolders.map(folder => ({
-        Prefix: folder.path
-      })),
-      Contents: sortedFiles.map(file => ({
-        Key: file.path,
-        Size: file.size,
-        LastModified: file.lastModified
-      })),
-      
-      // Formato necesario para el inspector de SAGE Clouds
-      directories: sortedFolders
+      path: path
     };
   } catch (error) {
     console.error('[MinIO] Error al listar contenido:', error);
@@ -777,20 +741,6 @@ async function listBuckets(credentials, config = {}) {
  */
 async function createBucket(credentials, config = {}, bucketName) {
   try {
-    // Imprimir los parámetros recibidos para diagnóstico
-    console.log(`[MinIO] Creando bucket con parámetros:`, {
-      credentialType: typeof credentials,
-      configType: typeof config,
-      bucketNameType: typeof bucketName,
-      bucketName: bucketName
-    });
-    
-    // Si bucketName es undefined o null pero está en config, usarlo desde allí
-    if (!bucketName && config && config.bucketName) {
-      console.log(`[MinIO] Usando bucketName desde config:`, config.bucketName);
-      bucketName = config.bucketName;
-    }
-    
     if (!bucketName) {
       throw new Error('El nombre del bucket es requerido');
     }
@@ -986,13 +936,9 @@ async function createBucket(credentials, config = {}, bucketName) {
   }
 }
 
-// Exportar como default para compatibilidad con el sistema de adaptadores
-const minioAdapter = {
+module.exports = {
   testConnection,
   listContents,
   listBuckets,
   createBucket
 };
-
-module.exports = minioAdapter;
-module.exports.default = minioAdapter;
