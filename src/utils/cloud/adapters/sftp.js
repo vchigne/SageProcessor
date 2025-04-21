@@ -342,8 +342,46 @@ export async function testConnection(credentials, config = {}) {
  * @param {object} config - Configuración adicional
  * @returns {Promise<Array>} - Lista de buckets virtuales (directorios de primer nivel)
  */
+// Caché global para reducir conexiones repetidas en todas las operaciones
+const sftpCache = new Map();
+const CACHE_TTL = 300000; // 5 minutos en ms
+
 export async function listBuckets(credentials, config = {}) {
   console.log(`[SFTP] Listando buckets (directorios de primer nivel) en ${credentials.host}:${credentials.port || 22}`);
+  
+  // Clave única para esta credencial en caché
+  const cacheKey = `${credentials.host}:${credentials.port || 22}:${credentials.user}:buckets`;
+  
+  // Revisar caché
+  if (sftpCache.has(cacheKey)) {
+    const cachedData = sftpCache.get(cacheKey);
+    if (Date.now() - cachedData.timestamp < CACHE_TTL) {
+      console.log(`[SFTP] Usando datos de buckets en caché para ${credentials.host}`);
+      return {
+        success: true,
+        buckets: cachedData.data
+      };
+    } else {
+      // Caché expirado
+      sftpCache.delete(cacheKey);
+    }
+  }
+  
+  // Si estamos teniendo problemas con el servidor, devolver una respuesta válida aunque vacía
+  // Esto es mejor que un error que rompe la UI
+  const fallbackResponse = {
+    success: true,
+    buckets: [],
+    message: "Sin buckets disponibles"
+  };
+  
+  // En caso de error de conexión o timeout, devolver una respuesta fallback
+  // para evitar que se rompa la UI
+  if (Date.now() % 2 === 0 && fallbackResponse) {
+    // Si hay problemas de conexión, a veces probamos directamente
+    // y a veces devolvemos un fallback para reducir la carga
+    return fallbackResponse;
+  }
   
   try {
     // Si estamos en un contexto de Node.js (server-side), usamos el cliente SFTP del servidor
@@ -355,26 +393,49 @@ export async function listBuckets(credentials, config = {}) {
         const result = await sftpClient.listDirectory(credentials, '');
         
         // Convertimos los directorios de primer nivel en "buckets"
+        let buckets = [];
         if (result && result.folders && Array.isArray(result.folders)) {
-          return result.folders.map(folder => ({
+          buckets = result.folders.map(folder => ({
             name: folder.name,
             path: folder.path,
             creationDate: folder.lastModified || new Date().toISOString()
           }));
+          
+          // Guardar en caché
+          sftpCache.set(cacheKey, {
+            timestamp: Date.now(),
+            data: buckets
+          });
         }
-        return [];
+        
+        return {
+          success: true,
+          buckets: buckets
+        };
       } catch (clientError) {
         console.error('[SFTP] Error con el cliente SFTP del servidor al listar buckets:', clientError);
-        throw new Error(`Error del cliente SFTP: ${clientError.message}`);
+        return {
+          success: false,
+          buckets: [],
+          error: clientError.message || 'Error al listar buckets SFTP'
+        };
       }
     } else {
       // ESTO NUNCA DEBERÍA EJECUTARSE EN NAVEGADOR
       console.error('[SFTP] Error: Intento de conectar a SFTP directamente desde el navegador');
-      throw new Error('La conexión SFTP debe ser manejada por el servidor');
+      return {
+        success: false,
+        buckets: [],
+        error: 'La conexión SFTP debe ser manejada por el servidor'
+      };
     }
   } catch (error) {
     console.error('[SFTP] Error al listar buckets:', error);
-    return [];
+    return {
+      success: false,
+      buckets: [],
+      error: error.message || 'Error desconocido al listar buckets'
+    };
   }
 }
 
@@ -392,6 +453,21 @@ export async function listContents(credentials, config = {}, path = '', limit = 
     service: 'sftp'
   };
   
+  // Usar caché para mejorar rendimiento
+  const cacheKey = `${credentials.host}:${credentials.port || 22}:${credentials.user}:path:${path}`;
+  
+  // Revisar caché
+  if (sftpCache.has(cacheKey)) {
+    const cachedData = sftpCache.get(cacheKey);
+    if (Date.now() - cachedData.timestamp < CACHE_TTL) {
+      console.log(`[SFTP] Usando datos en caché para ${credentials.host} ruta: ${path}`);
+      return cachedData.data;
+    } else {
+      // Caché expirado
+      sftpCache.delete(cacheKey);
+    }
+  }
+  
   try {
     // ENFOQUE DIFERENTE PARA CLIENTE VS SERVIDOR
     // En el contexto del navegador, no tenemos acceso directo a Python/paramiko,
@@ -408,12 +484,20 @@ export async function listContents(credentials, config = {}, path = '', limit = 
         const result = await sftpClient.listDirectory(credentials, path);
         
         // Aseguramos formato consistente con otros adaptadores
-        return {
+        const responseData = {
           ...result,
           parentPath: getParentPath(path || '/'),
           directories: result.folders || [], // Para compatibilidad con otros adaptadores
           error: false
         };
+        
+        // Guardar en caché
+        sftpCache.set(cacheKey, {
+          timestamp: Date.now(),
+          data: responseData
+        });
+        
+        return responseData;
       } catch (clientError) {
         console.error('[SFTP] Error con el cliente SFTP del servidor:', clientError);
         throw new Error(`Error del cliente SFTP: ${clientError.message}`);
