@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import Head from 'next/head';
-import { ArrowLeftIcon, InformationCircleIcon, FolderIcon, FolderOpenIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, InformationCircleIcon, FolderIcon, FolderOpenIcon, PlusCircleIcon } from '@heroicons/react/24/outline';
 import { Card, Text, Title, Button, Flex } from '@tremor/react';
 import { toast } from 'react-toastify';
 
@@ -77,6 +77,50 @@ export default function CloudSecretBuckets() {
     }
   };
   
+  // Crear un nuevo bucket
+  const createBucket = async (bucketName) => {
+    if (!bucketName) return;
+    
+    // Validar el nombre del bucket (letras minúsculas, números, puntos y guiones)
+    if (!/^[a-z0-9.-]+$/.test(bucketName)) {
+      toast.error('Nombre de bucket inválido. Use sólo letras minúsculas, números, puntos y guiones.');
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      toast.info(`Creando bucket "${bucketName}"...`);
+      
+      const response = await fetch(`/api/cloud-secrets/${id}/buckets`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bucketName })
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || error.message || 'Error al crear bucket');
+      }
+      
+      const result = await response.json();
+      
+      toast.success(`Bucket "${bucketName}" creado exitosamente`);
+      
+      // Recargar la lista de buckets
+      const bucketsRes = await fetch(`/api/cloud-secrets/${id}/buckets`);
+      const bucketsData = await bucketsRes.json();
+      
+      if (bucketsData.success) {
+        setBuckets(bucketsData.buckets || []);
+      }
+    } catch (error) {
+      console.error('Error al crear bucket:', error);
+      toast.error(`Error al crear bucket: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
   // Generar breadcrumbs
   const breadcrumbs = [
     { name: 'Inicio', href: '/' },
@@ -128,46 +172,73 @@ export default function CloudSecretBuckets() {
           </Card>
         ) : (
           <>
-            {buckets.length === 0 ? (
-              <Card className="mt-4">
-                <Text>No se encontraron buckets disponibles.</Text>
-              </Card>
-            ) : (
-              <div className="mt-4">
-                <Card>
-                  <div className="mb-2 flex justify-between items-center">
-                    <h4 className="text-sm font-medium text-gray-700">Buckets disponibles</h4>
-                    {/* Aquí se podría agregar un botón para crear un nuevo bucket si es necesario */}
-                  </div>
-                  <div className="border border-gray-200 rounded-md overflow-hidden">
-                    <ul className="divide-y divide-gray-200">
-                      {buckets.map((bucket) => (
-                        <li key={bucket.name} className="px-4 py-3 hover:bg-gray-50">
-                          <div className="flex justify-between items-center">
-                            <div className="flex items-center">
-                              <FolderIcon className="h-5 w-5 text-yellow-500 mr-2" />
-                              <span className="text-sm font-medium text-gray-900">{bucket.name}</span>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-4">
+              <div className="md:col-span-2">
+                {buckets.length === 0 ? (
+                  <Card className="h-full">
+                    <Text>No se encontraron buckets disponibles.</Text>
+                  </Card>
+                ) : (
+                  <Card className="h-full">
+                    <div className="mb-2 flex justify-between items-center">
+                      <h4 className="text-sm font-medium text-gray-700">Buckets disponibles</h4>
+                    </div>
+                    <div className="border border-gray-200 rounded-md overflow-hidden">
+                      <ul className="divide-y divide-gray-200">
+                        {buckets.map((bucket) => (
+                          <li key={bucket.name} className="px-4 py-3 hover:bg-gray-50">
+                            <div className="flex justify-between items-center">
+                              <div className="flex items-center">
+                                <FolderIcon className="h-5 w-5 text-yellow-500 mr-2" />
+                                <span className="text-sm font-medium text-gray-900">{bucket.name}</span>
+                              </div>
+                              <Link 
+                                href={`/admin/cloud-secrets/${id}/buckets/${bucket.name}`}
+                                className="text-xs text-indigo-600 hover:text-indigo-800 font-medium flex items-center"
+                              >
+                                <FolderOpenIcon className="h-4 w-4 mr-1" />
+                                Explorar
+                              </Link>
                             </div>
-                            <Link 
-                              href={`/admin/cloud-secrets/${id}/buckets/${bucket.name}`}
-                              className="text-xs text-indigo-600 hover:text-indigo-800 font-medium flex items-center"
-                            >
-                              <FolderOpenIcon className="h-4 w-4 mr-1" />
-                              Explorar
-                            </Link>
-                          </div>
-                          {bucket.creationDate && (
-                            <div className="ml-7 text-xs text-gray-500">
-                              Creado: {formatDate(bucket.creationDate)}
-                            </div>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
+                            {bucket.creationDate && (
+                              <div className="ml-7 text-xs text-gray-500">
+                                Creado: {formatDate(bucket.creationDate)}
+                              </div>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </Card>
+                )}
+              </div>
+              
+              {/* Panel lateral para crear bucket */}
+              <div className="md:col-span-1">
+                <Card className="h-full">
+                  <div className="mb-2">
+                    <h4 className="text-sm font-medium text-gray-700">Crear nuevo bucket</h4>
                   </div>
+                  <Text className="text-xs text-gray-500 mb-4">
+                    Puede crear un nuevo bucket en el proveedor de nube seleccionado.
+                  </Text>
+                  <Button 
+                    color="indigo"
+                    size="sm"
+                    className="w-full flex items-center justify-center"
+                    onClick={() => {
+                      const bucketName = prompt('Ingrese el nombre del nuevo bucket:');
+                      if (bucketName && bucketName.trim()) {
+                        createBucket(bucketName.trim());
+                      }
+                    }}
+                  >
+                    <PlusCircleIcon className="h-4 w-4 mr-1" />
+                    Crear bucket
+                  </Button>
                 </Card>
               </div>
-            )}
+            </div>
           </>
         )}
       </div>
