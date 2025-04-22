@@ -954,7 +954,7 @@ class MaterializationProcessor:
         
         try:
             cursor.execute("""
-                SELECT id, nombre, tipo, credenciales, configuracion, activo, estado
+                SELECT id, nombre, tipo, credenciales, configuracion, activo, estado, secreto_id
                 FROM cloud_providers
                 WHERE id = %s AND activo = true
             """, (provider_id,))
@@ -965,24 +965,142 @@ class MaterializationProcessor:
                 return {}
                 
             columns = [desc[0] for desc in cursor.description]
-            result = dict(zip(columns, row))
+            provider_dict = dict(zip(columns, row))
             
             # Convertir credenciales y configuración de JSON a dict si son strings
-            if 'credenciales' in result and isinstance(result['credenciales'], str):
+            if 'credenciales' in provider_dict and isinstance(provider_dict['credenciales'], str):
                 try:
-                    result['credenciales'] = json.loads(result['credenciales'])
+                    provider_dict['credenciales'] = json.loads(provider_dict['credenciales'])
                 except json.JSONDecodeError:
                     self.logger.error(f"Error decodificando credenciales del proveedor {provider_id}")
             
-            if 'configuracion' in result and isinstance(result['configuracion'], str):
+            if 'configuracion' in provider_dict and isinstance(provider_dict['configuracion'], str):
                 try:
-                    result['configuracion'] = json.loads(result['configuracion'])
+                    provider_dict['configuracion'] = json.loads(provider_dict['configuracion'])
                 except json.JSONDecodeError:
                     self.logger.error(f"Error decodificando configuración del proveedor {provider_id}")
-            elif 'configuracion' not in result or result['configuracion'] is None:
-                result['configuracion'] = {}
+            elif 'configuracion' not in provider_dict or provider_dict['configuracion'] is None:
+                provider_dict['configuracion'] = {}
+            
+            # ADAPTADO DE JANITOR_DAEMON: Verificar si este proveedor usa secreto_id
+            provider_name = provider_dict.get('nombre', f"ID:{provider_id}")
+            if 'secreto_id' in provider_dict and provider_dict['secreto_id'] is not None:
+                secreto_id = provider_dict['secreto_id']
+                self.logger.message(f"El proveedor {provider_id} - {provider_name} usa secreto_id: {secreto_id}")
                 
-            return result
+                try:
+                    # Obtener el secreto correspondiente
+                    cursor.execute(
+                        "SELECT id, nombre, tipo, secretos FROM cloud_secrets WHERE id = %s AND activo = TRUE",
+                        (secreto_id,)
+                    )
+                    secret_result = cursor.fetchone()
+                    
+                    if not secret_result:
+                        self.logger.error(f"No se encontró el secreto activo con ID {secreto_id} para el proveedor {provider_name}")
+                        # Si no hay secreto, intentar usar las credenciales directas (si existen)
+                        if not provider_dict.get('credenciales'):
+                            provider_dict['credenciales'] = {}
+                        return provider_dict
+                        
+                    # Convertir a diccionario
+                    secret_dict = dict(zip(
+                        ['id', 'nombre', 'tipo', 'secretos'], 
+                        secret_result
+                    ))
+                    
+                    # Si el secreto está en formato string JSON, convertirlo a dict
+                    if isinstance(secret_dict['secretos'], str):
+                        try:
+                            secret_dict['secretos'] = json.loads(secret_dict['secretos'])
+                        except json.JSONDecodeError:
+                            self.logger.error(f"No se pudo parsear el secreto del proveedor {provider_name}")
+                            # Si hay error con el secreto, intentar usar las credenciales directas
+                            return provider_dict
+                    
+                    # Verificar que los tipos coincidan
+                    if secret_dict['tipo'] != provider_dict['tipo']:
+                        self.logger.warning(
+                            f"El tipo del secreto ({secret_dict['tipo']}) no coincide con el tipo del proveedor ({provider_dict['tipo']})"
+                        )
+                        
+                    # Reemplazar las credenciales del proveedor con las del secreto
+                    self.logger.message(f"Reemplazando credenciales del proveedor {provider_name} con las del secreto {secret_dict['nombre']}")
+                    credentials = secret_dict['secretos']
+                    
+                    # Normalizar las credenciales según el tipo de proveedor
+                    if provider_dict['tipo'] == 's3' or provider_dict['tipo'] == 'minio':
+                        # Asegurar formato uniforme para S3/MinIO
+                        normalized_credentials = {
+                            **credentials,
+                            'access_key': credentials.get('access_key') or credentials.get('accessKey'),
+                            'secret_key': credentials.get('secret_key') or credentials.get('secretKey')
+                        }
+                        # Eliminar campos no reconocidos por boto3
+                        if 'aws_account_id' in normalized_credentials:
+                            self.logger.message(f"Eliminando campo 'aws_account_id' no compatible con boto3")
+                            normalized_credentials.pop('aws_account_id', None)
+                        
+                        # SOLUCIÓN: Para MinIO, transferir el bucket desde la configuración a las credenciales
+                        if provider_dict['tipo'] == 'minio':
+                            # Obtener el bucket desde la configuración
+                            if 'configuracion' in provider_dict and isinstance(provider_dict['configuracion'], dict):
+                                bucket_from_config = provider_dict['configuracion'].get('bucket')
+                                if bucket_from_config:
+                                    self.logger.message(f"Transferido bucket '{bucket_from_config}' desde configuración a credenciales para MinIO con secreto")
+                                    normalized_credentials['bucket'] = bucket_from_config
+                            else:
+                                self.logger.warning(f"Proveedor MinIO con secreto sin configuración para obtener bucket")
+                        
+                        provider_dict['credenciales'] = normalized_credentials
+                    elif provider_dict['tipo'] == 'azure':
+                        # SOLUCIÓN: Para Azure, transferir el container_name desde la configuración a las credenciales
+                        if 'configuracion' in provider_dict and isinstance(provider_dict['configuracion'], dict):
+                            # Buscar todas las posibles nomenclaturas para el contenedor en Azure
+                            container_from_config = (
+                                provider_dict['configuracion'].get('container_name') or 
+                                provider_dict['configuracion'].get('bucket') or
+                                provider_dict['configuracion'].get('container') or
+                                provider_dict['configuracion'].get('blob_container')
+                            )
+                            if container_from_config:
+                                self.logger.message(f"Transferido container '{container_from_config}' desde configuración a credenciales para Azure con secreto")
+                                credentials['container_name'] = container_from_config
+                                # También guardar como 'bucket' por compatibilidad
+                                if 'bucket' not in credentials:
+                                    credentials['bucket'] = container_from_config
+                        provider_dict['credenciales'] = credentials
+                    elif provider_dict['tipo'] == 'gcp':
+                        # Para GCP, asegurar que key_file sea un diccionario
+                        if 'key_file' in credentials and isinstance(credentials['key_file'], str):
+                            try:
+                                credentials['key_file'] = json.loads(credentials['key_file'])
+                                self.logger.message(f"Convertido key_file de formato string a diccionario para GCP")
+                            except json.JSONDecodeError:
+                                self.logger.warning(f"No se pudo convertir key_file a diccionario para GCP, manteniendo formato original")
+                        
+                        # SOLUCIÓN: Transferir el bucket_name desde la configuración a las credenciales
+                        if 'configuracion' in provider_dict and isinstance(provider_dict['configuracion'], dict):
+                            bucket_from_config = provider_dict['configuracion'].get('bucket_name') or provider_dict['configuracion'].get('bucket')
+                            if bucket_from_config:
+                                self.logger.message(f"Transferido bucket '{bucket_from_config}' desde configuración a credenciales para GCP con secreto")
+                                credentials['bucket_name'] = bucket_from_config
+                        provider_dict['credenciales'] = credentials
+                    else:
+                        # Para otros tipos, usar tal cual
+                        provider_dict['credenciales'] = credentials
+                    
+                    # Añadir información de que se usó un secreto
+                    provider_dict['usa_secreto'] = True
+                    provider_dict['secreto_nombre'] = secret_dict['nombre']
+                    
+                except Exception as e:
+                    self.logger.error(f"Error cargando secreto para proveedor {provider_name}: {str(e)}")
+            else:
+                # El proveedor NO usa secreto, continúa con el flujo normal
+                self.logger.message(f"El proveedor {provider_id} - {provider_name} usa credenciales directas")
+                
+            return provider_dict
         finally:
             cursor.close()
     
