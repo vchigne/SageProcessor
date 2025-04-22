@@ -14,7 +14,7 @@ import io
 import tempfile
 from typing import Optional, Dict, List, Any, Tuple, Union
 from urllib.parse import urlparse
-from azure.storage.blob import BlobServiceClient
+from azure.storage.blob import BlobServiceClient, ContentSettings
 from google.cloud.storage import Client as GCPStorageClient
 from google.oauth2 import service_account
 from .logger import SageLogger
@@ -838,7 +838,10 @@ class MaterializationProcessor:
             destination_key += file_ext
             
         blob_client = container_client.get_blob_client(destination_key)
-        blob_client.upload_blob(buffer, overwrite=True, content_settings={"content_type": content_type})
+        blob_client.upload_blob(buffer, overwrite=True, content_settings=ContentSettings(
+            content_type=content_type,
+            cache_control=None
+        ))
         
         self.logger.message(f"Archivo materializado en azure://{container_name}/{destination_key}")
     
