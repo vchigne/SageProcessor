@@ -223,7 +223,12 @@ class JanitorDaemon:
                             
                             provider_dict['credenciales'] = normalized_credentials
                         elif provider_dict['tipo'] == 'azure':
-                            # No se requiere normalización especial para Azure
+                            # SOLUCIÓN: Para Azure, transferir el container_name desde la configuración a las credenciales
+                            if 'configuracion' in provider_dict and isinstance(provider_dict['configuracion'], dict):
+                                container_from_config = provider_dict['configuracion'].get('container_name') or provider_dict['configuracion'].get('bucket')
+                                if container_from_config:
+                                    logger.info(f"Transferido container '{container_from_config}' desde configuración a credenciales para Azure con secreto")
+                                    credentials['container_name'] = container_from_config
                             provider_dict['credenciales'] = credentials
                         elif provider_dict['tipo'] == 'gcp':
                             # Para GCP, asegurar que key_file sea un diccionario
@@ -233,6 +238,13 @@ class JanitorDaemon:
                                     logger.info(f"Convertido key_file de formato string a diccionario para GCP")
                                 except:
                                     logger.warning(f"No se pudo convertir key_file a diccionario para GCP, manteniendo formato original")
+                            
+                            # SOLUCIÓN: Transferir el bucket_name desde la configuración a las credenciales
+                            if 'configuracion' in provider_dict and isinstance(provider_dict['configuracion'], dict):
+                                bucket_from_config = provider_dict['configuracion'].get('bucket_name') or provider_dict['configuracion'].get('bucket')
+                                if bucket_from_config:
+                                    logger.info(f"Transferido bucket '{bucket_from_config}' desde configuración a credenciales para GCP con secreto")
+                                    credentials['bucket_name'] = bucket_from_config
                             provider_dict['credenciales'] = credentials
                         else:
                             # Para otros tipos, usar tal cual
@@ -1054,7 +1066,11 @@ class JanitorDaemon:
         # Obtener string de conexión y nombre del contenedor
         # El string de conexión puede estar en credenciales o configuración
         connection_string = credentials.get('connection_string') or config.get('connection_string')
-        container_name = credentials.get('container_name') or config.get('container_name')
+        # Buscar el contenedor con diferentes nombres posibles (container_name, bucket, etc.)
+        container_name = (credentials.get('container_name') or 
+                          config.get('container_name') or 
+                          credentials.get('bucket') or 
+                          config.get('bucket'))
         
         if not connection_string:
             raise ValueError("No se configuró correctamente la cadena de conexión para Azure")
@@ -1062,8 +1078,28 @@ class JanitorDaemon:
         if not container_name:
             raise ValueError("No se configuró correctamente el nombre del contenedor para Azure")
             
+        logger.info(f"Usando container Azure: {container_name}")
+        
         # Crear cliente de servicio usando la cadena de conexión
         blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+        
+        # Verificar si el contenedor existe y crearlo si no
+        try:
+            # Primero verificar si el contenedor existe
+            container_exists = False
+            containers_list = blob_service_client.list_containers()
+            for container in containers_list:
+                if container.name == container_name:
+                    container_exists = True
+                    break
+            
+            if not container_exists:
+                logger.warning(f"El contenedor {container_name} no existe en Azure. Intentando crear...")
+                blob_service_client.create_container(container_name)
+                logger.info(f"Contenedor {container_name} creado exitosamente")
+        except Exception as e:
+            logger.error(f"Error verificando/creando contenedor Azure: {e}")
+            # Continuamos de todas formas, tal vez ya existe o será creado automáticamente
         
         # Obtener cliente de contenedor
         container_client = blob_service_client.get_container_client(container_name)
@@ -1081,7 +1117,7 @@ class JanitorDaemon:
                 try:
                     with open(local_file_path, "rb") as data:
                         container_client.upload_blob(name=blob_name, data=data, overwrite=True)
-                    logger.debug(f"Archivo {local_file_path} subido a azure://{container_name}/{blob_name}")
+                    logger.info(f"✓ Archivo {local_file_path} subido exitosamente a azure://{container_name}/{blob_name}")
                 except Exception as e:
                     logger.error(f"Error subiendo archivo a Azure: {e}")
                     raise
@@ -1101,7 +1137,7 @@ class JanitorDaemon:
         
         # Obtener el archivo de clave y el nombre del bucket (puede estar en credenciales o configuración)
         key_data = credentials.get('key_file') or config.get('key_file')
-        bucket_name = credentials.get('bucket_name') or config.get('bucket_name')
+        bucket_name = credentials.get('bucket_name') or config.get('bucket_name') or credentials.get('bucket') or config.get('bucket')
         
         if not key_data:
             raise ValueError("No se encontró el archivo de clave (key_file) para GCP")
@@ -1109,18 +1145,34 @@ class JanitorDaemon:
         if not bucket_name:
             raise ValueError("No se encontró el nombre del bucket para GCP")
         
+        logger.info(f"Usando bucket GCP: {bucket_name}")
+        
         # Crear archivo temporal para las credenciales
         fd, path = tempfile.mkstemp()
         try:
             with os.fdopen(fd, 'w') as tmp:
                 # Guardar credenciales en archivo JSON
-                tmp.write(key_data)
+                # Si key_data es un diccionario, convertirlo a string JSON
+                if isinstance(key_data, dict):
+                    import json
+                    logger.info("Convirtiendo key_file de diccionario a JSON string para escribir al archivo")
+                    key_data_str = json.dumps(key_data)
+                    tmp.write(key_data_str)
+                else:
+                    tmp.write(key_data)
             
             # Crear cliente de almacenamiento
             os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = path
             storage_client = storage.Client()
             
             bucket = storage_client.bucket(bucket_name)
+            
+            # Verificar que el bucket existe
+            logger.info(f"Verificando que el bucket {bucket_name} existe en GCP")
+            if not bucket.exists():
+                logger.warning(f"¡El bucket {bucket_name} no existe en GCP! Intentando crear...")
+                bucket.create()
+                logger.info(f"Bucket {bucket_name} creado exitosamente")
             
             # Subir todos los archivos en el directorio
             for root, dirs, files in os.walk(local_path):
@@ -1135,7 +1187,7 @@ class JanitorDaemon:
                     try:
                         blob = bucket.blob(blob_name)
                         blob.upload_from_filename(local_file_path)
-                        logger.debug(f"Archivo {local_file_path} subido a gs://{bucket_name}/{blob_name}")
+                        logger.info(f"✓ Archivo {local_file_path} subido exitosamente a gs://{bucket_name}/{blob_name}")
                     except Exception as e:
                         logger.error(f"Error subiendo archivo a GCS: {e}")
                         raise
