@@ -225,10 +225,19 @@ class JanitorDaemon:
                         elif provider_dict['tipo'] == 'azure':
                             # SOLUCIÓN: Para Azure, transferir el container_name desde la configuración a las credenciales
                             if 'configuracion' in provider_dict and isinstance(provider_dict['configuracion'], dict):
-                                container_from_config = provider_dict['configuracion'].get('container_name') or provider_dict['configuracion'].get('bucket')
+                                # Buscar todas las posibles nomenclaturas para el contenedor en Azure
+                                container_from_config = (
+                                    provider_dict['configuracion'].get('container_name') or 
+                                    provider_dict['configuracion'].get('bucket') or
+                                    provider_dict['configuracion'].get('container') or
+                                    provider_dict['configuracion'].get('blob_container')
+                                )
                                 if container_from_config:
                                     logger.info(f"Transferido container '{container_from_config}' desde configuración a credenciales para Azure con secreto")
                                     credentials['container_name'] = container_from_config
+                                    # También guardar como 'bucket' por compatibilidad
+                                    if 'bucket' not in credentials:
+                                        credentials['bucket'] = container_from_config
                             provider_dict['credenciales'] = credentials
                         elif provider_dict['tipo'] == 'gcp':
                             # Para GCP, asegurar que key_file sea un diccionario
@@ -1039,14 +1048,17 @@ class JanitorDaemon:
                 
                 # Subir el archivo usando la API nativa de MinIO
                 try:
-                    logger.info(f"Subiendo archivo {local_file_path} a minio://{bucket}/{minio_key}")
-                    minio_client.fput_object(
-                        bucket, 
-                        minio_key, 
-                        local_file_path,
-                        content_type=content_type
-                    )
-                    logger.info(f"✓ Archivo {local_file_path} subido exitosamente a minio://{bucket}/{minio_key}")
+                    if os.path.exists(local_file_path):
+                        logger.info(f"Subiendo archivo {local_file_path} a minio://{bucket}/{minio_key}")
+                        minio_client.fput_object(
+                            bucket, 
+                            minio_key, 
+                            local_file_path,
+                            content_type=content_type
+                        )
+                        logger.info(f"✓ Archivo {local_file_path} subido exitosamente a minio://{bucket}/{minio_key}")
+                    else:
+                        logger.warning(f"Archivo no encontrado, omitiendo: {local_file_path}")
                 except Exception as e:
                     logger.error(f"Error subiendo archivo a MinIO: {str(e)}")
                     raise ValueError(f"Error subiendo archivo a MinIO: {str(e)}")
@@ -1070,7 +1082,11 @@ class JanitorDaemon:
         container_name = (credentials.get('container_name') or 
                           config.get('container_name') or 
                           credentials.get('bucket') or 
-                          config.get('bucket'))
+                          config.get('bucket') or
+                          credentials.get('container') or
+                          config.get('container') or
+                          credentials.get('blob_container') or
+                          config.get('blob_container'))
         
         if not connection_string:
             raise ValueError("No se configuró correctamente la cadena de conexión para Azure")
@@ -1115,9 +1131,12 @@ class JanitorDaemon:
                 
                 # Subir el archivo
                 try:
-                    with open(local_file_path, "rb") as data:
-                        container_client.upload_blob(name=blob_name, data=data, overwrite=True)
-                    logger.info(f"✓ Archivo {local_file_path} subido exitosamente a azure://{container_name}/{blob_name}")
+                    if os.path.exists(local_file_path):
+                        with open(local_file_path, "rb") as data:
+                            container_client.upload_blob(name=blob_name, data=data, overwrite=True)
+                        logger.info(f"✓ Archivo {local_file_path} subido exitosamente a azure://{container_name}/{blob_name}")
+                    else:
+                        logger.warning(f"Archivo no encontrado, omitiendo: {local_file_path}")
                 except Exception as e:
                     logger.error(f"Error subiendo archivo a Azure: {e}")
                     raise
@@ -1185,9 +1204,12 @@ class JanitorDaemon:
                     
                     # Subir el archivo
                     try:
-                        blob = bucket.blob(blob_name)
-                        blob.upload_from_filename(local_file_path)
-                        logger.info(f"✓ Archivo {local_file_path} subido exitosamente a gs://{bucket_name}/{blob_name}")
+                        if os.path.exists(local_file_path):
+                            blob = bucket.blob(blob_name)
+                            blob.upload_from_filename(local_file_path)
+                            logger.info(f"✓ Archivo {local_file_path} subido exitosamente a gs://{bucket_name}/{blob_name}")
+                        else:
+                            logger.warning(f"Archivo no encontrado, omitiendo: {local_file_path}")
                     except Exception as e:
                         logger.error(f"Error subiendo archivo a GCS: {e}")
                         raise
@@ -1268,8 +1290,11 @@ class JanitorDaemon:
                     
                     # Subir el archivo
                     try:
-                        sftp_client.put(local_file_path, remote_file_path)
-                        logger.debug(f"Archivo {local_file_path} subido a sftp://{host}:{port}/{remote_file_path}")
+                        if os.path.exists(local_file_path):
+                            sftp_client.put(local_file_path, remote_file_path)
+                            logger.info(f"✓ Archivo {local_file_path} subido exitosamente a sftp://{host}:{port}/{remote_file_path}")
+                        else:
+                            logger.warning(f"Archivo no encontrado, omitiendo: {local_file_path}")
                     except Exception as e:
                         logger.error(f"Error subiendo archivo a SFTP: {e}")
                         raise
