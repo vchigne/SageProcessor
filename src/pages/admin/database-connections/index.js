@@ -1,43 +1,54 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '@/components/Layout';
-import { 
-  Card, 
-  Title, 
-  Text, 
-  Button, 
+import {
+  Card,
+  Title,
+  Text,
   Badge,
   Table,
   TableHead,
   TableRow,
   TableHeaderCell,
   TableBody,
-  TableCell
+  TableCell,
+  Button,
+  Grid,
+  Col,
+  Metric,
+  Flex
 } from '@tremor/react';
-import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
+import {
+  PlusIcon,
+  PencilIcon,
+  TrashIcon,
+  DatabaseIcon,
+  ServerIcon,
+  LinkIcon
+} from '@heroicons/react/24/outline';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import Breadcrumbs from '@/components/Breadcrumbs';
 import { format } from 'date-fns';
 import { toast } from 'react-toastify';
 
-export default function DatabaseConnectionsList() {
+export default function DatabaseConnectionsPage() {
   const router = useRouter();
-  const [dbConnections, setDBConnections] = useState([]);
+  const [connections, setConnections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [connectionToDelete, setConnectionToDelete] = useState(null);
 
   useEffect(() => {
-    fetchDBConnections();
+    fetchConnections();
   }, []);
 
-  const fetchDBConnections = async () => {
+  const fetchConnections = async () => {
     try {
       setLoading(true);
       const response = await fetch('/api/admin/database-connections');
-      if (!response.ok) throw new Error('Error al cargar conexiones de bases de datos');
+      if (!response.ok) throw new Error('Error al cargar conexiones');
       const data = await response.json();
-      setDBConnections(data);
+      setConnections(data);
     } catch (error) {
       console.error('Error:', error);
       toast.error('Error al cargar las conexiones de bases de datos');
@@ -63,37 +74,51 @@ export default function DatabaseConnectionsList() {
         method: 'DELETE',
       });
       
-      if (!response.ok) throw new Error('Error al eliminar la conexión');
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Error al eliminar la conexión');
+      }
       
-      setDBConnections(dbConnections.filter(c => c.id !== connectionToDelete.id));
+      setConnections(connections.filter(c => c.id !== connectionToDelete.id));
       toast.success('Conexión eliminada correctamente');
     } catch (error) {
       console.error('Error:', error);
-      toast.error('Error al eliminar la conexión');
+      toast.error(error.message || 'Error al eliminar la conexión');
     } finally {
       setConnectionToDelete(null);
       setConfirmOpen(false);
     }
   };
 
-  const getStatusBadge = (status) => {
-    switch (status) {
-      case 'activa':
-        return <Badge color="green">Activa</Badge>;
-      case 'error':
-        return <Badge color="red">Error</Badge>;
-      case 'pendiente':
+  const getServerTypeBadge = (type) => {
+    switch (type) {
+      case 'postgresql':
+        return <Badge color="blue">PostgreSQL</Badge>;
+      case 'mysql':
+        return <Badge color="orange">MySQL</Badge>;
+      case 'sqlserver':
+        return <Badge color="indigo">SQL Server</Badge>;
+      case 'duckdb':
+        return <Badge color="green">DuckDB</Badge>;
       default:
-        return <Badge color="gray">Pendiente</Badge>;
+        return <Badge color="gray">{type}</Badge>;
     }
   };
+
+  // Estadísticas básicas
+  const activeConnections = connections.filter(c => c.activo).length;
+  const dbTypes = {};
+  connections.forEach(conn => {
+    dbTypes[conn.tipo_servidor] = (dbTypes[conn.tipo_servidor] || 0) + 1;
+  });
 
   return (
     <Layout>
       <div className="px-4 sm:px-6 lg:px-8 py-8 w-full max-w-9xl mx-auto">
         <Breadcrumbs items={[
           { label: 'Admin', href: '/admin' },
-          { label: 'Conexiones a Bases de Datos', current: true }
+          { label: 'Materializaciones', href: '/admin/materializations' },
+          { label: 'Conexiones BD', current: true }
         ]} />
         
         <div className="sm:flex sm:justify-between sm:items-center mb-8">
@@ -109,6 +134,44 @@ export default function DatabaseConnectionsList() {
           </div>
         </div>
 
+        <Grid numCols={1} numColsSm={2} numColsLg={3} className="gap-6 mb-6">
+          <Col>
+            <Card decoration="top" decorationColor="blue">
+              <Flex justifyContent="start" className="space-x-4">
+                <DatabaseIcon className="w-8 h-8 text-blue-500" />
+                <div>
+                  <Text>Conexiones Activas</Text>
+                  <Metric>{activeConnections} de {connections.length}</Metric>
+                </div>
+              </Flex>
+            </Card>
+          </Col>
+          
+          <Col>
+            <Card decoration="top" decorationColor="orange">
+              <Flex justifyContent="start" className="space-x-4">
+                <ServerIcon className="w-8 h-8 text-orange-500" />
+                <div>
+                  <Text>Tipos de Bases de Datos</Text>
+                  <Metric>{Object.keys(dbTypes).length}</Metric>
+                </div>
+              </Flex>
+            </Card>
+          </Col>
+          
+          <Col numColSpanSm={2} numColSpanLg={1}>
+            <Card decoration="top" decorationColor="green">
+              <Flex justifyContent="start" className="space-x-4">
+                <LinkIcon className="w-8 h-8 text-green-500" />
+                <div>
+                  <Text>Tablas Materializadas</Text>
+                  <Metric>{connections.reduce((acc, conn) => acc + (conn.table_count || 0), 0)}</Metric>
+                </div>
+              </Flex>
+            </Card>
+          </Col>
+        </Grid>
+
         <Card>
           {loading ? (
             <div className="text-center p-4">Cargando...</div>
@@ -119,36 +182,59 @@ export default function DatabaseConnectionsList() {
                   <TableHeaderCell>Nombre</TableHeaderCell>
                   <TableHeaderCell>Base de Datos</TableHeaderCell>
                   <TableHeaderCell>Servidor</TableHeaderCell>
+                  <TableHeaderCell>Secret</TableHeaderCell>
+                  <TableHeaderCell>Tablas</TableHeaderCell>
                   <TableHeaderCell>Estado</TableHeaderCell>
-                  <TableHeaderCell>Último Test</TableHeaderCell>
                   <TableHeaderCell>Acciones</TableHeaderCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {dbConnections.length === 0 ? (
+                {connections.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center">
-                      No hay conexiones a bases de datos configuradas
+                    <TableCell colSpan={7} className="text-center">
+                      <div className="py-8">
+                        <Text className="text-lg text-gray-500">No hay conexiones a bases de datos configuradas</Text>
+                        <div className="mt-4">
+                          <Button
+                            variant="light"
+                            size="lg"
+                            icon={PlusIcon}
+                            onClick={() => router.push('/admin/database-connections/new')}
+                          >
+                            Configurar nueva conexión
+                          </Button>
+                        </div>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ) : (
-                  dbConnections.map((connection) => (
+                  connections.map((connection) => (
                     <TableRow key={connection.id}>
-                      <TableCell>{connection.nombre}</TableCell>
                       <TableCell>
-                        <div>
-                          <Text>{connection.base_datos}</Text>
-                          {connection.esquema && (
-                            <Text className="text-xs text-gray-500">Esquema: {connection.esquema}</Text>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>{connection.secret_nombre}</TableCell>
-                      <TableCell>
-                        {getStatusBadge(connection.estado_conexion)}
+                        <div className="font-medium">{connection.nombre}</div>
+                        {connection.descripcion && (
+                          <div className="text-gray-500 text-xs truncate max-w-xs">{connection.descripcion}</div>
+                        )}
                       </TableCell>
                       <TableCell>
-                        {connection.ultimo_test ? format(new Date(connection.ultimo_test), 'dd/MM/yyyy HH:mm') : 'Nunca'}
+                        <div className="font-medium">{connection.database || '-'}</div>
+                        {connection.schema && (
+                          <div className="text-gray-500 text-xs">Schema: {connection.schema}</div>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {getServerTypeBadge(connection.tipo_servidor)}
+                      </TableCell>
+                      <TableCell>
+                        {connection.secret_name || '-'}
+                      </TableCell>
+                      <TableCell>
+                        {connection.table_count || 0}
+                      </TableCell>
+                      <TableCell>
+                        <Badge color={connection.activo ? 'green' : 'gray'}>
+                          {connection.activo ? 'Activo' : 'Inactivo'}
+                        </Badge>
                       </TableCell>
                       <TableCell>
                         <div className="flex space-x-2">
@@ -183,7 +269,7 @@ export default function DatabaseConnectionsList() {
       <ConfirmDialog
         open={confirmOpen}
         title="Confirmar eliminación"
-        message={`¿Está seguro que desea eliminar la conexión "${connectionToDelete?.nombre}"? Esta acción no se puede deshacer.`}
+        message={`¿Está seguro que desea eliminar la conexión "${connectionToDelete?.nombre}"? Esta acción no se puede deshacer y podría afectar las materializaciones asociadas.`}
         confirmLabel="Eliminar"
         cancelLabel="Cancelar"
         onConfirm={confirmDelete}

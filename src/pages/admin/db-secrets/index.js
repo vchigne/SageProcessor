@@ -5,39 +5,51 @@ import {
   Card, 
   Title, 
   Text, 
-  Button, 
   Badge,
   Table,
   TableHead,
   TableRow,
   TableHeaderCell,
   TableBody,
-  TableCell
+  TableCell,
+  Button,
+  Grid,
+  Col,
+  Metric,
+  Flex
 } from '@tremor/react';
-import { PlusIcon, PencilIcon, TrashIcon, EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
+import { 
+  PlusIcon, 
+  PencilIcon, 
+  TrashIcon, 
+  ServerIcon, 
+  KeyIcon, 
+  DatabaseIcon, 
+  LockClosedIcon 
+} from '@heroicons/react/24/outline';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import Breadcrumbs from '@/components/Breadcrumbs';
 import { format } from 'date-fns';
 import { toast } from 'react-toastify';
 
-export default function DBSecretsList() {
+export default function DBSecretsPage() {
   const router = useRouter();
-  const [dbSecrets, setDBSecrets] = useState([]);
+  const [secrets, setSecrets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [secretToDelete, setSecretToDelete] = useState(null);
 
   useEffect(() => {
-    fetchDBSecrets();
+    fetchSecrets();
   }, []);
 
-  const fetchDBSecrets = async () => {
+  const fetchSecrets = async () => {
     try {
       setLoading(true);
       const response = await fetch('/api/admin/db-secrets');
-      if (!response.ok) throw new Error('Error al cargar secretos de bases de datos');
+      if (!response.ok) throw new Error('Error al cargar secretos');
       const data = await response.json();
-      setDBSecrets(data);
+      setSecrets(data);
     } catch (error) {
       console.error('Error:', error);
       toast.error('Error al cargar los secretos de bases de datos');
@@ -63,33 +75,24 @@ export default function DBSecretsList() {
         method: 'DELETE',
       });
       
-      if (!response.ok) throw new Error('Error al eliminar el secreto');
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Error al eliminar el secreto');
+      }
       
-      setDBSecrets(dbSecrets.filter(s => s.id !== secretToDelete.id));
+      setSecrets(secrets.filter(s => s.id !== secretToDelete.id));
       toast.success('Secreto eliminado correctamente');
     } catch (error) {
       console.error('Error:', error);
-      toast.error('Error al eliminar el secreto');
+      toast.error(error.message || 'Error al eliminar el secreto');
     } finally {
       setSecretToDelete(null);
       setConfirmOpen(false);
     }
   };
 
-  const getStatusBadge = (status) => {
-    switch (status) {
-      case 'activo':
-        return <Badge color="green">Activo</Badge>;
-      case 'error':
-        return <Badge color="red">Error</Badge>;
-      case 'inactivo':
-      default:
-        return <Badge color="gray">Inactivo</Badge>;
-    }
-  };
-
-  const getTypeBadge = (tipo) => {
-    switch (tipo) {
+  const getServerTypeBadge = (type) => {
+    switch (type) {
       case 'postgresql':
         return <Badge color="blue">PostgreSQL</Badge>;
       case 'mysql':
@@ -99,16 +102,24 @@ export default function DBSecretsList() {
       case 'duckdb':
         return <Badge color="green">DuckDB</Badge>;
       default:
-        return <Badge color="gray">{tipo}</Badge>;
+        return <Badge color="gray">{type}</Badge>;
     }
   };
+
+  // Estadísticas básicas
+  const activeSecrets = secrets.filter(s => s.activo).length;
+  const dbTypes = {};
+  secrets.forEach(secret => {
+    dbTypes[secret.tipo_servidor] = (dbTypes[secret.tipo_servidor] || 0) + 1;
+  });
 
   return (
     <Layout>
       <div className="px-4 sm:px-6 lg:px-8 py-8 w-full max-w-9xl mx-auto">
         <Breadcrumbs items={[
           { label: 'Admin', href: '/admin' },
-          { label: 'Secretos de Bases de Datos', current: true }
+          { label: 'Materializaciones', href: '/admin/materializations' },
+          { label: 'Secretos de BD', current: true }
         ]} />
         
         <div className="sm:flex sm:justify-between sm:items-center mb-8">
@@ -124,6 +135,44 @@ export default function DBSecretsList() {
           </div>
         </div>
 
+        <Grid numCols={1} numColsSm={2} numColsLg={3} className="gap-6 mb-6">
+          <Col>
+            <Card decoration="top" decorationColor="blue">
+              <Flex justifyContent="start" className="space-x-4">
+                <KeyIcon className="w-8 h-8 text-blue-500" />
+                <div>
+                  <Text>Secretos Activos</Text>
+                  <Metric>{activeSecrets} de {secrets.length}</Metric>
+                </div>
+              </Flex>
+            </Card>
+          </Col>
+          
+          <Col>
+            <Card decoration="top" decorationColor="orange">
+              <Flex justifyContent="start" className="space-x-4">
+                <DatabaseIcon className="w-8 h-8 text-orange-500" />
+                <div>
+                  <Text>Tipos de Bases de Datos</Text>
+                  <Metric>{Object.keys(dbTypes).length}</Metric>
+                </div>
+              </Flex>
+            </Card>
+          </Col>
+          
+          <Col numColSpanSm={2} numColSpanLg={1}>
+            <Card decoration="top" decorationColor="green">
+              <Flex justifyContent="start" className="space-x-4">
+                <LockClosedIcon className="w-8 h-8 text-green-500" />
+                <div>
+                  <Text>Seguridad</Text>
+                  <Metric>Activada</Metric>
+                </div>
+              </Flex>
+            </Card>
+          </Col>
+        </Grid>
+
         <Card>
           {loading ? (
             <div className="text-center p-4">Cargando...</div>
@@ -132,41 +181,54 @@ export default function DBSecretsList() {
               <TableHead>
                 <TableRow>
                   <TableHeaderCell>Nombre</TableHeaderCell>
-                  <TableHeaderCell>Tipo</TableHeaderCell>
-                  <TableHeaderCell>Servidor</TableHeaderCell>
+                  <TableHeaderCell>Tipo de Servidor</TableHeaderCell>
+                  <TableHeaderCell>Bases de Datos</TableHeaderCell>
+                  <TableHeaderCell>Fecha de Creación</TableHeaderCell>
                   <TableHeaderCell>Estado</TableHeaderCell>
-                  <TableHeaderCell>Último Test</TableHeaderCell>
                   <TableHeaderCell>Acciones</TableHeaderCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {dbSecrets.length === 0 ? (
+                {secrets.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} className="text-center">
-                      No hay secretos de bases de datos configurados
+                      <div className="py-8">
+                        <Text className="text-lg text-gray-500">No hay secretos de bases de datos configurados</Text>
+                        <div className="mt-4">
+                          <Button
+                            variant="light"
+                            size="lg"
+                            icon={PlusIcon}
+                            onClick={() => router.push('/admin/db-secrets/new')}
+                          >
+                            Configurar nuevo secreto
+                          </Button>
+                        </div>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ) : (
-                  dbSecrets.map((secret) => (
+                  secrets.map((secret) => (
                     <TableRow key={secret.id}>
                       <TableCell>
                         <div className="font-medium">{secret.nombre}</div>
                         {secret.descripcion && (
-                          <div className="text-gray-500 text-xs">{secret.descripcion}</div>
+                          <div className="text-gray-500 text-xs truncate max-w-xs">{secret.descripcion}</div>
                         )}
                       </TableCell>
                       <TableCell>
-                        {getTypeBadge(secret.tipo)}
+                        {getServerTypeBadge(secret.tipo_servidor)}
                       </TableCell>
                       <TableCell>
-                        <div>{secret.servidor}</div>
-                        <div className="text-gray-500 text-xs">Puerto: {secret.puerto}</div>
+                        {secret.database_count || 0}
                       </TableCell>
                       <TableCell>
-                        {getStatusBadge(secret.estado)}
+                        {secret.fecha_creacion && format(new Date(secret.fecha_creacion), 'dd/MM/yyyy HH:mm')}
                       </TableCell>
                       <TableCell>
-                        {secret.ultimo_test ? format(new Date(secret.ultimo_test), 'dd/MM/yyyy HH:mm') : 'Nunca'}
+                        <Badge color={secret.activo ? 'green' : 'gray'}>
+                          {secret.activo ? 'Activo' : 'Inactivo'}
+                        </Badge>
                       </TableCell>
                       <TableCell>
                         <div className="flex space-x-2">
@@ -201,7 +263,7 @@ export default function DBSecretsList() {
       <ConfirmDialog
         open={confirmOpen}
         title="Confirmar eliminación"
-        message={`¿Está seguro que desea eliminar el secreto "${secretToDelete?.nombre}"? Esta acción no se puede deshacer.`}
+        message={`¿Está seguro que desea eliminar el secreto "${secretToDelete?.nombre}"? Esta acción no se puede deshacer y podría afectar las bases de datos asociadas.`}
         confirmLabel="Eliminar"
         cancelLabel="Cancelar"
         onConfirm={confirmDelete}
