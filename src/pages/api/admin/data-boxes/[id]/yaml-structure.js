@@ -19,7 +19,7 @@ export default async function handler(req, res) {
     
     // Obtener la casilla y su contenido YAML
     const query = `
-      SELECT id, nombre, descripcion, yaml_content, nombre_yaml 
+      SELECT id, nombre, descripcion, yaml_contenido as yaml_content, nombre_yaml 
       FROM casillas 
       WHERE id = $1
     `;
@@ -32,24 +32,44 @@ export default async function handler(req, res) {
     
     const casilla = rows[0];
     
-    // Si no hay contenido YAML
+    // Nota: no hacemos un return temprano aquí, manejamos el caso de YAML vacío más abajo
+    // Solo registramos que el contenido YAML no está definido
     if (!casilla.yaml_content) {
-      return res.status(404).json({ message: 'La casilla no tiene contenido YAML definido' });
+      console.log(`Casilla ${casillaId} no tiene contenido YAML definido`);
     }
     
     // Analizar estructura del YAML
     let yamlStructure;
     try {
       // Convertir cadena JSON a objeto
-      let yamlContent = typeof casilla.yaml_content === 'string' 
-        ? JSON.parse(casilla.yaml_content) 
-        : casilla.yaml_content;
+      let yamlContent;
+      
+      if (!casilla.yaml_content) {
+        // En caso de que no haya contenido YAML, crear una estructura vacía
+        yamlContent = { files: [] };
+        console.log('YAML contenido no encontrado, usando estructura vacía');
+      } else {
+        try {
+          // Intentar parsear si es una cadena JSON
+          yamlContent = typeof casilla.yaml_content === 'string' 
+            ? JSON.parse(casilla.yaml_content) 
+            : casilla.yaml_content;
+        } catch (parseError) {
+          console.error('Error al parsear YAML contenido:', parseError);
+          yamlContent = { files: [] };
+        }
+      }
+      
+      // Si después de todo el yamlContent es null o undefined, usar objeto vacío
+      if (!yamlContent) {
+        yamlContent = { files: [] };
+      }
         
       // Extraer estructura de archivos/tablas del YAML
       let fileStructures = [];
       
       // Extraer los archivos definidos en el YAML
-      if (yamlContent.files) {
+      if (yamlContent.files && yamlContent.files.length > 0) {
         // Formato multi-archivo
         fileStructures = yamlContent.files.map(file => {
           // Extraer las columnas de cada archivo
@@ -78,6 +98,35 @@ export default async function handler(req, res) {
             primary: col.primary || false,
             description: col.description || ''
           }))
+        }];
+      } else {
+        // Si no hay estructura definida, proporcionar un ejemplo básico
+        fileStructures = [{
+          name: 'Ejemplo',
+          description: 'Estructura de ejemplo generada automáticamente',
+          columns: [
+            {
+              name: 'id',
+              type: 'integer',
+              required: true,
+              primary: true,
+              description: 'Identificador único'
+            },
+            {
+              name: 'nombre',
+              type: 'string',
+              required: true,
+              primary: false,
+              description: 'Nombre del registro'
+            },
+            {
+              name: 'fecha',
+              type: 'date',
+              required: false,
+              primary: false,
+              description: 'Fecha del registro'
+            }
+          ]
         }];
       }
       
