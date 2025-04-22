@@ -5,8 +5,10 @@ import { DataBoxList, EnhancedDataBoxForm } from '../../ui/components';
 import { Casilla } from '../../types';
 import { toast } from 'react-toastify';
 import FileUploadModal from '../../components/FileUpload/FileUploadModal';
+import { useRouter } from 'next/router';
 
 export default function DataBoxesPage() {
+  const router = useRouter();
   const [filter, setFilter] = useState({
     search: '',
     isActive: undefined,
@@ -131,6 +133,7 @@ export default function DataBoxesPage() {
         onEditClick={handleEditClick}
         onDeleteClick={handleDeleteClick}
         onUploadClick={handleUploadClick}
+        onMaterializationsClick={handleMaterializationsClick}
         emisoresCounts={emisoresCounts}
         suscripcionesCounts={suscripcionesCounts}
       />

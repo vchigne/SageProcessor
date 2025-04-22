@@ -1,142 +1,71 @@
-import { Pool } from 'pg';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '../../auth/[...nextauth]';
-
-// Obtener la conexión a la base de datos
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
+import { conectarDB } from '../../../../utils/db';
 
 export default async function handler(req, res) {
-  // Verificar autenticación
-  const session = await getServerSession(req, res, authOptions);
-  if (!session) {
-    return res.status(401).json({ message: 'No autorizado' });
+  // Solo aceptamos POST para crear nuevas materializaciones
+  if (req.method !== 'POST') {
+    return res.status(405).json({ message: 'Método no permitido' });
   }
 
-  switch (req.method) {
-    case 'GET':
-      return getMaterializations(req, res);
-    case 'POST':
-      return createMaterialization(req, res);
-    default:
-      return res.status(405).json({ message: 'Método no permitido' });
-  }
-}
-
-// GET: Obtener todas las materializaciones o filtrar por casilla_id
-async function getMaterializations(req, res) {
   try {
-    const { casilla_id } = req.query;
+    const { nombre, descripcion, casilla_id, configuracion } = req.body;
     
-    // Consulta base
-    let query = `
-      SELECT 
-        m.id, 
-        m.casilla_id,
-        m.nombre,
-        m.descripcion,
-        m.configuracion,
-        m.estado,
-        m.ultima_materializacion,
-        m.fecha_creacion,
-        m.fecha_actualizacion,
-        c.nombre AS nombre_casilla
-      FROM 
-        materializaciones m
-      LEFT JOIN 
-        casillas c ON m.casilla_id = c.id
-    `;
-    
-    const params = [];
-    
-    // Filtrar por casilla_id si se proporciona
-    if (casilla_id) {
-      query += ` WHERE m.casilla_id = $1`;
-      params.push(casilla_id);
+    // Validar campos obligatorios
+    if (!nombre || !casilla_id || !configuracion) {
+      return res.status(400).json({ message: 'Faltan campos requeridos: nombre, casilla_id, configuracion' });
     }
-    
-    query += ` ORDER BY m.fecha_creacion DESC`;
-    
-    const result = await pool.query(query, params);
-    
-    return res.status(200).json(result.rows);
-  } catch (error) {
-    console.error('Error al obtener materializaciones:', error);
-    return res.status(500).json({ 
-      message: 'Error interno al obtener materializaciones', 
-      error: error.message 
-    });
-  }
-}
 
-// POST: Crear una nueva materialización
-async function createMaterialization(req, res) {
-  try {
-    const {
-      casilla_id,
-      nombre,
-      descripcion,
-      configuracion = {}
-    } = req.body;
-    
-    // Validar datos requeridos
-    if (!casilla_id) {
-      return res.status(400).json({ message: 'ID de casilla requerido' });
+    // Validar que la casilla_id es un número
+    if (isNaN(parseInt(casilla_id))) {
+      return res.status(400).json({ message: 'ID de casilla inválido' });
     }
-    
-    if (!nombre) {
-      return res.status(400).json({ message: 'Nombre requerido' });
+
+    // Validar configuración mínima
+    if (!configuracion.formato || !configuracion.columnas || !configuracion.destino || !configuracion.tablaDestino) {
+      return res.status(400).json({ 
+        message: 'La configuración debe incluir: formato, columnas, destino, tablaDestino' 
+      });
     }
+
+    const conn = await conectarDB();
     
-    // Comprobar si la casilla existe
-    const casillaQuery = `SELECT id FROM casillas WHERE id = $1`;
-    const casillaResult = await pool.query(casillaQuery, [casilla_id]);
+    // Verificar que la casilla existe
+    const casillaQuery = `SELECT * FROM casillas WHERE id = $1`;
+    const casillaResult = await conn.query(casillaQuery, [casilla_id]);
     
     if (casillaResult.rows.length === 0) {
-      return res.status(404).json({ message: 'Casilla no encontrada' });
+      return res.status(404).json({ message: 'La casilla especificada no existe' });
     }
     
     // Insertar la nueva materialización
-    const insertQuery = `
+    const query = `
       INSERT INTO materializaciones (
-        casilla_id,
-        nombre,
-        descripcion,
+        nombre, 
+        descripcion, 
+        casilla_id, 
         configuracion,
-        estado,
         fecha_creacion,
         fecha_actualizacion
-      ) VALUES (
-        $1, $2, $3, $4, 'pendiente', NOW(), NOW()
-      ) RETURNING *
+      )
+      VALUES ($1, $2, $3, $4, NOW(), NOW())
+      RETURNING *
     `;
     
-    const insertParams = [
-      casilla_id,
+    const result = await conn.query(query, [
       nombre,
-      descripcion || null,
-      configuracion || {}
-    ];
+      descripcion || '',
+      casilla_id,
+      configuracion
+    ]);
     
-    const result = await pool.query(insertQuery, insertParams);
+    // Convertir configuración de JSONB a objeto JavaScript
+    const materializacion = {
+      ...result.rows[0],
+      configuracion: result.rows[0].configuracion || {}
+    };
     
-    // Obtener el nombre de la casilla para incluirlo en la respuesta
-    const newMaterialization = result.rows[0];
-    
-    const casillaNameQuery = `SELECT nombre FROM casillas WHERE id = $1`;
-    const casillaNameResult = await pool.query(casillaNameQuery, [newMaterialization.casilla_id]);
-    
-    if (casillaNameResult.rows.length > 0) {
-      newMaterialization.nombre_casilla = casillaNameResult.rows[0].nombre;
-    }
-    
-    return res.status(201).json(newMaterialization);
+    return res.status(201).json(materializacion);
   } catch (error) {
     console.error('Error al crear materialización:', error);
-    return res.status(500).json({ 
-      message: 'Error interno al crear materialización', 
-      error: error.message 
-    });
+    return res.status(500).json({ message: 'Error al crear materialización', error: error.message });
   }
 }
