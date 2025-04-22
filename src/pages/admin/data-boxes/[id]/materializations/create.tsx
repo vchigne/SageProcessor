@@ -39,6 +39,12 @@ export default function CreateMaterializationPage() {
   const [loading, setLoading] = useState(true);
   const [formSubmitting, setFormSubmitting] = useState(false);
   
+  // Definición de la interfaz para el mapeo de columnas
+  interface ColumnMapping {
+    originName: string;
+    targetName: string;
+  }
+
   // Formulario de materialización
   const [formData, setFormData] = useState({
     nombre: '',
@@ -48,6 +54,7 @@ export default function CreateMaterializationPage() {
     tablaDestino: '',
     estrategiaActualizacion: 'reemplazar',
     columnas: [] as string[],
+    columnMappings: [] as ColumnMapping[],
     primaryKey: [] as string[],
     partitionBy: [] as string[]
   });
@@ -158,13 +165,42 @@ export default function CreateMaterializationPage() {
     primaryKeys: {[key: string]: boolean}, 
     partitions: {[key: string]: boolean}
   ) => {
-    const selectedColumns = Object.keys(columns).filter(name => columns[name]);
+    if (!yamlStructure || !yamlStructure.files || selectedFileIndex === null) {
+      const selectedColumns = Object.keys(columns).filter(name => columns[name]);
+      const selectedPrimaryKeys = Object.keys(primaryKeys).filter(name => primaryKeys[name]);
+      const selectedPartitions = Object.keys(partitions).filter(name => partitions[name]);
+      
+      setFormData(prev => ({
+        ...prev,
+        columnas: selectedColumns,
+        primaryKey: selectedPrimaryKeys,
+        partitionBy: selectedPartitions
+      }));
+      return;
+    }
+    
+    const fileToUse = yamlStructure.files[selectedFileIndex];
+    const columnsData = fileToUse.columns;
+    
+    // Filtrar columnas seleccionadas
+    const selectedColumnKeys = Object.keys(columns).filter(key => columns[key]);
+    
+    // Crear mapeo de columnas origen-destino
+    const columnMappings = selectedColumnKeys.map(key => {
+      const columnData = columnsData.find(col => col.name === key);
+      return {
+        originName: key,
+        targetName: columnData?.targetName || key
+      };
+    });
+    
     const selectedPrimaryKeys = Object.keys(primaryKeys).filter(name => primaryKeys[name]);
     const selectedPartitions = Object.keys(partitions).filter(name => partitions[name]);
     
     setFormData(prev => ({
       ...prev,
-      columnas: selectedColumns,
+      columnas: selectedColumnKeys,
+      columnMappings: columnMappings,
       primaryKey: selectedPrimaryKeys,
       partitionBy: selectedPartitions
     }));
@@ -280,6 +316,7 @@ export default function CreateMaterializationPage() {
         configuracion: {
           formato: formData.formato,
           columnas: formData.columnas,
+          columnMappings: formData.columnMappings,
           primaryKey: formData.primaryKey.length > 0 ? formData.primaryKey : undefined,
           partitionBy: formData.partitionBy.length > 0 ? formData.partitionBy : undefined,
           destino: formData.destino,
