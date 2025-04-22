@@ -1,17 +1,9 @@
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '../../auth/[...nextauth]';
 import { pool } from '@/lib/db';
 
 /**
  * API para obtener los destinos disponibles para materialización (nubes y bases de datos)
  */
 export default async function handler(req, res) {
-  // Verificar autenticación
-  const session = await getServerSession(req, res, authOptions);
-  if (!session || !session.user.isAdmin) {
-    return res.status(401).json({ message: 'No autorizado' });
-  }
-
   switch (req.method) {
     case 'GET':
       return getDestinations(req, res);
