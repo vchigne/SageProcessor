@@ -24,18 +24,6 @@ export default function ConfigMenu() {
       description: 'Gestionar configuración de correos y notificaciones' 
     },
     { 
-      name: 'Direcciones SFTP', 
-      href: '/admin/configuraciones-sftp', 
-      icon: ServerIcon,
-      description: 'Configurar conexiones SFTP' 
-    },
-    { 
-      name: 'Configuración de APIs', 
-      href: '/admin/configuraciones-api', 
-      icon: CodeBracketIcon,
-      description: 'Gestionar APIs externas y claves' 
-    },
-    { 
       name: 'Configuración de Plantillas de Email', 
       href: '/admin/plantillas-email', 
       icon: DocumentTextIcon,
@@ -52,6 +40,18 @@ export default function ConfigMenu() {
       href: '/admin/clouds', 
       icon: CloudIcon,
       description: 'Gestionar proveedores de almacenamiento en la nube' 
+    },
+    { 
+      name: 'Secretos de Bases de Datos', 
+      href: '/admin/db-secrets', 
+      icon: ShieldCheckIcon,
+      description: 'Gestionar secretos y credenciales para conexiones a bases de datos' 
+    },
+    { 
+      name: 'Conexiones a Bases de Datos', 
+      href: '/admin/database-connections', 
+      icon: WrenchIcon,
+      description: 'Gestionar conexiones a bases de datos para materializaciones' 
     },
     { 
       name: 'Parámetros de ejecuciones', 
