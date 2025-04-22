@@ -1065,11 +1065,9 @@ class JanitorDaemon:
     
     def _upload_to_azure(self, local_path, cloud_path, provider):
         """Subir archivos a Azure Blob Storage"""
-        from azure.storage.blob import BlobServiceClient, BlobSasPermissions
-        from azure.storage.blob import generate_blob_sas, BlobClient, ContainerClient
+        from azure.storage.blob import BlobServiceClient, ContainerClient
         import re
-        from urllib.parse import urlparse, parse_qs
-        from datetime import datetime, timedelta
+        from urllib.parse import urlparse
         
         # Parsear credenciales y configuración
         config = provider['configuracion'] if isinstance(provider['configuracion'], dict) else json.loads(provider['configuracion']) if 'configuracion' in provider else {}
@@ -1096,91 +1094,137 @@ class JanitorDaemon:
         
         # Obtener string de conexión y/o componentes individuales
         connection_string = credentials.get('connection_string') or config.get('connection_string')
-        account_name = credentials.get('account_name') or config.get('account_name')
-        account_key = credentials.get('account_key') or config.get('account_key')
-        sas_token = credentials.get('sas_token') or config.get('sas_token')
         
-        # Procesar connection_string si parece una URL con SAS token
-        if connection_string and ('https://' in connection_string or 'http://' in connection_string):
-            logger.info("La cadena de conexión parece ser una URL con SAS Token, extrayendo componentes...")
-            try:
-                # Extraer account_name de la URL
-                parsed_url = urlparse(connection_string)
-                if not account_name:
-                    # Intentar extraer account_name del host
-                    hostname = parsed_url.netloc
-                    account_match = re.match(r'([^\.]+)\.blob\.core\.windows\.net', hostname)
-                    if account_match:
-                        account_name = account_match.group(1)
-                        logger.info(f"Extraído account_name de la URL: {account_name}")
-                
-                # Extraer SAS token si existe en la URL
-                if parsed_url.query and not sas_token:
-                    sas_token = parsed_url.query
-                    if sas_token.startswith('?'):
-                        sas_token = sas_token[1:]
-                    logger.info(f"Extraído SAS token de la URL (longitud: {len(sas_token)})")
-                
-                # Si hay un SAS token en el fragment, usarlo (algunos formatos lo incluyen ahí)
-                if parsed_url.fragment and not sas_token:
-                    sas_token = parsed_url.fragment
-                    logger.info(f"Extraído SAS token del fragment (longitud: {len(sas_token)})")
-                
-                # Si hay un ;SharedAccessSignature= en la cadena, extraerlo
-                if ';SharedAccessSignature=' in connection_string and not sas_token:
-                    sas_parts = connection_string.split(';SharedAccessSignature=')
-                    if len(sas_parts) > 1:
-                        sas_token = sas_parts[1]
-                        logger.info(f"Extraído SAS token de SharedAccessSignature= (longitud: {len(sas_token)})")
-            except Exception as e:
-                logger.error(f"Error extrayendo componentes de la URL: {e}")
+        if not connection_string:
+            raise ValueError("No se configuró correctamente la cadena de conexión para Azure")
         
-        # Determinar método de autenticación y crear cliente
-        if account_name and (account_key or sas_token):
-            # Crear string de conexión adecuado
-            if account_key:
-                logger.info(f"Usando autenticación con account_name + account_key para Azure")
-                proper_connection_string = f"DefaultEndpointsProtocol=https;AccountName={account_name};AccountKey={account_key};EndpointSuffix=core.windows.net"
-            else:
-                logger.info(f"Usando autenticación con account_name + SAS token para Azure")
-                # Construir URL base para el servicio Blob
-                blob_service_url = f"https://{account_name}.blob.core.windows.net"
-                
-                # Para este caso, usaremos ContainerClient directamente con la URL + SAS
-                container_url = f"{blob_service_url}/{container_name}"
-                if sas_token and not sas_token.startswith('?'):
-                    sas_token = f"?{sas_token}"
-                    
-                logger.info(f"Usando URL de contenedor: {container_url} con SAS token")
-                container_client = ContainerClient.from_container_url(f"{container_url}{sas_token}")
-                blob_service_client = BlobServiceClient(account_url=blob_service_url, credential=sas_token)
-        elif connection_string and 'AccountName=' in connection_string and 'AccountKey=' in connection_string:
-            # Es una cadena de conexión válida en formato estándar
-            logger.info(f"Usando connection_string estándar para Azure")
-            blob_service_client = BlobServiceClient.from_connection_string(connection_string)
-        else:
-            raise ValueError("No se proporcionaron credenciales válidas para Azure. Se necesita una conexión válida (account_name + account_key, account_name + SAS token, o connection_string completo)")
-        
-        # Verificar si el contenedor existe y crearlo si no
-        try:
-            # Primero verificar si el contenedor existe
-            container_exists = False
-            containers_list = blob_service_client.list_containers()
-            for container in containers_list:
-                if container.name == container_name:
-                    container_exists = True
-                    break
+        # Comprobar si es una connection string con SAS token 
+        use_sas = False
+        account_name = None
+        if connection_string and 'blob.core.windows.net' in connection_string:
+            use_sas = True
+            logger.info("Detectado formato connection_string con URL Blob Storage, activando modo SAS")
             
-            if not container_exists:
-                logger.warning(f"El contenedor {container_name} no existe en Azure. Intentando crear...")
-                blob_service_client.create_container(container_name)
-                logger.info(f"Contenedor {container_name} creado exitosamente")
-        except Exception as e:
-            logger.error(f"Error verificando/creando contenedor Azure: {e}")
-            # Continuamos de todas formas, tal vez ya existe o será creado automáticamente
+            # Intentar extraer el account_name de la URL
+            try:
+                parts = connection_string.split(';')
+                for part in parts:
+                    if part.startswith('https://'):
+                        parsed_url = urlparse(part)
+                        hostname = parsed_url.netloc
+                        account_match = re.match(r'([^\.]+)\.blob\.core\.windows\.net', hostname)
+                        if account_match:
+                            account_name = account_match.group(1)
+                            logger.info(f"Extraído account_name de la URL: {account_name}")
+                            break
+            except Exception as e:
+                logger.warning(f"No se pudo extraer el account_name de la URL: {e}")
         
-        # Obtener cliente de contenedor
-        container_client = blob_service_client.get_container_client(container_name)
+        # Crear cliente de blob service según el tipo de credenciales
+        if use_sas:
+            logger.info("Usando modo SAS para Azure con URL + SAS token")
+            
+            # Si la connection_string incluye 'SharedAccessSignature=' necesitamos procesarla
+            if ';SharedAccessSignature=' in connection_string:
+                parts = connection_string.split(';')
+                base_url = None
+                sas_token = None
+                
+                for part in parts:
+                    if part.startswith('https://'):
+                        base_url = part
+                    elif part.startswith('SharedAccessSignature='):
+                        sas_token = part.replace('SharedAccessSignature=', '')
+                
+                if not base_url or not sas_token:
+                    raise ValueError("No se pudo extraer la URL base o el SAS token de la cadena de conexión")
+                
+                # Si el base_url no incluye el container, lo añadimos
+                if not f"/{container_name}" in base_url:
+                    container_url = f"{base_url}/{container_name}"
+                else:
+                    container_url = base_url
+                
+                # Asegurarnos de que el SAS token comience con ?
+                if not sas_token.startswith('?'):
+                    sas_token = f"?{sas_token}"
+                
+                logger.info(f"URL del contenedor: {container_url}")
+                logger.info(f"Longitud del SAS token: {len(sas_token)}")
+                
+                # Crear el container_client directamente con la URL + SAS
+                container_client = ContainerClient.from_container_url(f"{container_url}{sas_token}")
+                
+                # Si necesitamos un BlobServiceClient para operaciones a nivel de servicio 
+                if account_name:
+                    blob_service_url = f"https://{account_name}.blob.core.windows.net"
+                    blob_service_client = BlobServiceClient(account_url=blob_service_url, credential=sas_token)
+                else:
+                    # En este caso no podemos crear un BlobServiceClient, pero no lo necesitamos
+                    # si ya tenemos un ContainerClient
+                    blob_service_client = None
+            else:
+                # La cadena parece ser una URL completa con SAS token en la query
+                try:
+                    parsed_url = urlparse(connection_string)
+                    base_url = f"{parsed_url.scheme}://{parsed_url.netloc}{parsed_url.path}"
+                    sas_token = f"?{parsed_url.query}" if parsed_url.query else ""
+                    
+                    # Si la URL no incluye el contenedor, lo añadimos
+                    if not f"/{container_name}" in base_url:
+                        container_url = f"{base_url}/{container_name}"
+                    else:
+                        container_url = base_url
+                    
+                    logger.info(f"URL del contenedor: {container_url}")
+                    logger.info(f"Longitud del SAS token: {len(sas_token)}")
+                    
+                    # Crear el container_client directamente con la URL + SAS
+                    container_client = ContainerClient.from_container_url(f"{container_url}{sas_token}")
+                    
+                    # Si necesitamos un BlobServiceClient para operaciones a nivel de servicio
+                    if account_name:
+                        blob_service_url = f"https://{account_name}.blob.core.windows.net"
+                        blob_service_client = BlobServiceClient(account_url=blob_service_url, credential=sas_token.lstrip('?'))
+                    else:
+                        blob_service_client = None
+                except Exception as e:
+                    logger.error(f"Error al procesar la URL de Azure: {e}")
+                    raise ValueError(f"No se pudo procesar la URL de Azure: {e}")
+        else:
+            # Usar el formato estándar de connection_string
+            logger.info("Usando connection_string estándar para Azure")
+            try:
+                blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+                container_client = blob_service_client.get_container_client(container_name)
+            except Exception as e:
+                logger.error(f"Error al crear el cliente de Azure con connection_string: {e}")
+                raise ValueError(f"Error al crear el cliente de Azure: {e}")
+        
+        # Verificar si el contenedor existe y crearlo si no - solo si tenemos blob_service_client
+        if use_sas:
+            # Ya tenemos el container_client mediante URL directa, no necesitamos verificar o crear
+            logger.info(f"Usando container_client directo para Azure con SAS token")
+        else:
+            try:
+                # Primero verificar si el contenedor existe
+                container_exists = False
+                containers_list = blob_service_client.list_containers()
+                for container in containers_list:
+                    if container.name == container_name:
+                        container_exists = True
+                        break
+                
+                if not container_exists:
+                    logger.warning(f"El contenedor {container_name} no existe en Azure. Intentando crear...")
+                    blob_service_client.create_container(container_name)
+                    logger.info(f"Contenedor {container_name} creado exitosamente")
+                
+                # Obtener cliente de contenedor 
+                container_client = blob_service_client.get_container_client(container_name)
+            except Exception as e:
+                logger.error(f"Error verificando/creando contenedor Azure: {e}")
+                # Continuamos de todas formas, tal vez ya existe o será creado automáticamente
         
         # Subir todos los archivos en el directorio
         for root, dirs, files in os.walk(local_path):
