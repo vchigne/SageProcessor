@@ -79,9 +79,9 @@ export default async function handler(req, res) {
       fileStructures = Object.entries(catalogs).map(([catalogId, catalog]) => {
         console.log(`Procesando catálogo: ${catalogId}, name: ${catalog.name}`);
         
-        // Verificar que el catálogo tenga la estructura esperada de fields
+        // En YAML_SPEC.md, los campos se definen con la propiedad "fields"
         if (!catalog.fields || !Array.isArray(catalog.fields)) {
-          console.log(`El catálogo ${catalogId} no tiene campos definidos correctamente, o los campos no están en formato de array`);
+          console.log(`El catálogo ${catalogId} no tiene campos definidos en la propiedad "fields" o no es un array`);
           return {
             name: catalog.name || catalogId,
             description: catalog.description || '',
