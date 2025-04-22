@@ -1036,7 +1036,7 @@ class MaterializationProcessor:
         self.logger.message(f"Configuración S3: {list(config.keys()) if config else 'No hay configuración'}")
         
         # Obtener solo los parámetros necesarios para S3
-        endpoint_url = credentials.get('endpoint_url')
+        endpoint_url = credentials.get('endpoint_url') or credentials.get('endpoint')
         access_key = credentials.get('access_key') or credentials.get('accessKey')
         secret_key = credentials.get('secret_key') or credentials.get('secretKey')
         region = credentials.get('region', 'us-east-1')  # Valor predeterminado como en el JavaScript
