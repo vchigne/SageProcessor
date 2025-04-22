@@ -38,6 +38,10 @@ export default function DataBoxesPage() {
     setSelectedDataBox(dataBox);
     setIsUploadModalOpen(true);
   };
+  
+  const handleMaterializationsClick = (dataBox: Casilla) => {
+    router.push(`/admin/data-boxes/${dataBox.id}/materializations`);
+  };
 
   const handleDeleteClick = async (dataBox: Casilla) => {
     try {

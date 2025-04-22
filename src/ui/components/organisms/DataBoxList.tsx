@@ -7,7 +7,8 @@ import {
   UserGroupIcon, 
   BellIcon, 
   PlusIcon,
-  DocumentArrowUpIcon
+  DocumentArrowUpIcon,
+  CircleStackIcon
 } from '@heroicons/react/24/outline';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Dialog } from '@headlessui/react';
@@ -21,6 +22,7 @@ interface DataBoxListProps {
   onEditClick: (dataBox: Casilla) => void;
   onDeleteClick: (dataBox: Casilla) => void;
   onUploadClick?: (dataBox: Casilla) => void;
+  onMaterializationsClick?: (dataBox: Casilla) => void;
   emisoresCounts?: Record<number, number>;
   suscripcionesCounts?: Record<number, number>;
 }
@@ -33,6 +35,7 @@ export const DataBoxList: React.FC<DataBoxListProps> = ({
   onEditClick,
   onDeleteClick,
   onUploadClick,
+  onMaterializationsClick,
   emisoresCounts = {},
   suscripcionesCounts = {}
 }) => {
@@ -170,6 +173,17 @@ export const DataBoxList: React.FC<DataBoxListProps> = ({
                   className="text-sm md:text-base lg:text-lg font-bold px-4 py-2.5 shadow-lg hover:shadow-xl dark:bg-gray-600 dark:text-white dark:hover:bg-gray-700"
                 >
                   Cargar Archivo
+                </Button>
+              )}
+              {onMaterializationsClick && (
+                <Button
+                  onClick={() => onMaterializationsClick(box)}
+                  icon={<CircleStackIcon className="h-5 w-5 md:h-6 md:w-6" />}
+                  size="md"
+                  variant="success"
+                  className="text-sm md:text-base lg:text-lg font-bold px-4 py-2.5 shadow-lg hover:shadow-xl dark:bg-green-600 dark:text-white dark:hover:bg-green-700"
+                >
+                  Materializaciones
                 </Button>
               )}
             </div>
