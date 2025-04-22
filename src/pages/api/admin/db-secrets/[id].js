@@ -14,10 +14,11 @@ export default async function handler(req, res) {
 
   const { id } = req.query;
   
-  if (!id || isNaN(parseInt(id))) {
+  // Validar que el ID sea un número
+  if (isNaN(parseInt(id))) {
     return res.status(400).json({ message: 'ID inválido' });
   }
-
+  
   switch (req.method) {
     case 'GET':
       return getDBSecret(req, res, id);
@@ -31,7 +32,7 @@ export default async function handler(req, res) {
 }
 
 /**
- * Obtener un secreto por ID
+ * Obtener un secreto de base de datos específico
  */
 async function getDBSecret(req, res, id) {
   try {
@@ -40,13 +41,18 @@ async function getDBSecret(req, res, id) {
         id, 
         nombre, 
         descripcion, 
-        tipo_servidor, 
-        configuracion, 
-        activo,
+        tipo, 
+        servidor, 
+        puerto, 
+        usuario,
+        basedatos,
+        opciones_conexion,
+        estado,
+        ultimo_test,
         fecha_creacion,
         fecha_actualizacion
       FROM 
-        materializacion_db_secrets
+        db_secrets 
       WHERE 
         id = $1
     `;
@@ -57,7 +63,13 @@ async function getDBSecret(req, res, id) {
       return res.status(404).json({ message: 'Secreto no encontrado' });
     }
     
-    return res.status(200).json(result.rows[0]);
+    // No enviar la contraseña
+    const secret = {
+      ...result.rows[0],
+      contrasena: '', // No enviar la contraseña real
+    };
+    
+    return res.status(200).json(secret);
   } catch (error) {
     console.error('Error al obtener secreto de BD:', error);
     return res.status(500).json({ message: 'Error al obtener secreto de base de datos' });
@@ -65,96 +77,151 @@ async function getDBSecret(req, res, id) {
 }
 
 /**
- * Actualizar un secreto existente
+ * Actualizar un secreto de base de datos
  */
 async function updateDBSecret(req, res, id) {
   try {
-    const { nombre, descripcion, tipo_servidor, configuracion, activo } = req.body;
+    const { 
+      nombre, 
+      descripcion, 
+      tipo, 
+      servidor, 
+      puerto, 
+      usuario, 
+      contrasena,
+      basedatos,
+      opciones_conexion
+    } = req.body;
     
-    // Validar campos obligatorios
-    if (!nombre || !tipo_servidor || !configuracion) {
-      return res.status(400).json({ message: 'Faltan campos obligatorios' });
+    // Validaciones básicas
+    if (!nombre || !tipo || !servidor || !puerto || !usuario) {
+      return res.status(400).json({ 
+        message: 'Faltan campos obligatorios: nombre, tipo, servidor, puerto, usuario' 
+      });
     }
-
-    // Verificar que el secreto existe
-    const checkQuery = 'SELECT id FROM materializacion_db_secrets WHERE id = $1';
+    
+    // Validar que el tipo sea uno de los permitidos
+    const tiposPermitidos = ['postgresql', 'mysql', 'mssql', 'duckdb'];
+    if (!tiposPermitidos.includes(tipo)) {
+      return res.status(400).json({ 
+        message: `Tipo de base de datos no válido. Debe ser uno de: ${tiposPermitidos.join(', ')}` 
+      });
+    }
+    
+    // Verificar si existe el secreto
+    const checkQuery = 'SELECT id FROM db_secrets WHERE id = $1';
     const checkResult = await executeSQL(checkQuery, [id]);
     
     if (checkResult.rows.length === 0) {
       return res.status(404).json({ message: 'Secreto no encontrado' });
     }
     
+    // Definir campos y valores a actualizar
+    let fields = [
+      'nombre = $1',
+      'descripcion = $2',
+      'tipo = $3',
+      'servidor = $4',
+      'puerto = $5',
+      'usuario = $6',
+      'basedatos = $7',
+      'opciones_conexion = $8',
+      'fecha_actualizacion = NOW()',
+      'estado = $9'
+    ];
+    
+    let values = [
+      nombre,
+      descripcion || '',
+      tipo,
+      servidor,
+      puerto,
+      usuario,
+      basedatos || '',
+      opciones_conexion ? JSON.stringify(opciones_conexion) : '{}',
+      'pendiente' // Resetear estado a pendiente después de actualizar
+    ];
+    
+    // Solo actualizar contraseña si se proporciona una nueva
+    if (contrasena) {
+      fields.push('contrasena = $' + (values.length + 1));
+      values.push(contrasena);
+    }
+    
+    // Agregar el ID al final de los valores
+    values.push(id);
+    
     // Actualizar secreto
-    const query = `
-      UPDATE materializacion_db_secrets 
-      SET 
-        nombre = $1, 
-        descripcion = $2, 
-        tipo_servidor = $3, 
-        configuracion = $4, 
-        activo = $5,
-        fecha_actualizacion = NOW()
-      WHERE 
-        id = $6
+    const updateQuery = `
+      UPDATE db_secrets 
+      SET ${fields.join(', ')} 
+      WHERE id = $${values.length}
       RETURNING id
     `;
     
-    const values = [
-      nombre,
-      descripcion || null,
-      tipo_servidor,
-      JSON.stringify(configuracion),
-      activo !== undefined ? activo : true,
-      id
-    ];
-    
-    await executeSQL(query, values);
+    await executeSQL(updateQuery, values);
     
     return res.status(200).json({ 
-      id: parseInt(id), 
-      message: 'Secreto actualizado correctamente' 
+      message: 'Secreto de base de datos actualizado correctamente' 
     });
   } catch (error) {
     console.error('Error al actualizar secreto de BD:', error);
-    return res.status(500).json({ message: 'Error al actualizar secreto de base de datos' });
+    
+    // Verificar si es un error de nombre duplicado
+    if (error.code === '23505' && error.constraint.includes('nombre')) {
+      return res.status(400).json({ 
+        message: 'Ya existe un secreto con ese nombre' 
+      });
+    }
+    
+    return res.status(500).json({ 
+      message: 'Error al actualizar secreto de base de datos' 
+    });
   }
 }
 
 /**
- * Eliminar un secreto
+ * Eliminar un secreto de base de datos
  */
 async function deleteDBSecret(req, res, id) {
   try {
-    // Verificar si hay conexiones que dependen de este secreto
-    const dependenciesQuery = `
-      SELECT COUNT(*) as count 
-      FROM materializacion_db_connections 
+    // Verificar si el secreto está siendo utilizado por alguna conexión
+    const checkUsageQuery = `
+      SELECT COUNT(*) as count
+      FROM database_connections
       WHERE secret_id = $1
     `;
     
-    const dependenciesResult = await executeSQL(dependenciesQuery, [id]);
-    const dependenciesCount = parseInt(dependenciesResult.rows[0].count);
+    const usageResult = await executeSQL(checkUsageQuery, [id]);
     
-    if (dependenciesCount > 0) {
+    if (usageResult.rows[0].count > 0) {
       return res.status(400).json({ 
-        message: `No se puede eliminar el secreto porque tiene ${dependenciesCount} conexiones dependientes.` 
+        message: 'No se puede eliminar el secreto porque está siendo utilizado por conexiones de bases de datos' 
       });
     }
     
     // Eliminar el secreto
-    const query = 'DELETE FROM materializacion_db_secrets WHERE id = $1 RETURNING id';
-    const result = await executeSQL(query, [id]);
+    const deleteQuery = 'DELETE FROM db_secrets WHERE id = $1 RETURNING id';
+    const result = await executeSQL(deleteQuery, [id]);
     
     if (result.rows.length === 0) {
       return res.status(404).json({ message: 'Secreto no encontrado' });
     }
     
     return res.status(200).json({ 
-      id: parseInt(id), 
-      message: 'Secreto eliminado correctamente' 
+      message: 'Secreto de base de datos eliminado correctamente' 
     });
   } catch (error) {
     console.error('Error al eliminar secreto de BD:', error);
-    return res.status(500).json({ message: 'Error al eliminar secreto de base de datos' });
+    
+    if (error.code === '23503') { // Error de clave foránea
+      return res.status(400).json({ 
+        message: 'No se puede eliminar el secreto porque está siendo referenciado por otras entidades' 
+      });
+    }
+    
+    return res.status(500).json({ 
+      message: 'Error al eliminar secreto de base de datos' 
+    });
   }
 }

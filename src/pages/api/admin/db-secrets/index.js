@@ -33,16 +33,17 @@ async function getDBSecrets(req, res) {
         s.id, 
         s.nombre, 
         s.descripcion, 
-        s.tipo_servidor,
-        s.activo,
+        s.tipo,
+        s.estado,
+        s.ultimo_test,
         s.fecha_creacion,
         (
           SELECT COUNT(*) 
-          FROM materializacion_db_connections 
+          FROM database_connections 
           WHERE secret_id = s.id
         ) as database_count
       FROM 
-        materializacion_db_secrets s
+        db_secrets s
       ORDER BY 
         s.fecha_creacion DESC
     `;
@@ -52,7 +53,7 @@ async function getDBSecrets(req, res) {
     // No exponer información sensible
     const secrets = result.rows.map(secret => ({
       ...secret,
-      configuracion: undefined, // No enviar configuración con credenciales
+      contrasena: undefined, // No enviar credenciales
     }));
     
     return res.status(200).json(secrets);
@@ -63,47 +64,88 @@ async function getDBSecrets(req, res) {
 }
 
 /**
- * Crear nuevo secreto de base de datos
+ * Crear un nuevo secreto de base de datos
  */
 async function createDBSecret(req, res) {
   try {
-    const { nombre, descripcion, tipo_servidor, configuracion, activo } = req.body;
+    const { 
+      nombre, 
+      descripcion, 
+      tipo, 
+      servidor, 
+      puerto, 
+      usuario, 
+      contrasena,
+      basedatos,
+      opciones_conexion
+    } = req.body;
     
-    // Validar campos obligatorios
-    if (!nombre || !tipo_servidor || !configuracion) {
-      return res.status(400).json({ message: 'Faltan campos obligatorios' });
+    // Validaciones básicas
+    if (!nombre || !tipo || !servidor || !puerto || !usuario || !contrasena) {
+      return res.status(400).json({ 
+        message: 'Faltan campos obligatorios: nombre, tipo, servidor, puerto, usuario, contraseña' 
+      });
+    }
+
+    // Validar que el tipo sea uno de los permitidos
+    const tiposPermitidos = ['postgresql', 'mysql', 'mssql', 'duckdb'];
+    if (!tiposPermitidos.includes(tipo)) {
+      return res.status(400).json({ 
+        message: `Tipo de base de datos no válido. Debe ser uno de: ${tiposPermitidos.join(', ')}` 
+      });
     }
     
-    // Insertar el nuevo secreto
+    // Insertar nuevo secreto
     const query = `
-      INSERT INTO materializacion_db_secrets (
+      INSERT INTO db_secrets (
         nombre, 
         descripcion, 
-        tipo_servidor, 
-        configuracion, 
-        activo
+        tipo, 
+        servidor, 
+        puerto, 
+        usuario, 
+        contrasena,
+        basedatos,
+        opciones_conexion,
+        estado,
+        fecha_creacion,
+        fecha_actualizacion
       ) 
-      VALUES ($1, $2, $3, $4, $5)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
       RETURNING id
     `;
     
-    const values = [
+    const valores = [
       nombre,
-      descripcion || null,
-      tipo_servidor,
-      JSON.stringify(configuracion),
-      activo !== undefined ? activo : true
+      descripcion || '',
+      tipo,
+      servidor,
+      puerto,
+      usuario,
+      contrasena,
+      basedatos || '',
+      opciones_conexion ? JSON.stringify(opciones_conexion) : '{}',
+      'pendiente'
     ];
     
-    const result = await executeSQL(query, values);
-    const secretId = result.rows[0].id;
+    const result = await executeSQL(query, valores);
     
     return res.status(201).json({ 
-      id: secretId, 
+      id: result.rows[0].id,
       message: 'Secreto de base de datos creado correctamente' 
     });
   } catch (error) {
     console.error('Error al crear secreto de BD:', error);
-    return res.status(500).json({ message: 'Error al crear secreto de base de datos' });
+    
+    // Verificar si es un error de nombre duplicado
+    if (error.code === '23505' && error.constraint.includes('nombre')) {
+      return res.status(400).json({ 
+        message: 'Ya existe un secreto con ese nombre' 
+      });
+    }
+    
+    return res.status(500).json({ 
+      message: 'Error al crear secreto de base de datos' 
+    });
   }
 }

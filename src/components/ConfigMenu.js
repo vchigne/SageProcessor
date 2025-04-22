@@ -8,7 +8,9 @@ import {
   DocumentTextIcon,
   CloudIcon,
   CloudArrowUpIcon,
-  ShieldCheckIcon
+  ShieldCheckIcon,
+  DatabaseIcon,
+  KeyIcon
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 
@@ -53,6 +55,18 @@ export default function ConfigMenu() {
       href: '/admin/clouds', 
       icon: CloudIcon, 
       description: 'Gestionar proveedores de almacenamiento en la nube' 
+    },
+    { 
+      name: 'Secretos de Bases de Datos', 
+      href: '/admin/db-secrets', 
+      icon: KeyIcon, 
+      description: 'Gestionar secretos y credenciales para conexiones a bases de datos' 
+    },
+    { 
+      name: 'Conexiones a Bases de Datos', 
+      href: '/admin/database-connections', 
+      icon: DatabaseIcon, 
+      description: 'Gestionar conexiones a bases de datos para materializaciones' 
     },
     { 
       name: 'Parámetros de ejecuciones', 
