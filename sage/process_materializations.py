@@ -541,13 +541,23 @@ class MaterializationProcessor:
             raise ValueError(f"No se encontró el proveedor cloud con ID {cloud_provider_id}")
         
         # Obtener parámetros de configuración
-        file_format = config.get('file_format', 'parquet')
+        # Primero verificamos el formato - usamos el campo 'file_format' o 'formato'
+        file_format = config.get('file_format') or config.get('formato', 'parquet')
         if file_format not in SUPPORTED_FORMATS:
             raise ValueError(f"Formato de archivo no soportado: {file_format}")
             
+        # Luego buscamos la ruta de destino - preferimos 'destination_path', pero si no existe
+        # podemos construirla a partir de 'tablaDestino' o 'destino'
         destination_path = config.get('destination_path')
         if not destination_path:
-            raise ValueError("No se ha especificado la ruta de destino")
+            # Si no hay ruta explícita, construirla a partir de otros campos
+            tabla_destino = config.get('tablaDestino')
+            if tabla_destino:
+                # Construir un path amigable a partir del nombre de la tabla
+                destination_path = f"/data/{file_format}/{tabla_destino}"
+                self.logger.message(f"Usando ruta de destino derivada de tablaDestino: {destination_path}")
+            else:
+                raise ValueError("No se ha especificado la ruta de destino ni tablaDestino")
             
         # Asegurar que la ruta comienza con /
         if not destination_path.startswith('/'):
@@ -561,11 +571,11 @@ class MaterializationProcessor:
         
         try:
             if provider_type == 's3' or provider_type == 'minio':
-                self._materialize_to_s3_compatible(df, provider_info, destination_path, file_format, partition_columns)
+                self._materialize_to_s3_compatible(df, provider_info, destination_path, file_format, partition_columns, config)
             elif provider_type == 'azure':
-                self._materialize_to_azure(df, provider_info, destination_path, file_format, partition_columns)
+                self._materialize_to_azure(df, provider_info, destination_path, file_format, partition_columns, config)
             elif provider_type == 'gcp':
-                self._materialize_to_gcp(df, provider_info, destination_path, file_format, partition_columns)
+                self._materialize_to_gcp(df, provider_info, destination_path, file_format, partition_columns, config)
             else:
                 raise ValueError(f"Tipo de proveedor cloud no soportado: {provider_type}")
                 
@@ -590,7 +600,7 @@ class MaterializationProcessor:
     
     def _materialize_to_s3_compatible(self, df: pd.DataFrame, provider_info: Dict[str, Any], 
                                     destination_path: str, file_format: str, 
-                                    partition_columns: List[str]) -> None:
+                                    partition_columns: List[str], config: Dict[str, Any] = None) -> None:
         """
         Materializa el DataFrame a un bucket S3 o compatible (ej: MinIO).
         
@@ -669,9 +679,32 @@ class MaterializationProcessor:
                 
                 elif file_format == 'hudi' or file_format == 'iceberg':
                     # Para Hudi e Iceberg necesitamos usar Spark o bibliotecas específicas
-                    # Por ahora, guardamos como parquet pero debemos implementar la conversión adecuada
+                    # Por ahora, implementamos una solución provisional usando Parquet como formato base
+                    
+                    # Obtenemos las columnas de clave primaria si están configuradas
+                    primary_key_cols = []
+                    if config:
+                        primary_key_cols = config.get('primaryKey', [])
+                    
+                    # Crear un archivo de metadatos que indique que es un formato avanzado
+                    metadata_file = os.path.join(temp_dir, f"{file_format}_metadata.json")
+                    metadata = {
+                        "format": file_format,
+                        "primary_key": primary_key_cols,
+                        "schema": {col: str(dtype) for col, dtype in df.dtypes.items()},
+                        "rows": len(df),
+                        "created_at": datetime.datetime.now().isoformat()
+                    }
+                    
+                    with open(metadata_file, 'w') as f:
+                        json.dump(metadata, f, indent=2)
+                    
+                    # Guardar como parquet (formato subyacente para Hudi/Iceberg)
                     temp_file = os.path.join(temp_dir, "data.parquet")
                     df.to_parquet(temp_file, engine='pyarrow', index=False)
+                    
+                    # Log informativo
+                    self.logger.message(f"Usando implementación provisional para {file_format} basada en Parquet")
                 
                 # Subir el archivo desde la carpeta temporal
                 with open(temp_file, 'rb') as file_obj:
@@ -707,7 +740,7 @@ class MaterializationProcessor:
     
     def _materialize_to_azure(self, df: pd.DataFrame, provider_info: Dict[str, Any], 
                             destination_path: str, file_format: str, 
-                            partition_columns: List[str]) -> None:
+                            partition_columns: List[str], config: Dict[str, Any] = None) -> None:
         """
         Materializa el DataFrame a Azure Blob Storage.
         
@@ -791,7 +824,7 @@ class MaterializationProcessor:
     
     def _materialize_to_gcp(self, df: pd.DataFrame, provider_info: Dict[str, Any], 
                           destination_path: str, file_format: str, 
-                          partition_columns: List[str]) -> None:
+                          partition_columns: List[str], config: Dict[str, Any] = None) -> None:
         """
         Materializa el DataFrame a Google Cloud Storage.
         
