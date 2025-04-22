@@ -2,7 +2,7 @@ modules = ["python-3.11", "nodejs-20", "postgresql-16", "python3"]
 
 [nix]
 channel = "stable-24_05"
-packages = ["cacert", "glibcLocales", "libyaml"]
+packages = ["arrow-cpp", "cacert", "glibcLocales", "libyaml", "pkg-config"]
 
 [workflows]
 runButton = "UI Dev Server"
