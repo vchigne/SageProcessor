@@ -14,18 +14,11 @@ import {
   TableBody,
   TableCell
 } from '@tremor/react';
-import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, PencilIcon, TrashIcon, EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import Breadcrumbs from '@/components/Breadcrumbs';
 import { format } from 'date-fns';
 import { toast } from 'react-toastify';
-
-const tipoServidorLabel = {
-  postgresql: 'PostgreSQL',
-  mysql: 'MySQL',
-  sqlserver: 'SQL Server',
-  duckdb: 'DuckDB'
-};
 
 export default function DBSecretsList() {
   const router = useRouter();
@@ -83,6 +76,33 @@ export default function DBSecretsList() {
     }
   };
 
+  const getStatusBadge = (status) => {
+    switch (status) {
+      case 'activo':
+        return <Badge color="green">Activo</Badge>;
+      case 'error':
+        return <Badge color="red">Error</Badge>;
+      case 'inactivo':
+      default:
+        return <Badge color="gray">Inactivo</Badge>;
+    }
+  };
+
+  const getTypeBadge = (tipo) => {
+    switch (tipo) {
+      case 'postgresql':
+        return <Badge color="blue">PostgreSQL</Badge>;
+      case 'mysql':
+        return <Badge color="orange">MySQL</Badge>;
+      case 'sqlserver':
+        return <Badge color="indigo">SQL Server</Badge>;
+      case 'duckdb':
+        return <Badge color="green">DuckDB</Badge>;
+      default:
+        return <Badge color="gray">{tipo}</Badge>;
+    }
+  };
+
   return (
     <Layout>
       <div className="px-4 sm:px-6 lg:px-8 py-8 w-full max-w-9xl mx-auto">
@@ -113,9 +133,9 @@ export default function DBSecretsList() {
                 <TableRow>
                   <TableHeaderCell>Nombre</TableHeaderCell>
                   <TableHeaderCell>Tipo</TableHeaderCell>
-                  <TableHeaderCell>Descripción</TableHeaderCell>
+                  <TableHeaderCell>Servidor</TableHeaderCell>
                   <TableHeaderCell>Estado</TableHeaderCell>
-                  <TableHeaderCell>Creado</TableHeaderCell>
+                  <TableHeaderCell>Último Test</TableHeaderCell>
                   <TableHeaderCell>Acciones</TableHeaderCell>
                 </TableRow>
               </TableHead>
@@ -129,22 +149,24 @@ export default function DBSecretsList() {
                 ) : (
                   dbSecrets.map((secret) => (
                     <TableRow key={secret.id}>
-                      <TableCell>{secret.nombre}</TableCell>
                       <TableCell>
-                        <Badge color="blue">
-                          {tipoServidorLabel[secret.tipo_servidor] || secret.tipo_servidor}
-                        </Badge>
+                        <div className="font-medium">{secret.nombre}</div>
+                        {secret.descripcion && (
+                          <div className="text-gray-500 text-xs">{secret.descripcion}</div>
+                        )}
                       </TableCell>
                       <TableCell>
-                        <Text truncate>{secret.descripcion || 'Sin descripción'}</Text>
+                        {getTypeBadge(secret.tipo)}
                       </TableCell>
                       <TableCell>
-                        <Badge color={secret.activo ? 'green' : 'gray'}>
-                          {secret.activo ? 'Activo' : 'Inactivo'}
-                        </Badge>
+                        <div>{secret.servidor}</div>
+                        <div className="text-gray-500 text-xs">Puerto: {secret.puerto}</div>
                       </TableCell>
                       <TableCell>
-                        {secret.creado_en ? format(new Date(secret.creado_en), 'dd/MM/yyyy') : 'N/A'}
+                        {getStatusBadge(secret.estado)}
+                      </TableCell>
+                      <TableCell>
+                        {secret.ultimo_test ? format(new Date(secret.ultimo_test), 'dd/MM/yyyy HH:mm') : 'Nunca'}
                       </TableCell>
                       <TableCell>
                         <div className="flex space-x-2">

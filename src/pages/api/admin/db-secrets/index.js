@@ -13,7 +13,8 @@ export default async function handler(req, res) {
     case 'GET':
       try {
         const dbSecrets = await query(`
-          SELECT id, nombre, descripcion, tipo_servidor, activo, creado_en, modificado_en
+          SELECT id, nombre, descripcion, tipo, servidor, puerto, 
+                 usuario, estado, ultimo_test, fecha_creacion
           FROM db_secrets
           ORDER BY nombre ASC
         `);
@@ -26,23 +27,43 @@ export default async function handler(req, res) {
       
     case 'POST':
       try {
-        const { nombre, descripcion, tipo_servidor, credenciales, activo } = req.body;
+        const { 
+          nombre, 
+          descripcion, 
+          tipo, 
+          servidor, 
+          puerto, 
+          usuario, 
+          contrasena, 
+          basedatos, 
+          opciones_conexion, 
+          activo 
+        } = req.body;
         
-        if (!nombre || !tipo_servidor || !credenciales) {
+        if (!nombre || !tipo || !servidor || !puerto || !usuario) {
           return res.status(400).json({ message: 'Faltan campos requeridos' });
         }
         
-        // Validación del tipo de servidor
-        const tiposValidos = ['postgresql', 'mysql', 'sqlserver', 'duckdb'];
-        if (!tiposValidos.includes(tipo_servidor)) {
-          return res.status(400).json({ message: 'Tipo de servidor no válido' });
-        }
-        
+        // Crear el secreto
         const result = await query(`
-          INSERT INTO db_secrets (nombre, descripcion, tipo_servidor, credenciales, activo)
-          VALUES ($1, $2, $3, $4, $5)
+          INSERT INTO db_secrets (
+            nombre, descripcion, tipo, servidor, puerto, 
+            usuario, contrasena, basedatos, opciones_conexion, estado
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
           RETURNING id
-        `, [nombre, descripcion, tipo_servidor, JSON.stringify(credenciales), activo !== false]);
+        `, [
+          nombre, 
+          descripcion, 
+          tipo, 
+          servidor, 
+          puerto, 
+          usuario, 
+          contrasena, 
+          basedatos || null, 
+          opciones_conexion ? JSON.stringify(opciones_conexion) : '{}',
+          activo !== false ? 'activo' : 'inactivo'
+        ]);
         
         return res.status(201).json({ id: result[0].id, message: 'Secreto creado correctamente' });
       } catch (error) {

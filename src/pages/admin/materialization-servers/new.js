@@ -15,23 +15,21 @@ import {
   Textarea,
   Switch
 } from '@tremor/react';
-import { ArrowLeftIcon, ServerIcon, KeyIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, ServerIcon, GlobeAltIcon } from '@heroicons/react/24/outline';
 import Breadcrumbs from '@/components/Breadcrumbs';
 import { toast } from 'react-toastify';
 
-export default function NewDBSecret() {
+export default function NewMaterializationServer() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     nombre: '',
     descripcion: '',
-    tipo: 'postgresql',
-    servidor: '',
-    puerto: 5432,
-    usuario: '',
-    contrasena: '',
-    basedatos: '',
-    opciones_conexion: '',
+    tipo: 'local',
+    endpoint: 'http://localhost:8000/api/materialize',
+    capacidad: 10,
+    api_key: '',
+    configuracion: '',
     activo: true
   });
 
@@ -49,32 +47,29 @@ export default function NewDBSecret() {
   };
 
   const handleSelectChange = (name, value) => {
-    let puerto = formData.puerto;
+    let endpoint = formData.endpoint;
     
-    // Ajustar puerto según tipo de base de datos
+    // Ajustar endpoint según tipo de servidor
     if (name === 'tipo') {
       switch (value) {
-        case 'postgresql':
-          puerto = 5432;
+        case 'local':
+          endpoint = 'http://localhost:8000/api/materialize';
           break;
-        case 'mysql':
-          puerto = 3306;
+        case 'remote':
+          endpoint = 'https://materialize.example.com/api';
           break;
-        case 'sqlserver':
-          puerto = 1433;
-          break;
-        case 'duckdb':
-          puerto = 0; // DuckDB es embebido, no usa puerto
+        case 'container':
+          endpoint = 'http://materialize-container:8080/api';
           break;
         default:
-          puerto = 5432;
+          endpoint = formData.endpoint;
       }
     }
     
     setFormData(prev => ({ 
       ...prev, 
       [name]: value,
-      ...(name === 'tipo' ? { puerto } : {})
+      ...(name === 'tipo' ? { endpoint } : {})
     }));
   };
 
@@ -82,7 +77,7 @@ export default function NewDBSecret() {
     e.preventDefault();
     
     // Validación básica
-    if (!formData.nombre || !formData.servidor || !formData.usuario) {
+    if (!formData.nombre || !formData.endpoint) {
       toast.error('Por favor complete todos los campos obligatorios');
       return;
     }
@@ -93,16 +88,16 @@ export default function NewDBSecret() {
       // Preparar datos para enviar
       const dataToSend = {
         ...formData,
-        opciones_conexion: formData.opciones_conexion ? 
-          JSON.parse(formData.opciones_conexion) : {}
+        configuracion: formData.configuracion ? 
+          JSON.parse(formData.configuracion) : {}
       };
       
       // Si el formato JSON no es válido, usar como cadena
-      if (formData.opciones_conexion && typeof dataToSend.opciones_conexion !== 'object') {
-        dataToSend.opciones_conexion = { raw: formData.opciones_conexion };
+      if (formData.configuracion && typeof dataToSend.configuracion !== 'object') {
+        dataToSend.configuracion = { raw: formData.configuracion };
       }
       
-      const response = await fetch('/api/admin/db-secrets', {
+      const response = await fetch('/api/admin/materialization-servers', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -112,16 +107,16 @@ export default function NewDBSecret() {
       
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.message || 'Error al crear el secreto');
+        throw new Error(error.message || 'Error al crear el servidor');
       }
       
       const result = await response.json();
-      toast.success('Secreto de base de datos creado correctamente');
-      router.push('/admin/db-secrets');
+      toast.success('Servidor de materialización creado correctamente');
+      router.push('/admin/materialization-servers');
       
     } catch (error) {
       console.error('Error:', error);
-      toast.error(error.message || 'Error al crear el secreto de base de datos');
+      toast.error(error.message || 'Error al crear el servidor de materialización');
     } finally {
       setLoading(false);
     }
@@ -132,17 +127,18 @@ export default function NewDBSecret() {
       <div className="px-4 sm:px-6 lg:px-8 py-8 w-full max-w-9xl mx-auto">
         <Breadcrumbs items={[
           { label: 'Admin', href: '/admin' },
-          { label: 'Secretos de Bases de Datos', href: '/admin/db-secrets' },
-          { label: 'Nuevo Secreto', current: true }
+          { label: 'Materializaciones', href: '/admin/materializations' },
+          { label: 'Servidores', href: '/admin/materialization-servers' },
+          { label: 'Nuevo Servidor', current: true }
         ]} />
         
         <div className="sm:flex sm:justify-between sm:items-center mb-8">
-          <Title>Crear Secreto de Base de Datos</Title>
+          <Title>Crear Servidor de Materialización</Title>
           <div className="mt-4 sm:mt-0">
             <Button
               variant="light"
               icon={ArrowLeftIcon}
-              onClick={() => router.push('/admin/db-secrets')}
+              onClick={() => router.push('/admin/materialization-servers')}
             >
               Volver
             </Button>
@@ -159,11 +155,11 @@ export default function NewDBSecret() {
                 <div className="mt-4 space-y-4">
                   <TextInput
                     name="nombre"
-                    placeholder="Nombre del secreto"
+                    placeholder="Nombre del servidor"
                     value={formData.nombre}
                     onChange={handleChange}
                     required
-                    icon={KeyIcon}
+                    icon={ServerIcon}
                     error={!formData.nombre ? 'Este campo es obligatorio' : ''}
                     errorMessage="Este campo es obligatorio"
                     className="mt-2"
@@ -186,7 +182,7 @@ export default function NewDBSecret() {
                       onChange={(checked) => handleSwitchChange('activo', checked)}
                     />
                     <label htmlFor="activo" className="text-tremor-default text-tremor-content cursor-pointer">
-                      Secreto activo
+                      Servidor activo
                     </label>
                   </div>
                 </div>
@@ -196,7 +192,7 @@ export default function NewDBSecret() {
             <Col>
               <Card>
                 <h3 className="text-tremor-default font-medium text-tremor-content-strong dark:text-dark-tremor-content-strong">
-                  Tipo de Base de Datos
+                  Tipo de Servidor
                 </h3>
                 <div className="mt-4">
                   <Select
@@ -205,19 +201,19 @@ export default function NewDBSecret() {
                     onValueChange={(value) => handleSelectChange('tipo', value)}
                     required
                   >
-                    <SelectItem value="postgresql" icon={ServerIcon}>
-                      PostgreSQL
+                    <SelectItem value="local" icon={ServerIcon}>
+                      Local (integrado)
                     </SelectItem>
-                    <SelectItem value="mysql" icon={ServerIcon}>
-                      MySQL / MariaDB
+                    <SelectItem value="remote" icon={GlobeAltIcon}>
+                      Remoto (instancia externa)
                     </SelectItem>
-                    <SelectItem value="sqlserver" icon={ServerIcon}>
-                      SQL Server
-                    </SelectItem>
-                    <SelectItem value="duckdb" icon={ServerIcon}>
-                      DuckDB
+                    <SelectItem value="container" icon={ServerIcon}>
+                      Contenedor
                     </SelectItem>
                   </Select>
+                  <Text className="text-xs text-gray-500 mt-1">
+                    Los servidores locales son más rápidos pero tienen capacidad limitada
+                  </Text>
                 </div>
               </Card>
             </Col>
@@ -228,65 +224,53 @@ export default function NewDBSecret() {
                   Detalles de Conexión
                 </h3>
                 <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  <TextInput
-                    name="servidor"
-                    placeholder="Servidor / Host"
-                    value={formData.servidor}
-                    onChange={handleChange}
-                    required
-                    error={!formData.servidor ? 'Este campo es obligatorio' : ''}
-                    className="mt-2"
-                  />
+                  <div className="sm:col-span-2">
+                    <TextInput
+                      name="endpoint"
+                      placeholder="URL del endpoint (e.j. http://localhost:8000/api)"
+                      value={formData.endpoint}
+                      onChange={handleChange}
+                      required
+                      icon={GlobeAltIcon}
+                      error={!formData.endpoint ? 'Este campo es obligatorio' : ''}
+                      className="mt-2"
+                    />
+                  </div>
                   
                   <NumberInput
-                    name="puerto"
-                    placeholder="Puerto"
-                    value={formData.puerto}
-                    onValueChange={(value) => handleNumberChange('puerto', value)}
+                    name="capacidad"
+                    placeholder="Capacidad (op/min)"
+                    value={formData.capacidad}
+                    onValueChange={(value) => handleNumberChange('capacidad', value)}
                     required
-                    min={0}
-                    max={65535}
+                    min={1}
+                    max={1000}
+                    step={1}
                     className="mt-2"
                   />
                   
-                  <TextInput
-                    name="basedatos"
-                    placeholder="Base de datos (opcional)"
-                    value={formData.basedatos}
-                    onChange={handleChange}
-                    className="mt-2"
-                  />
-                  
-                  <TextInput
-                    name="usuario"
-                    placeholder="Usuario"
-                    value={formData.usuario}
-                    onChange={handleChange}
-                    required
-                    error={!formData.usuario ? 'Este campo es obligatorio' : ''}
-                    className="mt-2"
-                  />
-                  
-                  <TextInput
-                    name="contrasena"
-                    placeholder="Contraseña"
-                    value={formData.contrasena}
-                    onChange={handleChange}
-                    type="password"
-                    className="mt-2"
-                  />
+                  <div className="sm:col-span-2">
+                    <TextInput
+                      name="api_key"
+                      placeholder="API Key (opcional para servidores locales)"
+                      value={formData.api_key}
+                      onChange={handleChange}
+                      type={formData.tipo === 'local' ? 'text' : 'password'}
+                      className="mt-2"
+                    />
+                  </div>
                   
                   <div className="sm:col-span-2 lg:col-span-3">
                     <Textarea
-                      name="opciones_conexion"
-                      placeholder="Opciones de conexión (JSON, opcional)"
-                      value={formData.opciones_conexion}
+                      name="configuracion"
+                      placeholder="Configuración adicional (JSON, opcional)"
+                      value={formData.configuracion}
                       onChange={handleChange}
                       rows={3}
                       className="mt-2"
                     />
                     <Text className="text-xs text-gray-500 mt-1">
-                      Ejemplo: {`{"sslmode":"require","connect_timeout":10}`}
+                      Ejemplo: {`{"timeoutSeconds":30,"maxRetries":3}`}
                     </Text>
                   </div>
                 </div>
@@ -298,7 +282,7 @@ export default function NewDBSecret() {
             <Button
               type="button"
               variant="secondary"
-              onClick={() => router.push('/admin/db-secrets')}
+              onClick={() => router.push('/admin/materialization-servers')}
               disabled={loading}
             >
               Cancelar
@@ -308,7 +292,7 @@ export default function NewDBSecret() {
               loading={loading}
               disabled={loading}
             >
-              {loading ? 'Guardando...' : 'Guardar Secreto'}
+              {loading ? 'Guardando...' : 'Guardar Servidor'}
             </Button>
           </div>
         </form>
