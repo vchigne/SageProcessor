@@ -779,6 +779,14 @@ class MaterializationProcessor:
         
         # Preparar el cliente de Azure
         connection_string = credentials.get('connection_string')
+        
+        # Log para depuración
+        self.logger.message(f"Credenciales Azure: {list(credentials.keys()) if credentials else 'No hay credenciales'}")
+        self.logger.message(f"Configuración Azure: {list(config.keys()) if config else 'No hay configuración'}")
+        
+        # Crear cliente de blob service según el tipo de credenciales
+        blob_service_client = None
+        
         if not connection_string:
             account_name = credentials.get('account_name')
             account_key = credentials.get('account_key')
@@ -787,17 +795,26 @@ class MaterializationProcessor:
             if account_name and sas_token:
                 # Usar SAS token
                 self.logger.message(f"Usando autenticación con SAS token para Azure")
-                account_url = f"https://{account_name}.blob.core.windows.net{sas_token}"
-                blob_service_client = BlobServiceClient(account_url=account_url)
-                return blob_service_client
+                account_url = f"https://{account_name}.blob.core.windows.net"
+                if not sas_token.startswith('?'):
+                    sas_token = f"?{sas_token}"
+                blob_service_client = BlobServiceClient(account_url=f"{account_url}{sas_token}")
             elif account_name and account_key:
                 # Usar account key
+                self.logger.message(f"Usando autenticación con account key para Azure")
                 connection_string = f"DefaultEndpointsProtocol=https;AccountName={account_name};AccountKey={account_key};EndpointSuffix=core.windows.net"
+                blob_service_client = BlobServiceClient.from_connection_string(connection_string)
             else:
                 raise ValueError("Se requiere connection_string, account_name + sas_token, o account_name + account_key para Azure")
+        else:
+            # Usar connection_string
+            self.logger.message(f"Usando autenticación con connection_string para Azure")
+            blob_service_client = BlobServiceClient.from_connection_string(connection_string)
         
-        # Crear cliente Azure
-        blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+        if not blob_service_client:
+            raise ValueError("No se pudo crear el cliente de blob service para Azure")
+        
+        # Obtener el cliente del contenedor
         container_client = blob_service_client.get_container_client(container_name)
         
         # Procesar según formato
