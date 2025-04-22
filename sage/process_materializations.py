@@ -625,6 +625,9 @@ class MaterializationProcessor:
         
         # Procesar según formato
         buffer = io.BytesIO()
+        # Inicializar con un valor por defecto
+        content_type = 'application/octet-stream'
+        file_ext = '.bin'
         
         if file_format == 'parquet':
             df.to_parquet(buffer, engine='pyarrow', index=False)
@@ -645,6 +648,8 @@ class MaterializationProcessor:
         elif file_format in ['avro', 'orc', 'hudi', 'iceberg']:
             # Para formatos avanzados, usar carpeta temporal
             with tempfile.TemporaryDirectory() as temp_dir:
+                # Inicializar con extensión genérica (será reemplazada en los casos específicos)
+                file_ext = '.bin'
                 temp_file = os.path.join(temp_dir, f"data{file_ext}")
                 
                 if file_format == 'avro':
@@ -785,6 +790,9 @@ class MaterializationProcessor:
         
         # Procesar según formato
         buffer = io.BytesIO()
+        # Inicializar con un valor por defecto
+        content_type = 'application/octet-stream'
+        file_ext = '.bin'
         
         if file_format == 'parquet':
             df.to_parquet(buffer, engine='pyarrow', index=False)
@@ -857,6 +865,9 @@ class MaterializationProcessor:
         
         # Procesar según formato
         buffer = io.BytesIO()
+        # Inicializar con un valor por defecto
+        content_type = 'application/octet-stream'
+        file_ext = '.bin'
         
         if file_format == 'parquet':
             df.to_parquet(buffer, engine='pyarrow', index=False)
@@ -918,7 +929,8 @@ class MaterializationProcessor:
             
             row = cursor.fetchone()
             if not row:
-                return None
+                self.logger.error(f"No se encontró la conexión a base de datos con ID {db_conn_id}")
+                return {}
                 
             columns = [desc[0] for desc in cursor.description]
             result = dict(zip(columns, row))
@@ -949,7 +961,8 @@ class MaterializationProcessor:
             
             row = cursor.fetchone()
             if not row:
-                return None
+                self.logger.error(f"No se encontró el proveedor cloud con ID {provider_id}")
+                return {}
                 
             columns = [desc[0] for desc in cursor.description]
             result = dict(zip(columns, row))
