@@ -601,9 +601,14 @@ class MaterializationProcessor:
             file_format: Formato del archivo
             partition_columns: Columnas para particionar los datos
         """
-        # Extraer credenciales
-        credentials = json.loads(provider_info['credenciales']) if isinstance(provider_info['credenciales'], str) else provider_info['credenciales']
-        bucket_name = provider_info['bucket']
+        # Extraer credenciales y configuración
+        credentials = provider_info['credenciales'] 
+        configuracion = provider_info['configuracion']
+        
+        # Obtener nombre del bucket de la configuración
+        bucket_name = configuracion.get('bucket')
+        if not bucket_name:
+            raise ValueError(f"No se ha configurado un bucket para el proveedor {provider_info['nombre']}")
         
         # Crear cliente S3
         s3_client = self._get_s3_client(provider_info)
@@ -713,18 +718,33 @@ class MaterializationProcessor:
             file_format: Formato del archivo
             partition_columns: Columnas para particionar los datos
         """
-        # Extraer credenciales
-        credentials = json.loads(provider_info['credenciales']) if isinstance(provider_info['credenciales'], str) else provider_info['credenciales']
-        container_name = provider_info['bucket']
+        # Extraer credenciales y configuración
+        credentials = provider_info['credenciales']
+        configuracion = provider_info['configuracion']
+        
+        # Obtener nombre del container de la configuración
+        container_name = configuracion.get('container')
+        if not container_name:
+            raise ValueError(f"No se ha configurado un container para el proveedor Azure {provider_info['nombre']}")
         
         # Preparar el cliente de Azure
         connection_string = credentials.get('connection_string')
         if not connection_string:
             account_name = credentials.get('account_name')
             account_key = credentials.get('account_key')
-            if not (account_name and account_key):
-                raise ValueError("Se requiere connection_string o account_name + account_key para Azure")
-            connection_string = f"DefaultEndpointsProtocol=https;AccountName={account_name};AccountKey={account_key};EndpointSuffix=core.windows.net"
+            sas_token = credentials.get('sas_token')
+            
+            if account_name and sas_token:
+                # Usar SAS token
+                self.logger.message(f"Usando autenticación con SAS token para Azure")
+                account_url = f"https://{account_name}.blob.core.windows.net{sas_token}"
+                blob_service_client = BlobServiceClient(account_url=account_url)
+                return blob_service_client
+            elif account_name and account_key:
+                # Usar account key
+                connection_string = f"DefaultEndpointsProtocol=https;AccountName={account_name};AccountKey={account_key};EndpointSuffix=core.windows.net"
+            else:
+                raise ValueError("Se requiere connection_string, account_name + sas_token, o account_name + account_key para Azure")
         
         # Crear cliente Azure
         blob_service_client = BlobServiceClient.from_connection_string(connection_string)
@@ -782,9 +802,14 @@ class MaterializationProcessor:
             file_format: Formato del archivo
             partition_columns: Columnas para particionar los datos
         """
-        # Extraer credenciales
-        credentials = json.loads(provider_info['credenciales']) if isinstance(provider_info['credenciales'], str) else provider_info['credenciales']
-        bucket_name = provider_info['bucket']
+        # Extraer credenciales y configuración
+        credentials = provider_info['credenciales']
+        configuracion = provider_info['configuracion']
+        
+        # Obtener nombre del bucket de la configuración
+        bucket_name = configuracion.get('bucket')
+        if not bucket_name:
+            raise ValueError(f"No se ha configurado un bucket para el proveedor GCP {provider_info['nombre']}")
         
         # Crear cliente GCP
         if isinstance(credentials, dict):
@@ -884,10 +909,9 @@ class MaterializationProcessor:
         
         try:
             cursor.execute("""
-                SELECT id, nombre, tipo, credenciales, bucket, region, endpoint, 
-                       puerto, path_style, estado
+                SELECT id, nombre, tipo, credenciales, configuracion, activo, estado
                 FROM cloud_providers
-                WHERE id = %s
+                WHERE id = %s AND activo = true
             """, (provider_id,))
             
             row = cursor.fetchone()
@@ -897,6 +921,21 @@ class MaterializationProcessor:
             columns = [desc[0] for desc in cursor.description]
             result = dict(zip(columns, row))
             
+            # Convertir credenciales y configuración de JSON a dict si son strings
+            if 'credenciales' in result and isinstance(result['credenciales'], str):
+                try:
+                    result['credenciales'] = json.loads(result['credenciales'])
+                except json.JSONDecodeError:
+                    self.logger.error(f"Error decodificando credenciales del proveedor {provider_id}")
+            
+            if 'configuracion' in result and isinstance(result['configuracion'], str):
+                try:
+                    result['configuracion'] = json.loads(result['configuracion'])
+                except json.JSONDecodeError:
+                    self.logger.error(f"Error decodificando configuración del proveedor {provider_id}")
+            elif 'configuracion' not in result or result['configuracion'] is None:
+                result['configuracion'] = {}
+                
             return result
         finally:
             cursor.close()
@@ -942,38 +981,53 @@ class MaterializationProcessor:
         if provider_id in self.cloud_clients:
             return self.cloud_clients[provider_id]
         
-        # Extraer credenciales
-        credentials = json.loads(provider_info['credenciales']) if isinstance(provider_info['credenciales'], str) else provider_info['credenciales']
+        # Extraer credenciales y configuración
+        credentials = provider_info['credenciales']
+        configuracion = provider_info['configuracion']
         
         # Configurar cliente según el tipo de proveedor
         if provider_info['tipo'] == 's3':
             # AWS S3
+            region = configuracion.get('region', 'us-east-1')
+            
+            self.logger.message(f"Creando cliente S3 para la región {region}")
+            
             session = boto3.Session(
                 aws_access_key_id=credentials.get('access_key'),
                 aws_secret_access_key=credentials.get('secret_key'),
-                region_name=provider_info.get('region')
+                region_name=region
             )
             s3_client = session.client('s3')
             
         elif provider_info['tipo'] == 'minio':
             # MinIO o S3 compatible
-            endpoint_url = provider_info.get('endpoint')
+            endpoint_url = configuracion.get('endpoint_url')
             if not endpoint_url:
-                raise ValueError("Se requiere endpoint_url para MinIO")
+                raise ValueError(f"Se requiere endpoint_url para MinIO en el proveedor {provider_info['nombre']}")
                 
-            if provider_info.get('puerto'):
+            # Comprobar si necesitamos añadir el puerto
+            puerto = configuracion.get('puerto')
+            if puerto:
                 if not endpoint_url.startswith('http'):
                     endpoint_url = f"http{'s' if endpoint_url.startswith('https') else ''}://{endpoint_url}"
-                endpoint_url = f"{endpoint_url}:{provider_info['puerto']}"
+                endpoint_url = f"{endpoint_url}:{puerto}"
+            
+            region = configuracion.get('region', 'us-east-1')
+            path_style = configuracion.get('path_style', False)
+            
+            self.logger.message(f"Creando cliente MinIO para endpoint {endpoint_url}")
                 
             s3_client = boto3.client(
                 's3',
                 endpoint_url=endpoint_url,
                 aws_access_key_id=credentials.get('access_key'),
                 aws_secret_access_key=credentials.get('secret_key'),
-                region_name=provider_info.get('region', 'us-east-1'),
-                config=boto3.session.Config(signature_version='s3v4'),
-                verify=False  # Desactivar verificación SSL para MinIO local
+                region_name=region,
+                config=boto3.session.Config(
+                    signature_version='s3v4',
+                    s3={'addressing_style': 'path' if path_style else 'auto'}
+                ),
+                verify=configuracion.get('verify_ssl', False)  # Desactivar verificación SSL por defecto para MinIO local
             )
         else:
             raise ValueError(f"Tipo de proveedor no soportado para cliente S3: {provider_info['tipo']}")
@@ -984,7 +1038,7 @@ class MaterializationProcessor:
         return s3_client
     
     def _register_materialization_execution(self, materialization_id: int, execution_id: str, 
-                                           status: str, message: str) -> None:
+                                           status: str, message: str, records_count: int = None) -> None:
         """
         Registra la ejecución de una materialización.
         
@@ -993,18 +1047,35 @@ class MaterializationProcessor:
             execution_id: ID de la ejecución SAGE
             status: Estado de la materialización (pendiente, completado, error)
             message: Mensaje descriptivo
+            records_count: Número de registros procesados (opcional)
         """
         conn = self._get_database_connection()
         cursor = conn.cursor()
         
         try:
+            # Incluir registros_procesados si se proporciona
+            if records_count is not None:
+                cursor.execute("""
+                    INSERT INTO materializaciones_ejecuciones
+                    (materialization_id, execution_id, estado, mensaje, fecha_creacion, fecha_fin, registros_procesados)
+                    VALUES (%s, %s, %s, %s, NOW(), NOW(), %s)
+                """, (materialization_id, execution_id, status, message, records_count))
+            else:
+                cursor.execute("""
+                    INSERT INTO materializaciones_ejecuciones
+                    (materialization_id, execution_id, estado, mensaje, fecha_creacion, fecha_fin)
+                    VALUES (%s, %s, %s, %s, NOW(), NOW())
+                """, (materialization_id, execution_id, status, message))
+            
+            # Actualizar la última materialización en la tabla materializaciones
             cursor.execute("""
-                INSERT INTO materializaciones_ejecuciones
-                (materialization_id, execution_id, estado, mensaje, fecha_creacion)
-                VALUES (%s, %s, %s, %s, NOW())
-            """, (materialization_id, execution_id, status, message))
+                UPDATE materializaciones
+                SET ultima_materializacion = NOW()
+                WHERE id = %s
+            """, (materialization_id,))
             
             conn.commit()
+            self.logger.message(f"Registrada ejecución de materialización {materialization_id}: {status}")
         except Exception as e:
             conn.rollback()
             self.logger.error(f"Error al registrar ejecución de materialización: {str(e)}")
