@@ -36,7 +36,7 @@ export default async function handler(req, res) {
  */
 async function getDBConnections(req, res) {
   try {
-    // Consultar conexiones con información del secreto y número de tablas
+    // Consultar conexiones con información del secreto
     const query = `
       SELECT 
         c.id, 
@@ -51,11 +51,7 @@ async function getDBConnections(req, res) {
         c.fecha_creacion,
         s.nombre as secret_name,
         s.tipo as tipo_bd,
-        (
-          SELECT COUNT(*) 
-          FROM materialization_tables 
-          WHERE db_connection_id = c.id
-        ) as table_count
+        0 as table_count
       FROM 
         database_connections c
       LEFT JOIN 

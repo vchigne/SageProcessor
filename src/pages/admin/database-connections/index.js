@@ -270,7 +270,7 @@ export default function DatabaseConnections() {
           </div>
           <div className="flex space-x-3">
             <Button 
-              icon={KeyIcon} 
+              icon={ShieldCheckIcon} 
               onClick={() => router.push('/admin/db-secrets')}
               color="cyan"
             >
@@ -408,7 +408,7 @@ export default function DatabaseConnections() {
         ) : connections.length === 0 ? (
           <Card className="py-8">
             <div className="text-center">
-              <DatabaseIcon className="h-12 w-12 mx-auto text-gray-400" />
+              <CloudIcon className="h-12 w-12 mx-auto text-gray-400" />
               <h3 className="mt-2 text-lg font-medium text-gray-900 dark:text-gray-100">
                 No hay conexiones configuradas
               </h3>
@@ -428,7 +428,7 @@ export default function DatabaseConnections() {
               <Card key={connection.id} className="relative">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center">
-                    <DatabaseIcon className="h-5 w-5 text-indigo-500" />
+                    <CloudIcon className="h-5 w-5 text-indigo-500" />
                     <div className="ml-2">
                       <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">
                         {connection.nombre}
@@ -460,7 +460,7 @@ export default function DatabaseConnections() {
                   )}
                   {connection.table_count > 0 && (
                     <div className="flex items-center">
-                      <TableCellsIcon className="h-4 w-4 mr-1" />
+                      <DocumentTextIcon className="h-4 w-4 mr-1" />
                       <span>{connection.table_count} tablas</span>
                     </div>
                   )}
