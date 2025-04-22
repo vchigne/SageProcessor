@@ -611,12 +611,12 @@ class MaterializationProcessor:
             file_format: Formato del archivo
             partition_columns: Columnas para particionar los datos
         """
-        # Extraer credenciales y configuración
-        credentials = provider_info['credenciales'] 
-        configuracion = provider_info['configuracion']
+        # Parsear credenciales y configuración
+        config = provider_info['configuracion'] if isinstance(provider_info['configuracion'], dict) else json.loads(provider_info['configuracion']) if 'configuracion' in provider_info else {}
+        credentials = provider_info['credenciales'] if isinstance(provider_info['credenciales'], dict) else json.loads(provider_info['credenciales']) if 'credenciales' in provider_info else {}
         
-        # Obtener nombre del bucket de la configuración
-        bucket_name = configuracion.get('bucket')
+        # Bucket puede estar en credenciales o en configuración
+        bucket_name = credentials.get('bucket') or config.get('bucket')
         if not bucket_name:
             raise ValueError(f"No se ha configurado un bucket para el proveedor {provider_info['nombre']}")
         
@@ -756,12 +756,12 @@ class MaterializationProcessor:
             file_format: Formato del archivo
             partition_columns: Columnas para particionar los datos
         """
-        # Extraer credenciales y configuración
-        credentials = provider_info['credenciales']
-        configuracion = provider_info['configuracion']
+        # Parsear credenciales y configuración
+        config = provider_info['configuracion'] if isinstance(provider_info['configuracion'], dict) else json.loads(provider_info['configuracion']) if 'configuracion' in provider_info else {}
+        credentials = provider_info['credenciales'] if isinstance(provider_info['credenciales'], dict) else json.loads(provider_info['credenciales']) if 'credenciales' in provider_info else {}
         
-        # Obtener nombre del container de la configuración
-        container_name = configuracion.get('container')
+        # Buscar el container en diferentes variantes de nombre (container, container_name, bucket)
+        container_name = credentials.get('container_name') or credentials.get('container') or config.get('container_name') or config.get('container') or config.get('bucket')
         if not container_name:
             raise ValueError(f"No se ha configurado un container para el proveedor Azure {provider_info['nombre']}")
         
@@ -843,12 +843,12 @@ class MaterializationProcessor:
             file_format: Formato del archivo
             partition_columns: Columnas para particionar los datos
         """
-        # Extraer credenciales y configuración
-        credentials = provider_info['credenciales']
-        configuracion = provider_info['configuracion']
+        # Parsear credenciales y configuración
+        config = provider_info['configuracion'] if isinstance(provider_info['configuracion'], dict) else json.loads(provider_info['configuracion']) if 'configuracion' in provider_info else {}
+        credentials = provider_info['credenciales'] if isinstance(provider_info['credenciales'], dict) else json.loads(provider_info['credenciales']) if 'credenciales' in provider_info else {}
         
-        # Obtener nombre del bucket de la configuración
-        bucket_name = configuracion.get('bucket')
+        # Buscar el bucket en diferentes variantes de nombre (bucket, bucket_name)
+        bucket_name = credentials.get('bucket_name') or credentials.get('bucket') or config.get('bucket_name') or config.get('bucket')
         if not bucket_name:
             raise ValueError(f"No se ha configurado un bucket para el proveedor GCP {provider_info['nombre']}")
         
@@ -1027,61 +1027,64 @@ class MaterializationProcessor:
         if provider_id in self.cloud_clients:
             return self.cloud_clients[provider_id]
         
-        # Extraer credenciales y configuración
-        credentials = provider_info['credenciales']
-        configuracion = provider_info['configuracion']
+        # Parsear credenciales y configuración
+        config = provider_info['configuracion'] if isinstance(provider_info['configuracion'], dict) else json.loads(provider_info['configuracion']) if 'configuracion' in provider_info else {}
+        credentials = provider_info['credenciales'] if isinstance(provider_info['credenciales'], dict) else json.loads(provider_info['credenciales']) if 'credenciales' in provider_info else {}
         
-        # Configurar cliente según el tipo de proveedor
-        if provider_info['tipo'] == 's3':
-            # AWS S3
-            region = configuracion.get('region', 'us-east-1')
-            
-            self.logger.message(f"Creando cliente S3 para la región {region}")
-            
-            session = boto3.Session(
-                aws_access_key_id=credentials.get('access_key'),
-                aws_secret_access_key=credentials.get('secret_key'),
-                region_name=region
-            )
-            s3_client = session.client('s3')
-            
-        elif provider_info['tipo'] == 'minio':
-            # MinIO o S3 compatible
-            endpoint_url = configuracion.get('endpoint_url')
-            if not endpoint_url:
-                raise ValueError(f"Se requiere endpoint_url para MinIO en el proveedor {provider_info['nombre']}")
-                
-            # Comprobar si necesitamos añadir el puerto
-            puerto = configuracion.get('puerto')
-            if puerto:
-                if not endpoint_url.startswith('http'):
-                    endpoint_url = f"http{'s' if endpoint_url.startswith('https') else ''}://{endpoint_url}"
-                endpoint_url = f"{endpoint_url}:{puerto}"
-            
-            region = configuracion.get('region', 'us-east-1')
-            path_style = configuracion.get('path_style', False)
-            
-            self.logger.message(f"Creando cliente MinIO para endpoint {endpoint_url}")
-                
-            s3_client = boto3.client(
-                's3',
-                endpoint_url=endpoint_url,
-                aws_access_key_id=credentials.get('access_key'),
-                aws_secret_access_key=credentials.get('secret_key'),
-                region_name=region,
-                config=boto3.session.Config(
-                    signature_version='s3v4',
-                    s3={'addressing_style': 'path' if path_style else 'auto'}
-                ),
-                verify=configuracion.get('verify_ssl', False)  # Desactivar verificación SSL por defecto para MinIO local
-            )
-        else:
-            raise ValueError(f"Tipo de proveedor no soportado para cliente S3: {provider_info['tipo']}")
-            
-        # Guardar el cliente en la caché
-        self.cloud_clients[provider_id] = s3_client
+        # Logs para depuración
+        self.logger.message(f"Credenciales S3: {list(credentials.keys()) if credentials else 'No hay credenciales'}")
+        self.logger.message(f"Configuración S3: {list(config.keys()) if config else 'No hay configuración'}")
         
-        return s3_client
+        # Obtener solo los parámetros necesarios para S3
+        endpoint_url = credentials.get('endpoint_url')
+        access_key = credentials.get('access_key') or credentials.get('accessKey')
+        secret_key = credentials.get('secret_key') or credentials.get('secretKey')
+        region = credentials.get('region', 'us-east-1')  # Valor predeterminado como en el JavaScript
+        
+        # Logs específicos para S3
+        self.logger.message(f"Usando endpoint S3: {endpoint_url or 'Default S3'}")
+        self.logger.message(f"Usando región S3: {region}")
+        self.logger.message(f"Credenciales procesadas: access_key={access_key}, region={region}")
+        
+        # Bucket puede estar en credenciales o en configuración
+        bucket = credentials.get('bucket') or config.get('bucket')
+        self.logger.message(f"Bucket a usar: {bucket}")
+        
+        if not bucket:
+            raise ValueError("No se pudo determinar el bucket desde las credenciales o configuración")
+        
+        # Configurar el cliente S3
+        s3_kwargs = {
+            'aws_access_key_id': access_key,
+            'aws_secret_access_key': secret_key,
+            'region_name': region
+        }
+        
+        # Si hay un endpoint_url, agregarlo a los kwargs
+        if endpoint_url:
+            s3_kwargs['endpoint_url'] = endpoint_url
+            
+            # Para endpoints personalizados, usar path-style URLs
+            s3_kwargs['config'] = boto3.session.Config(
+                signature_version='s3v4',
+                s3={'addressing_style': 'path'}
+            )
+        
+        # Crear el cliente
+        try:
+            if provider_info['tipo'] == 'minio':
+                self.logger.message(f"Creando cliente MinIO para endpoint {endpoint_url}")
+            else:
+                self.logger.message(f"Creando cliente S3 para la región {region}")
+                
+            s3_client = boto3.client('s3', **s3_kwargs)
+            
+            # Guardar el cliente en caché
+            self.cloud_clients[provider_id] = s3_client
+            
+            return s3_client
+        except Exception as e:
+            raise ValueError(f"Error al crear cliente S3: {str(e)}")
     
     def _register_materialization_execution(self, materialization_id: int, execution_id: str, 
                                            status: str, message: str, records_count: int = None) -> None:
