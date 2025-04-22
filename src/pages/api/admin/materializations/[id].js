@@ -45,30 +45,16 @@ async function getMaterialization(req, res, id) {
         m.casilla_id,
         m.nombre,
         m.descripcion,
-        m.tipo_materializacion,
-        m.connection_id,
-        m.cloud_provider_id,
-        m.tabla_destino,
-        m.schema_destino,
-        m.formato_destino,
-        m.estrategia_actualizacion,
-        m.clave_primaria,
-        m.particion_por,
-        m.ultima_ejecucion,
-        m.activado,
-        m.creado_en,
-        m.modificado_en,
-        db.nombre AS nombre_casilla,
-        dc.nombre AS connection_name,
-        cp.nombre AS cloud_provider_name
+        m.configuracion,
+        m.estado,
+        m.ultima_materializacion,
+        m.fecha_creacion,
+        m.fecha_actualizacion,
+        c.nombre AS nombre_casilla
       FROM 
-        materializations m
+        materializaciones m
       LEFT JOIN 
-        data_boxes db ON m.casilla_id = db.id
-      LEFT JOIN 
-        database_connections dc ON m.connection_id = dc.id
-      LEFT JOIN 
-        cloud_providers cp ON m.cloud_provider_id = cp.id
+        casillas c ON m.casilla_id = c.id
       WHERE 
         m.id = $1
     `;
@@ -93,7 +79,7 @@ async function getMaterialization(req, res, id) {
 async function updateMaterialization(req, res, id) {
   try {
     // Primero verificar que la materialización existe
-    const checkQuery = `SELECT id FROM materializations WHERE id = $1`;
+    const checkQuery = `SELECT id FROM materializaciones WHERE id = $1`;
     const checkResult = await pool.query(checkQuery, [id]);
     
     if (checkResult.rows.length === 0) {
@@ -103,16 +89,8 @@ async function updateMaterialization(req, res, id) {
     const {
       nombre,
       descripcion,
-      tipo_materializacion,
-      connection_id,
-      cloud_provider_id,
-      tabla_destino,
-      schema_destino,
-      formato_destino,
-      estrategia_actualizacion,
-      clave_primaria,
-      particion_por,
-      activado
+      configuracion = {},
+      estado
     } = req.body;
     
     // Validar datos requeridos
@@ -120,84 +98,33 @@ async function updateMaterialization(req, res, id) {
       return res.status(400).json({ message: 'Nombre requerido' });
     }
     
-    if (!tipo_materializacion) {
-      return res.status(400).json({ message: 'Tipo de materialización requerido' });
-    }
-    
-    if (!tabla_destino) {
-      return res.status(400).json({ message: 'Tabla de destino requerida' });
-    }
-    
-    // Validaciones específicas por tipo
-    if (tipo_materializacion === 'database' && !connection_id) {
-      return res.status(400).json({ message: 'ID de conexión a base de datos requerido' });
-    }
-    
-    if (tipo_materializacion === 'cloud_datalake' && !cloud_provider_id) {
-      return res.status(400).json({ message: 'ID de proveedor de nube requerido' });
-    }
-    
     // Actualizar la materialización
     const updateQuery = `
-      UPDATE materializations
+      UPDATE materializaciones
       SET 
         nombre = $1,
         descripcion = $2,
-        tipo_materializacion = $3,
-        connection_id = $4,
-        cloud_provider_id = $5,
-        tabla_destino = $6,
-        schema_destino = $7,
-        formato_destino = $8,
-        estrategia_actualizacion = $9,
-        clave_primaria = $10,
-        particion_por = $11,
-        activado = $12,
-        modificado_en = NOW()
-      WHERE id = $13
+        configuracion = $3,
+        estado = $4,
+        fecha_actualizacion = NOW()
+      WHERE id = $5
       RETURNING *
     `;
     
     const updateParams = [
       nombre,
       descripcion || null,
-      tipo_materializacion,
-      connection_id || null,
-      cloud_provider_id || null,
-      tabla_destino,
-      schema_destino || null,
-      formato_destino || null,
-      estrategia_actualizacion || 'upsert',
-      clave_primaria || null,
-      particion_por || null,
-      activado !== undefined ? activado : true,
+      configuracion || {},
+      estado || 'pendiente',
       id
     ];
     
     const updateResult = await pool.query(updateQuery, updateParams);
     
-    // Enriquecer la respuesta con nombres de entidades relacionadas
+    // Obtener el nombre de la casilla para incluirlo en la respuesta
     const updatedMaterialization = updateResult.rows[0];
     
-    if (updatedMaterialization.connection_id) {
-      const connectionQuery = `SELECT nombre FROM database_connections WHERE id = $1`;
-      const connectionResult = await pool.query(connectionQuery, [updatedMaterialization.connection_id]);
-      
-      if (connectionResult.rows.length > 0) {
-        updatedMaterialization.connection_name = connectionResult.rows[0].nombre;
-      }
-    }
-    
-    if (updatedMaterialization.cloud_provider_id) {
-      const providerQuery = `SELECT nombre FROM cloud_providers WHERE id = $1`;
-      const providerResult = await pool.query(providerQuery, [updatedMaterialization.cloud_provider_id]);
-      
-      if (providerResult.rows.length > 0) {
-        updatedMaterialization.cloud_provider_name = providerResult.rows[0].nombre;
-      }
-    }
-    
-    const casillaNameQuery = `SELECT nombre FROM data_boxes WHERE id = $1`;
+    const casillaNameQuery = `SELECT nombre FROM casillas WHERE id = $1`;
     const casillaNameResult = await pool.query(casillaNameQuery, [updatedMaterialization.casilla_id]);
     
     if (casillaNameResult.rows.length > 0) {
@@ -218,7 +145,7 @@ async function updateMaterialization(req, res, id) {
 async function patchMaterialization(req, res, id) {
   try {
     // Primero verificar que la materialización existe
-    const checkQuery = `SELECT * FROM materializations WHERE id = $1`;
+    const checkQuery = `SELECT * FROM materializaciones WHERE id = $1`;
     const checkResult = await pool.query(checkQuery, [id]);
     
     if (checkResult.rows.length === 0) {
@@ -228,9 +155,7 @@ async function patchMaterialization(req, res, id) {
     const currentData = checkResult.rows[0];
     const updates = {};
     const allowedFields = [
-      'nombre', 'descripcion', 'tipo_materializacion', 'connection_id',
-      'cloud_provider_id', 'tabla_destino', 'schema_destino', 'formato_destino',
-      'estrategia_actualizacion', 'clave_primaria', 'particion_por', 'activado'
+      'nombre', 'descripcion', 'configuracion', 'estado'
     ];
     
     // Recopilar campos para actualizar
@@ -249,7 +174,7 @@ async function patchMaterialization(req, res, id) {
     }
     
     // Construir la consulta de actualización dinámica
-    let updateQuery = 'UPDATE materializations SET modificado_en = NOW()';
+    let updateQuery = 'UPDATE materializaciones SET fecha_actualizacion = NOW()';
     const updateParams = [];
     let paramIndex = 1;
     
@@ -264,28 +189,10 @@ async function patchMaterialization(req, res, id) {
     
     const updateResult = await pool.query(updateQuery, updateParams);
     
-    // Enriquecer la respuesta con nombres de entidades relacionadas
+    // Obtener el nombre de la casilla para incluirlo en la respuesta
     const updatedMaterialization = updateResult.rows[0];
     
-    if (updatedMaterialization.connection_id) {
-      const connectionQuery = `SELECT nombre FROM database_connections WHERE id = $1`;
-      const connectionResult = await pool.query(connectionQuery, [updatedMaterialization.connection_id]);
-      
-      if (connectionResult.rows.length > 0) {
-        updatedMaterialization.connection_name = connectionResult.rows[0].nombre;
-      }
-    }
-    
-    if (updatedMaterialization.cloud_provider_id) {
-      const providerQuery = `SELECT nombre FROM cloud_providers WHERE id = $1`;
-      const providerResult = await pool.query(providerQuery, [updatedMaterialization.cloud_provider_id]);
-      
-      if (providerResult.rows.length > 0) {
-        updatedMaterialization.cloud_provider_name = providerResult.rows[0].nombre;
-      }
-    }
-    
-    const casillaNameQuery = `SELECT nombre FROM data_boxes WHERE id = $1`;
+    const casillaNameQuery = `SELECT nombre FROM casillas WHERE id = $1`;
     const casillaNameResult = await pool.query(casillaNameQuery, [updatedMaterialization.casilla_id]);
     
     if (casillaNameResult.rows.length > 0) {
@@ -306,7 +213,7 @@ async function patchMaterialization(req, res, id) {
 async function deleteMaterialization(req, res, id) {
   try {
     // Primero verificar que la materialización existe
-    const checkQuery = `SELECT id FROM materializations WHERE id = $1`;
+    const checkQuery = `SELECT id FROM materializaciones WHERE id = $1`;
     const checkResult = await pool.query(checkQuery, [id]);
     
     if (checkResult.rows.length === 0) {
@@ -314,7 +221,7 @@ async function deleteMaterialization(req, res, id) {
     }
     
     // Eliminar la materialización
-    const deleteQuery = `DELETE FROM materializations WHERE id = $1`;
+    const deleteQuery = `DELETE FROM materializaciones WHERE id = $1`;
     await pool.query(deleteQuery, [id]);
     
     return res.status(200).json({ 

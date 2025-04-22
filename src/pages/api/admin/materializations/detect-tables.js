@@ -1,6 +1,7 @@
 import { Pool } from 'pg';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../auth/[...nextauth]';
+import yaml from 'yaml';
 
 // Obtener la conexión a la base de datos
 const pool = new Pool({
@@ -17,43 +18,43 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ message: 'Método no permitido' });
   }
-  
-  const { casilla_id } = req.body;
-  
-  if (!casilla_id) {
-    return res.status(400).json({ message: 'ID de casilla requerido' });
-  }
-  
+
+  // Procesar solicitud para detectar tablas en YAML
   try {
-    // Obtener la configuración YAML de la casilla
-    const yamlQuery = `
-      SELECT yaml_config 
-      FROM data_boxes 
+    const { casilla_id } = req.body;
+    
+    if (!casilla_id) {
+      return res.status(400).json({ message: 'ID de casilla requerido' });
+    }
+    
+    // Obtener el YAML de la casilla
+    const query = `
+      SELECT yaml_contenido
+      FROM casillas
       WHERE id = $1
     `;
     
-    const yamlResult = await pool.query(yamlQuery, [casilla_id]);
+    const result = await pool.query(query, [casilla_id]);
     
-    if (yamlResult.rows.length === 0) {
-      return res.status(404).json({ message: 'Casilla no encontrada' });
+    if (result.rows.length === 0 || !result.rows[0].yaml_contenido) {
+      return res.status(404).json({ message: 'No se encontró YAML para esta casilla' });
     }
     
-    const yamlConfig = yamlResult.rows[0].yaml_config;
+    const yamlContent = result.rows[0].yaml_contenido;
     
-    if (!yamlConfig) {
-      return res.status(404).json({ 
-        message: 'La casilla no tiene configuración YAML',
-        tables: []
-      });
+    // Parsear YAML
+    let parsedYaml;
+    try {
+      parsedYaml = yaml.parse(yamlContent);
+    } catch (error) {
+      console.error('Error al parsear YAML:', error);
+      return res.status(400).json({ message: 'Error al parsear YAML', error: error.message });
     }
     
-    // Parsear y analizar la configuración YAML
-    const detectedTables = await analyzeYamlConfig(yamlConfig);
+    // Detectar tablas potenciales del YAML
+    const tables = detectTablesFromYaml(parsedYaml);
     
-    return res.status(200).json({
-      message: 'Tablas detectadas correctamente',
-      tables: detectedTables
-    });
+    return res.status(200).json({ tables });
   } catch (error) {
     console.error('Error al detectar tablas:', error);
     return res.status(500).json({ 
@@ -63,155 +64,125 @@ export default async function handler(req, res) {
   }
 }
 
-// Función para analizar la configuración YAML y detectar tablas
-async function analyzeYamlConfig(yamlConfig) {
-  try {
-    // Llamar al servicio Python para analizar el YAML
-    const response = await fetch('http://localhost:3000/api/internal/analyze-yaml', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ yaml_config: yamlConfig }),
-    });
+/**
+ * Detecta posibles tablas a partir de un YAML
+ * 
+ * @param {Object} parsedYaml - YAML parseado
+ * @returns {Array<Object>} - Lista de tablas detectadas
+ */
+function detectTablesFromYaml(parsedYaml) {
+  const tables = [];
+  
+  // Buscar en el YAML estructura de sage_yaml y schemas
+  if (parsedYaml && parsedYaml.sage_yaml) {
     
-    if (!response.ok) {
-      // Si el servicio Python no está disponible, hacemos un análisis básico en JS
-      return fallbackYamlAnalysis(yamlConfig);
-    }
-    
-    const data = await response.json();
-    return data.tables || [];
-  } catch (error) {
-    console.error('Error al analizar YAML:', error);
-    // Si falla el servicio Python, hacemos un análisis básico en JS
-    return fallbackYamlAnalysis(yamlConfig);
-  }
-}
-
-// Análisis básico de YAML en JavaScript como fallback
-function fallbackYamlAnalysis(yamlConfig) {
-  try {
-    // Buscar patrones de definición de tablas en el YAML
-    const tablesPattern = /tabla[s]?:\s*\n([\s\S]*?)(?:\n\w+:|$)/gi;
-    const tableNamePattern = /nombre:\s*["']?([\w\s-]+)["']?/i;
-    const columnsPattern = /columnas:\s*\n([\s\S]*?)(?:\n\w+:|$)/i;
-    const columnPattern = /-\s*["']?([\w\s-]+)["']?/gi;
-    const primaryKeyPattern = /clave_primaria:\s*\n([\s\S]*?)(?:\n\w+:|$)/i;
-    const pkColumnPattern = /-\s*["']?([\w\s-]+)["']?/gi;
-    const filePattern = /archivo:\s*["']?([\w\s\.-]+)["']?/i;
-    
-    const tables = [];
-    let tableMatch;
-    
-    // Estructura básica si no hay sección de tablas
-    if (!yamlConfig.match(tablesPattern)) {
-      // Buscar secciones de datos o exportadores
-      const dataExportersPattern = /exportadores:\s*\n([\s\S]*?)(?:\n\w+:|$)/gi;
-      const dataPattern = /datos:\s*\n([\s\S]*?)(?:\n\w+:|$)/gi;
+    // Buscar en schemas
+    if (parsedYaml.sage_yaml.schemas) {
+      const schemas = parsedYaml.sage_yaml.schemas;
       
-      let dataSections = [];
-      let match;
-      
-      while ((match = dataExportersPattern.exec(yamlConfig)) !== null) {
-        dataSections.push(match[1]);
-      }
-      
-      while ((match = dataPattern.exec(yamlConfig)) !== null) {
-        dataSections.push(match[1]);
-      }
-      
-      if (dataSections.length > 0) {
-        // Extraer archivos mencionados
-        const fileMatches = [];
-        for (const section of dataSections) {
-          const filePattern = /archivo:\s*["']?([\w\s\.-]+)["']?/gi;
-          let fileMatch;
-          while ((fileMatch = filePattern.exec(section)) !== null) {
-            fileMatches.push(fileMatch[1]);
-          }
-        }
+      // Cada schema puede representar una tabla potencial
+      Object.keys(schemas).forEach(schemaName => {
+        const schema = schemas[schemaName];
+        const fields = [];
         
-        // Crear una tabla por cada archivo detectado
-        for (const file of [...new Set(fileMatches)]) {
-          tables.push({
-            name: file.replace(/\.\w+$/, ''), // Nombre sin extensión
-            columns: [],
-            primary_key: [],
-            source_file: file
+        // Extraer campos del schema
+        if (schema.fields) {
+          Object.keys(schema.fields).forEach(fieldName => {
+            const field = schema.fields[fieldName];
+            fields.push({
+              name: fieldName,
+              type: field.type || 'string',
+              description: field.description || '',
+              required: field.required || false,
+              primary_key: field.primary_key || false
+            });
           });
         }
         
-        // Si no hay archivos explícitos pero hay secciones de datos
-        if (tables.length === 0 && dataSections.length > 0) {
-          tables.push({
-            name: 'Datos Principales',
-            columns: [],
-            primary_key: [],
-            source_file: 'datos.csv'
-          });
-        }
-      }
-      
-      // Si aún no hay tablas, crear una genérica
-      if (tables.length === 0) {
+        // Identificar posibles claves primarias
+        const primaryKeyFields = fields.filter(f => f.primary_key).map(f => f.name);
+        
         tables.push({
-          name: 'Tabla Principal',
-          columns: [],
-          primary_key: [],
-          source_file: null
+          name: schemaName,
+          source: 'schema',
+          description: schema.description || '',
+          fields,
+          primary_key: primaryKeyFields.length > 0 ? primaryKeyFields.join(',') : null
         });
-      }
-      
-      return tables;
-    }
-    
-    // Procesar secciones de tablas explícitas
-    while ((tableMatch = tablesPattern.exec(yamlConfig)) !== null) {
-      const tableSection = tableMatch[1];
-      
-      // Extraer nombre de la tabla
-      const nameMatch = tableSection.match(tableNamePattern);
-      const name = nameMatch ? nameMatch[1].trim() : `Tabla ${tables.length + 1}`;
-      
-      // Extraer columnas
-      const columns = [];
-      const columnsMatch = tableSection.match(columnsPattern);
-      if (columnsMatch) {
-        let columnMatch;
-        while ((columnMatch = columnPattern.exec(columnsMatch[1])) !== null) {
-          columns.push(columnMatch[1].trim());
-        }
-      }
-      
-      // Extraer clave primaria
-      const primaryKey = [];
-      const pkMatch = tableSection.match(primaryKeyPattern);
-      if (pkMatch) {
-        let pkColumnMatch;
-        while ((pkColumnMatch = pkColumnPattern.exec(pkMatch[1])) !== null) {
-          primaryKey.push(pkColumnMatch[1].trim());
-        }
-      }
-      
-      // Extraer archivo fuente
-      let sourceFile = null;
-      const fileMatch = tableSection.match(filePattern);
-      if (fileMatch) {
-        sourceFile = fileMatch[1].trim();
-      }
-      
-      tables.push({
-        name,
-        columns,
-        primary_key: primaryKey,
-        source_file: sourceFile
       });
     }
     
-    return tables;
-  } catch (error) {
-    console.error('Error en análisis fallback:', error);
-    return [];
+    // Buscar en validations
+    if (parsedYaml.sage_yaml.validations) {
+      const validations = parsedYaml.sage_yaml.validations;
+      
+      // Cada validation puede indicar una estructura de datos
+      Object.keys(validations).forEach(validationName => {
+        const validation = validations[validationName];
+        
+        // Solo incluir validaciones con campos
+        if (validation.fields) {
+          const fields = [];
+          
+          // Extraer campos de la validación
+          Object.keys(validation.fields).forEach(fieldName => {
+            const field = validation.fields[fieldName];
+            fields.push({
+              name: fieldName,
+              type: field.type || 'string',
+              description: field.description || '',
+              required: field.required || false
+            });
+          });
+          
+          tables.push({
+            name: validationName,
+            source: 'validation',
+            description: validation.description || '',
+            fields
+          });
+        }
+      });
+    }
+    
+    // Buscar en exporters
+    if (parsedYaml.sage_yaml.exporters) {
+      const exporters = parsedYaml.sage_yaml.exporters;
+      
+      // Cada exporter puede ser una tabla potencial
+      Object.keys(exporters).forEach(exporterName => {
+        const exporter = exporters[exporterName];
+        
+        // Solo incluir exporters con formato o tipo
+        if (exporter.format || exporter.type) {
+          tables.push({
+            name: exporterName,
+            source: 'exporter',
+            description: exporter.description || '',
+            format: exporter.format || exporter.type,
+            config: exporter
+          });
+        }
+      });
+    }
+    
+    // Buscar en transformations
+    if (parsedYaml.sage_yaml.transformations) {
+      const transformations = parsedYaml.sage_yaml.transformations;
+      
+      // Cada transformation puede modificar o crear datos
+      Object.keys(transformations).forEach(transformationName => {
+        const transformation = transformations[transformationName];
+        
+        tables.push({
+          name: transformationName,
+          source: 'transformation',
+          description: transformation.description || '',
+          config: transformation
+        });
+      });
+    }
   }
+  
+  return tables;
 }

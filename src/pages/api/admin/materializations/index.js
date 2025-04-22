@@ -36,30 +36,16 @@ async function getMaterializations(req, res) {
         m.casilla_id,
         m.nombre,
         m.descripcion,
-        m.tipo_materializacion,
-        m.connection_id,
-        m.cloud_provider_id,
-        m.tabla_destino,
-        m.schema_destino,
-        m.formato_destino,
-        m.estrategia_actualizacion,
-        m.clave_primaria,
-        m.particion_por,
-        m.ultima_ejecucion,
-        m.activado,
-        m.creado_en,
-        m.modificado_en,
-        db.nombre AS nombre_casilla,
-        dc.nombre AS connection_name,
-        cp.nombre AS cloud_provider_name
+        m.configuracion,
+        m.estado,
+        m.ultima_materializacion,
+        m.fecha_creacion,
+        m.fecha_actualizacion,
+        c.nombre AS nombre_casilla
       FROM 
-        materializations m
+        materializaciones m
       LEFT JOIN 
-        data_boxes db ON m.casilla_id = db.id
-      LEFT JOIN 
-        database_connections dc ON m.connection_id = dc.id
-      LEFT JOIN 
-        cloud_providers cp ON m.cloud_provider_id = cp.id
+        casillas c ON m.casilla_id = c.id
     `;
     
     const params = [];
@@ -70,7 +56,7 @@ async function getMaterializations(req, res) {
       params.push(casilla_id);
     }
     
-    query += ` ORDER BY m.creado_en DESC`;
+    query += ` ORDER BY m.fecha_creacion DESC`;
     
     const result = await pool.query(query, params);
     
@@ -91,16 +77,7 @@ async function createMaterialization(req, res) {
       casilla_id,
       nombre,
       descripcion,
-      tipo_materializacion,
-      connection_id,
-      cloud_provider_id,
-      tabla_destino,
-      schema_destino,
-      formato_destino,
-      estrategia_actualizacion,
-      clave_primaria,
-      particion_por,
-      activado = true
+      configuracion = {}
     } = req.body;
     
     // Validar datos requeridos
@@ -112,71 +89,26 @@ async function createMaterialization(req, res) {
       return res.status(400).json({ message: 'Nombre requerido' });
     }
     
-    if (!tipo_materializacion) {
-      return res.status(400).json({ message: 'Tipo de materialización requerido' });
-    }
-    
-    if (!tabla_destino) {
-      return res.status(400).json({ message: 'Tabla de destino requerida' });
-    }
-    
-    // Validaciones específicas por tipo
-    if (tipo_materializacion === 'database' && !connection_id) {
-      return res.status(400).json({ message: 'ID de conexión a base de datos requerido' });
-    }
-    
-    if (tipo_materializacion === 'cloud_datalake' && !cloud_provider_id) {
-      return res.status(400).json({ message: 'ID de proveedor de nube requerido' });
-    }
-    
     // Comprobar si la casilla existe
-    const casillaQuery = `SELECT id FROM data_boxes WHERE id = $1`;
+    const casillaQuery = `SELECT id FROM casillas WHERE id = $1`;
     const casillaResult = await pool.query(casillaQuery, [casilla_id]);
     
     if (casillaResult.rows.length === 0) {
       return res.status(404).json({ message: 'Casilla no encontrada' });
     }
     
-    // Comprobar connection_id si es tipo database
-    if (tipo_materializacion === 'database' && connection_id) {
-      const connectionQuery = `SELECT id FROM database_connections WHERE id = $1`;
-      const connectionResult = await pool.query(connectionQuery, [connection_id]);
-      
-      if (connectionResult.rows.length === 0) {
-        return res.status(404).json({ message: 'Conexión de base de datos no encontrada' });
-      }
-    }
-    
-    // Comprobar cloud_provider_id si es tipo cloud_datalake
-    if (tipo_materializacion === 'cloud_datalake' && cloud_provider_id) {
-      const providerQuery = `SELECT id FROM cloud_providers WHERE id = $1`;
-      const providerResult = await pool.query(providerQuery, [cloud_provider_id]);
-      
-      if (providerResult.rows.length === 0) {
-        return res.status(404).json({ message: 'Proveedor de nube no encontrado' });
-      }
-    }
-    
     // Insertar la nueva materialización
     const insertQuery = `
-      INSERT INTO materializations (
+      INSERT INTO materializaciones (
         casilla_id,
         nombre,
         descripcion,
-        tipo_materializacion,
-        connection_id,
-        cloud_provider_id,
-        tabla_destino,
-        schema_destino,
-        formato_destino,
-        estrategia_actualizacion,
-        clave_primaria,
-        particion_por,
-        activado,
-        creado_en,
-        modificado_en
+        configuracion,
+        estado,
+        fecha_creacion,
+        fecha_actualizacion
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW()
+        $1, $2, $3, $4, 'pendiente', NOW(), NOW()
       ) RETURNING *
     `;
     
@@ -184,42 +116,15 @@ async function createMaterialization(req, res) {
       casilla_id,
       nombre,
       descripcion || null,
-      tipo_materializacion,
-      connection_id || null,
-      cloud_provider_id || null,
-      tabla_destino,
-      schema_destino || null,
-      formato_destino || null,
-      estrategia_actualizacion || 'upsert',
-      clave_primaria || null,
-      particion_por || null,
-      activado
+      configuracion || {}
     ];
     
     const result = await pool.query(insertQuery, insertParams);
     
-    // Enriquecer la respuesta con nombres de entidades relacionadas
+    // Obtener el nombre de la casilla para incluirlo en la respuesta
     const newMaterialization = result.rows[0];
     
-    if (newMaterialization.connection_id) {
-      const connectionQuery = `SELECT nombre FROM database_connections WHERE id = $1`;
-      const connectionResult = await pool.query(connectionQuery, [newMaterialization.connection_id]);
-      
-      if (connectionResult.rows.length > 0) {
-        newMaterialization.connection_name = connectionResult.rows[0].nombre;
-      }
-    }
-    
-    if (newMaterialization.cloud_provider_id) {
-      const providerQuery = `SELECT nombre FROM cloud_providers WHERE id = $1`;
-      const providerResult = await pool.query(providerQuery, [newMaterialization.cloud_provider_id]);
-      
-      if (providerResult.rows.length > 0) {
-        newMaterialization.cloud_provider_name = providerResult.rows[0].nombre;
-      }
-    }
-    
-    const casillaNameQuery = `SELECT nombre FROM data_boxes WHERE id = $1`;
+    const casillaNameQuery = `SELECT nombre FROM casillas WHERE id = $1`;
     const casillaNameResult = await pool.query(casillaNameQuery, [newMaterialization.casilla_id]);
     
     if (casillaNameResult.rows.length > 0) {
