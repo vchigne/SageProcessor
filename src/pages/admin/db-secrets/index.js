@@ -95,23 +95,26 @@ export default function DatabaseSecrets() {
         return;
       }
       
-      if (!currentSecret.puerto) {
-        toast.error('El puerto es obligatorio');
-        return;
-      }
-      
-      if (!currentSecret.usuario.trim()) {
-        toast.error('El usuario es obligatorio');
-        return;
-      }
-      
-      if (!currentSecret.contrasena.trim() && !isEditing) {
-        toast.error('La contraseña es obligatoria');
-        return;
+      // Validaciones específicas para bases de datos cliente-servidor
+      if (currentSecret.tipo !== 'duckdb') {
+        if (!currentSecret.puerto) {
+          toast.error('El puerto es obligatorio');
+          return;
+        }
+        
+        if (!currentSecret.usuario.trim()) {
+          toast.error('El usuario es obligatorio');
+          return;
+        }
+        
+        if (!currentSecret.contrasena.trim() && !isEditing) {
+          toast.error('La contraseña es obligatoria');
+          return;
+        }
       }
       
       // Si estamos editando y la contraseña está vacía, no la incluimos para no sobrescribir
-      const payload = isEditing && !currentSecret.contrasena.trim()
+      let payload = isEditing && !currentSecret.contrasena.trim()
         ? { ...currentSecret, contrasena: undefined }
         : currentSecret;
       
@@ -339,77 +342,145 @@ export default function DatabaseSecrets() {
                   </select>
                 </div>
                 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Servidor (Host / IP)*
-                  </label>
-                  <input
-                    type="text"
-                    name="servidor"
-                    value={currentSecret.servidor}
-                    onChange={handleInputChange}
-                    className="w-full p-2 border rounded-md"
-                    required
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Puerto*
-                  </label>
-                  <input
-                    type="number"
-                    name="puerto"
-                    value={currentSecret.puerto}
-                    onChange={handleInputChange}
-                    className="w-full p-2 border rounded-md"
-                    required
-                    min="1"
-                    max="65535"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Usuario*
-                  </label>
-                  <input
-                    type="text"
-                    name="usuario"
-                    value={currentSecret.usuario}
-                    onChange={handleInputChange}
-                    className="w-full p-2 border rounded-md"
-                    required
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Contraseña{isEditing ? "" : "*"}
-                  </label>
-                  <input
-                    type="password"
-                    name="contrasena"
-                    value={currentSecret.contrasena}
-                    onChange={handleInputChange}
-                    className="w-full p-2 border rounded-md"
-                    required={!isEditing}
-                    placeholder={isEditing ? "Dejar en blanco para mantener la actual" : ""}
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Base de Datos (predeterminada)
-                  </label>
-                  <input
-                    type="text"
-                    name="basedatos"
-                    value={currentSecret.basedatos}
-                    onChange={handleInputChange}
-                    className="w-full p-2 border rounded-md"
-                  />
-                </div>
+                {currentSecret.tipo !== 'duckdb' ? (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Servidor (Host / IP)*
+                      </label>
+                      <input
+                        type="text"
+                        name="servidor"
+                        value={currentSecret.servidor}
+                        onChange={handleInputChange}
+                        className="w-full p-2 border rounded-md"
+                        required
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Puerto*
+                      </label>
+                      <input
+                        type="number"
+                        name="puerto"
+                        value={currentSecret.puerto}
+                        onChange={handleInputChange}
+                        className="w-full p-2 border rounded-md"
+                        required
+                        min="1"
+                        max="65535"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Usuario*
+                      </label>
+                      <input
+                        type="text"
+                        name="usuario"
+                        value={currentSecret.usuario}
+                        onChange={handleInputChange}
+                        className="w-full p-2 border rounded-md"
+                        required
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Contraseña{isEditing ? "" : "*"}
+                      </label>
+                      <input
+                        type="password"
+                        name="contrasena"
+                        value={currentSecret.contrasena}
+                        onChange={handleInputChange}
+                        className="w-full p-2 border rounded-md"
+                        required={!isEditing}
+                        placeholder={isEditing ? "Dejar en blanco para mantener la actual" : ""}
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Base de Datos (predeterminada)
+                      </label>
+                      <input
+                        type="text"
+                        name="basedatos"
+                        value={currentSecret.basedatos}
+                        onChange={handleInputChange}
+                        className="w-full p-2 border rounded-md"
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Ruta al archivo DuckDB*
+                      </label>
+                      <input
+                        type="text"
+                        name="servidor"
+                        value={currentSecret.servidor}
+                        onChange={handleInputChange}
+                        className="w-full p-2 border rounded-md"
+                        placeholder="/ruta/al/archivo.duckdb o :memory:"
+                        required
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Puede ser una ruta a un archivo .duckdb o ":memory:" para una base de datos en memoria
+                      </p>
+                    </div>
+                    
+                    <div className="col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Opciones adicionales
+                      </label>
+                      <input
+                        type="text"
+                        name="basedatos"
+                        value={currentSecret.basedatos}
+                        onChange={handleInputChange}
+                        className="w-full p-2 border rounded-md"
+                        placeholder="Opciones adicionales separadas por ;"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Por ejemplo: "access_mode=READ_ONLY;threads=4"
+                      </p>
+                    </div>
+                    
+                    <div className="col-span-2">
+                      <p className="text-sm text-gray-600 dark:text-gray-400 p-3 bg-gray-100 dark:bg-gray-800 rounded mb-2">
+                        <strong>Nota:</strong> DuckDB es una base de datos embebida y no utiliza un modelo 
+                        cliente-servidor tradicional. Los campos de usuario, contraseña y puerto se rellenarán automáticamente 
+                        con valores predeterminados por compatibilidad, pero no son utilizados en la conexión.
+                      </p>
+                    </div>
+                    
+                    <input 
+                      type="hidden" 
+                      name="puerto" 
+                      value="0" 
+                      onChange={() => {}} 
+                    />
+                    <input 
+                      type="hidden" 
+                      name="usuario" 
+                      value="duckdb_user" 
+                      onChange={() => {}} 
+                    />
+                    <input 
+                      type="hidden" 
+                      name="contrasena" 
+                      value="duckdb_pass" 
+                      onChange={() => {}} 
+                    />
+                  </>
+                )}
               </div>
               
               <div className="mb-4">
@@ -486,16 +557,31 @@ export default function DatabaseSecrets() {
                 </div>
                 
                 <div className="mt-4 grid grid-cols-2 gap-2 text-sm text-gray-500 dark:text-gray-400">
-                  <div>
-                    <span className="font-medium">Servidor:</span> {secret.servidor}:{secret.puerto}
-                  </div>
-                  <div>
-                    <span className="font-medium">Usuario:</span> {secret.usuario}
-                  </div>
-                  {secret.basedatos && (
-                    <div className="col-span-2">
-                      <span className="font-medium">Base de datos:</span> {secret.basedatos}
-                    </div>
+                  {secret.tipo === 'duckdb' ? (
+                    <>
+                      <div className="col-span-2">
+                        <span className="font-medium">Archivo:</span> {secret.servidor}
+                      </div>
+                      {secret.basedatos && (
+                        <div className="col-span-2">
+                          <span className="font-medium">Opciones:</span> {secret.basedatos}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <div>
+                        <span className="font-medium">Servidor:</span> {secret.servidor}:{secret.puerto}
+                      </div>
+                      <div>
+                        <span className="font-medium">Usuario:</span> {secret.usuario}
+                      </div>
+                      {secret.basedatos && (
+                        <div className="col-span-2">
+                          <span className="font-medium">Base de datos:</span> {secret.basedatos}
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
                 
