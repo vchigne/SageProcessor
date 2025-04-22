@@ -66,10 +66,30 @@ export default function EditMaterializationPage() {
     estrategiaActualizacion: 'reemplazar',
     columnas: [] as string[],
     primaryKey: [] as string[],
-    partitionBy: [] as string[]
+    partitionBy: [] as string[],
+    activo: true,
+    columnMappings: [] as {originName: string, targetName: string}[]
   });
   
-  // Lista de destinos disponibles
+  // Tipos de destinos disponibles
+  const [tiposDestino, setTiposDestino] = useState([
+    { id: 'archivo', nombre: 'Archivo (Nube)' },
+    { id: 'base_datos', nombre: 'Base de Datos' }
+  ]);
+  
+  // Proveedores de destino físico (nubes y bases de datos)
+  const [proveedoresDestino, setProveedoresDestino] = useState<{
+    clouds: Array<{id: number, nombre: string, tipo: string, activo: boolean}>,
+    databases: Array<{id: number, nombre: string, base_datos: string, activo: boolean}>
+  }>({
+    clouds: [],
+    databases: []
+  });
+  
+  // ID del proveedor seleccionado (nube o base de datos)
+  const [proveedorSeleccionado, setProveedorSeleccionado] = useState<number | null>(null);
+  
+  // Lista de destinos disponibles (se mantiene por compatibilidad)
   const [destinosDisponibles, setDestinosDisponibles] = useState([
     { id: 'archivo', nombre: 'Archivo (S3, Azure, GCP, SFTP)' },
     { id: 'postgres', nombre: 'PostgreSQL' },
@@ -130,6 +150,17 @@ export default function EditMaterializationPage() {
           toast.error('Error al cargar estructura YAML');
         }
         
+        // Obtener destinos disponibles (nubes y bases de datos)
+        const destinationsResponse = await fetch('/api/admin/materializations/destinations');
+        
+        if (destinationsResponse.ok) {
+          const destinationsData = await destinationsResponse.json();
+          setProveedoresDestino(destinationsData);
+        } else {
+          console.error('Error al cargar destinos:', destinationsResponse.statusText);
+          toast.error('Error al cargar destinos disponibles');
+        }
+        
         // Obtener datos de la materialización
         const materializationResponse = await fetch(`/api/admin/materializations/${materializationId}`);
         
@@ -139,6 +170,20 @@ export default function EditMaterializationPage() {
           
           // Preparar datos del formulario
           const config = materializationData.configuracion || {};
+          
+          // Detectar el proveedor seleccionado de la configuración actual
+          let provId = null;
+          if (config.proveedorId) {
+            provId = config.proveedorId;
+            setProveedorSeleccionado(config.proveedorId);
+          } else if (config.tipoProveedor === 'cloud' && config.destino_id) {
+            provId = config.destino_id;
+            setProveedorSeleccionado(config.destino_id);
+          } else if (config.destination_id) {
+            provId = config.destination_id;
+            setProveedorSeleccionado(config.destination_id);
+          }
+          
           setFormData({
             nombre: materializationData.nombre || '',
             descripcion: materializationData.descripcion || '',
@@ -148,7 +193,9 @@ export default function EditMaterializationPage() {
             estrategiaActualizacion: config.estrategiaActualizacion || 'reemplazar',
             columnas: config.columnas || [],
             primaryKey: config.primaryKey || [],
-            partitionBy: config.partitionBy || []
+            partitionBy: config.partitionBy || [],
+            activo: materializationData.activo !== false,
+            columnMappings: config.columnMappings || []
           });
         } else {
           console.error('Error al cargar materialización:', materializationResponse.statusText);
@@ -207,9 +254,37 @@ export default function EditMaterializationPage() {
   
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
+    
+    if (name === 'destino') {
+      // Reiniciar proveedorSeleccionado cuando cambia el tipo de destino
+      setProveedorSeleccionado(null);
+      
+      // Si es archivo (nube), seleccionar el primer proveedor cloud disponible
+      if (value === 'archivo' && proveedoresDestino.clouds.length > 0) {
+        setProveedorSeleccionado(proveedoresDestino.clouds[0].id);
+      } 
+      // Si es base de datos, seleccionar la primera base de datos disponible
+      else if (value === 'base_datos' && proveedoresDestino.databases.length > 0) {
+        setProveedorSeleccionado(proveedoresDestino.databases[0].id);
+      }
+    }
+    
     setFormData(prev => ({
       ...prev,
       [name]: value
+    }));
+  };
+  
+  const handleProveedorChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const id = parseInt(e.target.value);
+    setProveedorSeleccionado(id);
+  };
+  
+  const handleSwitchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, checked } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: checked
     }));
   };
   
@@ -310,9 +385,19 @@ export default function EditMaterializationPage() {
     try {
       setFormSubmitting(true);
       
+      // Validar que se haya seleccionado un proveedor
+      if (!proveedorSeleccionado) {
+        toast.error('Debe seleccionar un proveedor específico');
+        return;
+      }
+      
+      // Determinar tipo de proveedor (cloud o database)
+      const tipoProveedor = formData.destino === 'archivo' ? 'cloud' : 'database';
+      
       const materializacionData = {
         nombre: formData.nombre,
         descripcion: formData.descripcion,
+        activo: formData.activo,
         configuracion: {
           formato: formData.formato,
           columnas: formData.columnas,
@@ -320,7 +405,10 @@ export default function EditMaterializationPage() {
           partitionBy: formData.partitionBy.length > 0 ? formData.partitionBy : undefined,
           destino: formData.destino,
           tablaDestino: formData.tablaDestino,
-          estrategiaActualizacion: formData.estrategiaActualizacion
+          estrategiaActualizacion: formData.estrategiaActualizacion,
+          tipoProveedor: tipoProveedor,
+          proveedorId: proveedorSeleccionado,
+          columnMappings: formData.columnMappings.length > 0 ? formData.columnMappings : undefined
         }
       };
       
@@ -477,7 +565,7 @@ export default function EditMaterializationPage() {
                 className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md"
                 required
               >
-                {destinosDisponibles.map(destino => (
+                {tiposDestino.map(destino => (
                   <option key={destino.id} value={destino.id}>
                     {destino.nombre}
                   </option>
@@ -485,6 +573,43 @@ export default function EditMaterializationPage() {
               </select>
             </div>
             
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Proveedor Específico *
+              </label>
+              <select
+                name="proveedorId"
+                value={proveedorSeleccionado || ''}
+                onChange={handleProveedorChange}
+                className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md"
+                required
+              >
+                {formData.destino === 'archivo' ? (
+                  proveedoresDestino.clouds.length > 0 ? (
+                    proveedoresDestino.clouds.map(cloud => (
+                      <option key={cloud.id} value={cloud.id}>
+                        {cloud.nombre} ({cloud.tipo})
+                      </option>
+                    ))
+                  ) : (
+                    <option value="" disabled>No hay proveedores de nube disponibles</option>
+                  )
+                ) : (
+                  proveedoresDestino.databases.length > 0 ? (
+                    proveedoresDestino.databases.map(db => (
+                      <option key={db.id} value={db.id}>
+                        {db.nombre} ({db.base_datos})
+                      </option>
+                    ))
+                  ) : (
+                    <option value="" disabled>No hay bases de datos disponibles</option>
+                  )
+                )}
+              </select>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Formato *
@@ -536,6 +661,20 @@ export default function EditMaterializationPage() {
                 <option value="merge">Merge (Control detallado con condiciones)</option>
               </select>
             </div>
+          </div>
+          
+          <div className="flex items-center mt-4">
+            <input
+              type="checkbox"
+              id="activoSwitch"
+              name="activo"
+              checked={formData.activo}
+              onChange={handleSwitchChange}
+              className="form-checkbox h-5 w-5 text-indigo-600"
+            />
+            <label htmlFor="activoSwitch" className="ml-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Materialización activa
+            </label>
           </div>
         </div>
         
