@@ -1,277 +1,534 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
-import Layout from '@/components/Layout';
+import Head from 'next/head';
 import { 
-  Card, 
-  Title, 
-  Text, 
-  Badge,
-  Table,
-  TableHead,
-  TableRow,
-  TableHeaderCell,
-  TableBody,
-  TableCell,
-  Button,
-  Grid,
-  Col,
-  Metric,
-  Flex
-} from '@tremor/react';
-import { 
-  PlusIcon, 
-  PencilIcon, 
-  TrashIcon, 
-  ServerIcon, 
-  KeyIcon, 
-  DatabaseIcon, 
-  LockClosedIcon 
+  PlusCircleIcon, 
+  CheckCircleIcon, 
+  DatabaseIcon,
+  KeyIcon,
+  ServerIcon
 } from '@heroicons/react/24/outline';
-import ConfirmDialog from '@/components/ConfirmDialog';
-import Breadcrumbs from '@/components/Breadcrumbs';
-import { format } from 'date-fns';
 import { toast } from 'react-toastify';
+import { Title, Text, Subtitle, Card, Button, Badge } from '@tremor/react';
 
-export default function DBSecretsPage() {
+// Estado inicial para un nuevo secreto de BD
+const initialSecretState = {
+  nombre: '',
+  descripcion: '',
+  tipo: 'postgresql',
+  servidor: '',
+  puerto: '',
+  usuario: '',
+  contrasena: '',
+  basedatos: '',
+  opciones_conexion: {}
+};
+
+export default function DatabaseSecrets() {
   const router = useRouter();
   const [secrets, setSecrets] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [secretToDelete, setSecretToDelete] = useState(null);
+  const [showForm, setShowForm] = useState(false);
+  const [currentSecret, setCurrentSecret] = useState(initialSecretState);
+  const [isEditing, setIsEditing] = useState(false);
+  const [testingId, setTestingId] = useState(null);
 
+  // Cargar secretos
   useEffect(() => {
     fetchSecrets();
   }, []);
 
+  // Obtener todos los secretos
   const fetchSecrets = async () => {
     try {
       setLoading(true);
       const response = await fetch('/api/admin/db-secrets');
-      if (!response.ok) throw new Error('Error al cargar secretos');
+      if (!response.ok) throw new Error('Error al cargar secretos de bases de datos');
       const data = await response.json();
+      
       setSecrets(data);
     } catch (error) {
       console.error('Error:', error);
-      toast.error('Error al cargar los secretos de bases de datos');
+      toast.error('Error al cargar secretos de bases de datos: ' + error.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleEdit = (id) => {
-    router.push(`/admin/db-secrets/${id}`);
+  // Gestionar entrada del formulario
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    
+    // Convertir puerto a número
+    if (name === 'puerto') {
+      const numericValue = value === '' ? '' : parseInt(value, 10);
+      setCurrentSecret(prev => ({ ...prev, [name]: numericValue }));
+      return;
+    }
+
+    setCurrentSecret(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleDelete = (secret) => {
-    setSecretToDelete(secret);
-    setConfirmOpen(true);
-  };
-
-  const confirmDelete = async () => {
-    if (!secretToDelete) return;
+  // Guardar secreto
+  const handleSubmit = async (e) => {
+    e.preventDefault();
     
     try {
-      const response = await fetch(`/api/admin/db-secrets/${secretToDelete.id}`, {
+      const method = isEditing ? 'PUT' : 'POST';
+      const url = isEditing 
+        ? `/api/admin/db-secrets/${currentSecret.id}` 
+        : '/api/admin/db-secrets';
+      
+      // Validaciones básicas
+      if (!currentSecret.nombre.trim()) {
+        toast.error('El nombre es obligatorio');
+        return;
+      }
+      
+      if (!currentSecret.tipo) {
+        toast.error('El tipo de base de datos es obligatorio');
+        return;
+      }
+      
+      if (!currentSecret.servidor.trim()) {
+        toast.error('El servidor es obligatorio');
+        return;
+      }
+      
+      if (!currentSecret.puerto) {
+        toast.error('El puerto es obligatorio');
+        return;
+      }
+      
+      if (!currentSecret.usuario.trim()) {
+        toast.error('El usuario es obligatorio');
+        return;
+      }
+      
+      if (!currentSecret.contrasena.trim() && !isEditing) {
+        toast.error('La contraseña es obligatoria');
+        return;
+      }
+      
+      // Si estamos editando y la contraseña está vacía, no la incluimos para no sobrescribir
+      const payload = isEditing && !currentSecret.contrasena.trim()
+        ? { ...currentSecret, contrasena: undefined }
+        : currentSecret;
+      
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Error al guardar secreto');
+      }
+      
+      toast.success(isEditing ? 'Secreto actualizado correctamente' : 'Secreto creado correctamente');
+      setShowForm(false);
+      setCurrentSecret(initialSecretState);
+      setIsEditing(false);
+      fetchSecrets();
+    } catch (error) {
+      console.error('Error:', error);
+      toast.error(error.message || 'Error al guardar secreto');
+    }
+  };
+
+  // Editar secreto
+  const handleEditSecret = async (secretId) => {
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/admin/db-secrets/${secretId}`);
+      if (!response.ok) throw new Error('Error al cargar secreto');
+      
+      const secretData = await response.json();
+      
+      // Asegurarse de que las opciones de conexión sean un objeto
+      if (typeof secretData.opciones_conexion === 'string') {
+        try {
+          secretData.opciones_conexion = JSON.parse(secretData.opciones_conexion);
+        } catch (e) {
+          secretData.opciones_conexion = {};
+        }
+      } else if (!secretData.opciones_conexion) {
+        secretData.opciones_conexion = {};
+      }
+      
+      setCurrentSecret(secretData);
+      setIsEditing(true);
+      setShowForm(true);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (error) {
+      console.error('Error:', error);
+      toast.error('Error al cargar secreto: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Eliminar secreto
+  const handleDeleteSecret = async (secretId) => {
+    if (!confirm('¿Está seguro de eliminar este secreto? Esta acción no se puede deshacer.')) {
+      return;
+    }
+    
+    try {
+      const response = await fetch(`/api/admin/db-secrets/${secretId}`, {
         method: 'DELETE',
       });
       
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Error al eliminar el secreto');
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Error al eliminar secreto');
       }
       
-      setSecrets(secrets.filter(s => s.id !== secretToDelete.id));
       toast.success('Secreto eliminado correctamente');
+      fetchSecrets();
     } catch (error) {
       console.error('Error:', error);
-      toast.error(error.message || 'Error al eliminar el secreto');
+      if (error.message.includes('referenciado')) {
+        toast.error('No se puede eliminar el secreto porque está siendo utilizado por conexiones de bases de datos');
+      } else {
+        toast.error('Error al eliminar secreto: ' + error.message);
+      }
+    }
+  };
+
+  // Probar conexión
+  const handleTestConnection = async (secretId) => {
+    try {
+      setTestingId(secretId);
+      
+      const response = await fetch(`/api/admin/db-secrets/${secretId}/test`, {
+        method: 'POST',
+      });
+      
+      const result = await response.json();
+      
+      if (response.ok) {
+        toast.success('Conexión exitosa a la base de datos');
+      } else {
+        throw new Error(result.message || 'Error al probar conexión');
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      toast.error('Error al probar conexión: ' + error.message);
     } finally {
-      setSecretToDelete(null);
-      setConfirmOpen(false);
+      setTestingId(null);
     }
   };
 
-  const getServerTypeBadge = (type) => {
-    switch (type) {
-      case 'postgresql':
-        return <Badge color="blue">PostgreSQL</Badge>;
-      case 'mysql':
-        return <Badge color="orange">MySQL</Badge>;
-      case 'sqlserver':
-        return <Badge color="indigo">SQL Server</Badge>;
-      case 'duckdb':
-        return <Badge color="green">DuckDB</Badge>;
+  // Cancelar formulario
+  const handleCancelForm = () => {
+    setShowForm(false);
+    setCurrentSecret(initialSecretState);
+    setIsEditing(false);
+  };
+
+  // Probar todos los secretos
+  const handleTestAllSecrets = async () => {
+    try {
+      for (const secret of secrets) {
+        await handleTestConnection(secret.id);
+      }
+    } catch (error) {
+      console.error('Error al probar todos los secretos:', error);
+    }
+  };
+
+  // Obtener color del estado de un secreto
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'activo':
+        return 'green';
+      case 'inactivo':
+        return 'gray';
+      case 'error':
+        return 'red';
       default:
-        return <Badge color="gray">{type}</Badge>;
+        return 'blue';
     }
   };
 
-  // Estadísticas básicas
-  const activeSecrets = secrets.filter(s => s.activo).length;
-  const dbTypes = {};
-  secrets.forEach(secret => {
-    dbTypes[secret.tipo_servidor] = (dbTypes[secret.tipo_servidor] || 0) + 1;
-  });
+  // Obtener icono de tipo de base de datos
+  const getDatabaseIcon = (type) => {
+    // Solo usamos un único icono por ahora
+    return <DatabaseIcon className="h-5 w-5 text-indigo-500" />;
+  };
 
   return (
-    <Layout>
-      <div className="px-4 sm:px-6 lg:px-8 py-8 w-full max-w-9xl mx-auto">
-        <Breadcrumbs items={[
-          { label: 'Admin', href: '/admin' },
-          { label: 'Materializaciones', href: '/admin/materializations' },
-          { label: 'Secretos de BD', current: true }
-        ]} />
-        
-        <div className="sm:flex sm:justify-between sm:items-center mb-8">
-          <Title>Secretos de Bases de Datos</Title>
-          <div className="grid grid-flow-col sm:auto-cols-max justify-start sm:justify-end gap-2">
+    <>
+      <Head>
+        <title>SAGE - Gestión de Secretos de Base de Datos</title>
+      </Head>
+      
+      <div className="p-6">
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <Title>Gestión de Secretos de Base de Datos</Title>
+            <Text>Administra las credenciales para conexiones a bases de datos</Text>
+          </div>
+          <div className="flex space-x-3">
             <Button 
-              variant="primary" 
-              icon={PlusIcon}
-              onClick={() => router.push('/admin/db-secrets/new')}
+              icon={ServerIcon} 
+              onClick={() => router.push('/admin/database-connections')}
+              color="cyan"
             >
-              Agregar Nuevo
+              Gestionar Conexiones
+            </Button>
+            <Button 
+              icon={CheckCircleIcon} 
+              onClick={handleTestAllSecrets}
+              color="amber"
+              disabled={loading || secrets.length === 0}
+            >
+              Test Conectividad
+            </Button>
+            <Button 
+              icon={PlusCircleIcon} 
+              onClick={() => setShowForm(!showForm)}
+              color="indigo"
+            >
+              {showForm ? 'Cancelar' : 'Nuevo Secreto'}
             </Button>
           </div>
         </div>
-
-        <Grid numCols={1} numColsSm={2} numColsLg={3} className="gap-6 mb-6">
-          <Col>
-            <Card decoration="top" decorationColor="blue">
-              <Flex justifyContent="start" className="space-x-4">
-                <KeyIcon className="w-8 h-8 text-blue-500" />
+        
+        {showForm && (
+          <Card className="mb-6">
+            <Subtitle className="mb-4">
+              {isEditing ? 'Editar Secreto' : 'Nuevo Secreto de Base de Datos'}
+            </Subtitle>
+            
+            <form onSubmit={handleSubmit}>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div>
-                  <Text>Secretos Activos</Text>
-                  <Metric>{activeSecrets} de {secrets.length}</Metric>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Nombre del Secreto*
+                  </label>
+                  <input
+                    type="text"
+                    name="nombre"
+                    value={currentSecret.nombre}
+                    onChange={handleInputChange}
+                    className="w-full p-2 border rounded-md"
+                    required
+                  />
                 </div>
-              </Flex>
-            </Card>
-          </Col>
-          
-          <Col>
-            <Card decoration="top" decorationColor="orange">
-              <Flex justifyContent="start" className="space-x-4">
-                <DatabaseIcon className="w-8 h-8 text-orange-500" />
+                
                 <div>
-                  <Text>Tipos de Bases de Datos</Text>
-                  <Metric>{Object.keys(dbTypes).length}</Metric>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Tipo de Base de Datos*
+                  </label>
+                  <select
+                    name="tipo"
+                    value={currentSecret.tipo}
+                    onChange={handleInputChange}
+                    className="w-full p-2 border rounded-md"
+                    required
+                  >
+                    <option value="postgresql">PostgreSQL</option>
+                    <option value="mysql">MySQL</option>
+                    <option value="mssql">SQL Server</option>
+                    <option value="duckdb">DuckDB</option>
+                  </select>
                 </div>
-              </Flex>
-            </Card>
-          </Col>
-          
-          <Col numColSpanSm={2} numColSpanLg={1}>
-            <Card decoration="top" decorationColor="green">
-              <Flex justifyContent="start" className="space-x-4">
-                <LockClosedIcon className="w-8 h-8 text-green-500" />
+                
                 <div>
-                  <Text>Seguridad</Text>
-                  <Metric>Activada</Metric>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Servidor (Host / IP)*
+                  </label>
+                  <input
+                    type="text"
+                    name="servidor"
+                    value={currentSecret.servidor}
+                    onChange={handleInputChange}
+                    className="w-full p-2 border rounded-md"
+                    required
+                  />
                 </div>
-              </Flex>
-            </Card>
-          </Col>
-        </Grid>
-
-        <Card>
-          {loading ? (
-            <div className="text-center p-4">Cargando...</div>
-          ) : (
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableHeaderCell>Nombre</TableHeaderCell>
-                  <TableHeaderCell>Tipo de Servidor</TableHeaderCell>
-                  <TableHeaderCell>Bases de Datos</TableHeaderCell>
-                  <TableHeaderCell>Fecha de Creación</TableHeaderCell>
-                  <TableHeaderCell>Estado</TableHeaderCell>
-                  <TableHeaderCell>Acciones</TableHeaderCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {secrets.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center">
-                      <div className="py-8">
-                        <Text className="text-lg text-gray-500">No hay secretos de bases de datos configurados</Text>
-                        <div className="mt-4">
-                          <Button
-                            variant="light"
-                            size="lg"
-                            icon={PlusIcon}
-                            onClick={() => router.push('/admin/db-secrets/new')}
-                          >
-                            Configurar nuevo secreto
-                          </Button>
-                        </div>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  secrets.map((secret) => (
-                    <TableRow key={secret.id}>
-                      <TableCell>
-                        <div className="font-medium">{secret.nombre}</div>
-                        {secret.descripcion && (
-                          <div className="text-gray-500 text-xs truncate max-w-xs">{secret.descripcion}</div>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {getServerTypeBadge(secret.tipo_servidor)}
-                      </TableCell>
-                      <TableCell>
-                        {secret.database_count || 0}
-                      </TableCell>
-                      <TableCell>
-                        {secret.fecha_creacion && format(new Date(secret.fecha_creacion), 'dd/MM/yyyy HH:mm')}
-                      </TableCell>
-                      <TableCell>
-                        <Badge color={secret.activo ? 'green' : 'gray'}>
-                          {secret.activo ? 'Activo' : 'Inactivo'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex space-x-2">
-                          <Button
-                            size="xs"
-                            variant="secondary"
-                            icon={PencilIcon}
-                            onClick={() => handleEdit(secret.id)}
-                          >
-                            Editar
-                          </Button>
-                          <Button
-                            size="xs"
-                            variant="light"
-                            color="red"
-                            icon={TrashIcon}
-                            onClick={() => handleDelete(secret)}
-                          >
-                            Eliminar
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          )}
-        </Card>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Puerto*
+                  </label>
+                  <input
+                    type="number"
+                    name="puerto"
+                    value={currentSecret.puerto}
+                    onChange={handleInputChange}
+                    className="w-full p-2 border rounded-md"
+                    required
+                    min="1"
+                    max="65535"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Usuario*
+                  </label>
+                  <input
+                    type="text"
+                    name="usuario"
+                    value={currentSecret.usuario}
+                    onChange={handleInputChange}
+                    className="w-full p-2 border rounded-md"
+                    required
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Contraseña{isEditing ? "" : "*"}
+                  </label>
+                  <input
+                    type="password"
+                    name="contrasena"
+                    value={currentSecret.contrasena}
+                    onChange={handleInputChange}
+                    className="w-full p-2 border rounded-md"
+                    required={!isEditing}
+                    placeholder={isEditing ? "Dejar en blanco para mantener la actual" : ""}
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Base de Datos (predeterminada)
+                  </label>
+                  <input
+                    type="text"
+                    name="basedatos"
+                    value={currentSecret.basedatos}
+                    onChange={handleInputChange}
+                    className="w-full p-2 border rounded-md"
+                  />
+                </div>
+              </div>
+              
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Descripción
+                </label>
+                <textarea
+                  name="descripcion"
+                  value={currentSecret.descripcion}
+                  onChange={handleInputChange}
+                  className="w-full p-2 border rounded-md"
+                  rows="2"
+                ></textarea>
+              </div>
+              
+              <div className="flex justify-end space-x-3">
+                <Button type="button" onClick={handleCancelForm} color="gray">
+                  Cancelar
+                </Button>
+                <Button type="submit" color="indigo">
+                  {isEditing ? 'Actualizar' : 'Guardar'}
+                </Button>
+              </div>
+            </form>
+          </Card>
+        )}
+        
+        {loading ? (
+          <div className="flex justify-center items-center py-10">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
+          </div>
+        ) : secrets.length === 0 ? (
+          <Card className="py-8">
+            <div className="text-center">
+              <ServerIcon className="h-12 w-12 mx-auto text-gray-400" />
+              <h3 className="mt-2 text-lg font-medium text-gray-900 dark:text-gray-100">
+                No hay secretos de bases de datos configurados
+              </h3>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Comience creando un nuevo secreto para conectarse a bases de datos.
+              </p>
+              <div className="mt-6">
+                <Button onClick={() => setShowForm(true)} color="indigo">
+                  Agregar Nuevo Secreto
+                </Button>
+              </div>
+            </div>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {secrets.map((secret) => (
+              <Card key={secret.id} className="relative">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center">
+                    {getDatabaseIcon(secret.tipo)}
+                    <div className="ml-2">
+                      <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">
+                        {secret.nombre}
+                      </h3>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        {secret.tipo} {secret.database_count ? `(${secret.database_count} conexiones)` : ''}
+                      </p>
+                    </div>
+                  </div>
+                  <Badge color={getStatusColor(secret.estado || 'pendiente')}>
+                    {secret.estado || 'Pendiente'}
+                  </Badge>
+                </div>
+                
+                <div className="mt-3">
+                  <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-2">
+                    {secret.descripcion || 'Sin descripción'}
+                  </p>
+                </div>
+                
+                <div className="mt-4 grid grid-cols-2 gap-2 text-sm text-gray-500 dark:text-gray-400">
+                  <div>
+                    <span className="font-medium">Servidor:</span> {secret.servidor}:{secret.puerto}
+                  </div>
+                  <div>
+                    <span className="font-medium">Usuario:</span> {secret.usuario}
+                  </div>
+                  {secret.basedatos && (
+                    <div className="col-span-2">
+                      <span className="font-medium">Base de datos:</span> {secret.basedatos}
+                    </div>
+                  )}
+                </div>
+                
+                <div className="mt-4 flex justify-end space-x-2">
+                  <Button
+                    size="xs"
+                    color="amber"
+                    onClick={() => handleTestConnection(secret.id)}
+                    loading={testingId === secret.id}
+                    disabled={testingId === secret.id}
+                  >
+                    Test
+                  </Button>
+                  <Button
+                    size="xs"
+                    onClick={() => handleEditSecret(secret.id)}
+                    color="indigo"
+                  >
+                    Editar
+                  </Button>
+                  <Button
+                    size="xs"
+                    onClick={() => handleDeleteSecret(secret.id)}
+                    color="red"
+                  >
+                    Eliminar
+                  </Button>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
-
-      <ConfirmDialog
-        open={confirmOpen}
-        title="Confirmar eliminación"
-        message={`¿Está seguro que desea eliminar el secreto "${secretToDelete?.nombre}"? Esta acción no se puede deshacer y podría afectar las bases de datos asociadas.`}
-        confirmLabel="Eliminar"
-        cancelLabel="Cancelar"
-        onConfirm={confirmDelete}
-        onCancel={() => {
-          setSecretToDelete(null);
-          setConfirmOpen(false);
-        }}
-      />
-    </Layout>
+    </>
   );
 }

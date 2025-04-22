@@ -1,283 +1,501 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
-import Layout from '@/components/Layout';
-import {
-  Card,
-  Title,
-  Text,
-  Badge,
-  Table,
-  TableHead,
-  TableRow,
-  TableHeaderCell,
-  TableBody,
-  TableCell,
-  Button,
-  Grid,
-  Col,
-  Metric,
-  Flex
-} from '@tremor/react';
-import {
-  PlusIcon,
-  PencilIcon,
-  TrashIcon,
+import Head from 'next/head';
+import { 
+  PlusCircleIcon, 
+  CheckCircleIcon, 
   DatabaseIcon,
+  KeyIcon,
   ServerIcon,
-  LinkIcon
+  TableCellsIcon
 } from '@heroicons/react/24/outline';
-import ConfirmDialog from '@/components/ConfirmDialog';
-import Breadcrumbs from '@/components/Breadcrumbs';
-import { format } from 'date-fns';
 import { toast } from 'react-toastify';
+import { Title, Text, Subtitle, Card, Button, Badge } from '@tremor/react';
 
-export default function DatabaseConnectionsPage() {
+// Estado inicial para una nueva conexión
+const initialConnectionState = {
+  nombre: '',
+  descripcion: '',
+  secret_id: '',
+  base_datos: '',
+  esquema: '',
+  configuracion: {}
+};
+
+export default function DatabaseConnections() {
   const router = useRouter();
   const [connections, setConnections] = useState([]);
+  const [secrets, setSecrets] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [connectionToDelete, setConnectionToDelete] = useState(null);
+  const [showForm, setShowForm] = useState(false);
+  const [currentConnection, setCurrentConnection] = useState(initialConnectionState);
+  const [isEditing, setIsEditing] = useState(false);
+  const [testingId, setTestingId] = useState(null);
 
+  // Cargar datos iniciales
   useEffect(() => {
     fetchConnections();
+    fetchSecrets();
   }, []);
 
+  // Obtener todas las conexiones
   const fetchConnections = async () => {
     try {
       setLoading(true);
       const response = await fetch('/api/admin/database-connections');
-      if (!response.ok) throw new Error('Error al cargar conexiones');
+      if (!response.ok) throw new Error('Error al cargar conexiones de bases de datos');
       const data = await response.json();
+      
       setConnections(data);
     } catch (error) {
       console.error('Error:', error);
-      toast.error('Error al cargar las conexiones de bases de datos');
+      toast.error('Error al cargar conexiones: ' + error.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleEdit = (id) => {
-    router.push(`/admin/database-connections/${id}`);
+  // Obtener secretos disponibles
+  const fetchSecrets = async () => {
+    try {
+      const response = await fetch('/api/admin/db-secrets');
+      if (!response.ok) throw new Error('Error al cargar secretos de bases de datos');
+      const data = await response.json();
+      
+      setSecrets(data);
+    } catch (error) {
+      console.error('Error:', error);
+      toast.error('Error al cargar secretos: ' + error.message);
+    }
   };
 
-  const handleDelete = (connection) => {
-    setConnectionToDelete(connection);
-    setConfirmOpen(true);
+  // Gestionar entrada del formulario
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    
+    // Convertir secret_id a número
+    if (name === 'secret_id') {
+      const numericValue = value === '' ? '' : parseInt(value, 10);
+      setCurrentConnection(prev => ({ ...prev, [name]: numericValue }));
+      return;
+    }
+
+    setCurrentConnection(prev => ({ ...prev, [name]: value }));
   };
 
-  const confirmDelete = async () => {
-    if (!connectionToDelete) return;
+  // Guardar conexión
+  const handleSubmit = async (e) => {
+    e.preventDefault();
     
     try {
-      const response = await fetch(`/api/admin/database-connections/${connectionToDelete.id}`, {
+      const method = isEditing ? 'PUT' : 'POST';
+      const url = isEditing 
+        ? `/api/admin/database-connections/${currentConnection.id}` 
+        : '/api/admin/database-connections';
+      
+      // Validaciones básicas
+      if (!currentConnection.nombre.trim()) {
+        toast.error('El nombre es obligatorio');
+        return;
+      }
+      
+      if (!currentConnection.secret_id) {
+        toast.error('Debe seleccionar un secreto de base de datos');
+        return;
+      }
+      
+      if (!currentConnection.base_datos.trim()) {
+        toast.error('El nombre de la base de datos es obligatorio');
+        return;
+      }
+      
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(currentConnection),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Error al guardar conexión');
+      }
+      
+      toast.success(isEditing ? 'Conexión actualizada correctamente' : 'Conexión creada correctamente');
+      setShowForm(false);
+      setCurrentConnection(initialConnectionState);
+      setIsEditing(false);
+      fetchConnections();
+    } catch (error) {
+      console.error('Error:', error);
+      toast.error(error.message || 'Error al guardar conexión');
+    }
+  };
+
+  // Editar conexión
+  const handleEditConnection = async (connectionId) => {
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/admin/database-connections/${connectionId}`);
+      if (!response.ok) throw new Error('Error al cargar conexión');
+      
+      const connectionData = await response.json();
+      
+      // Asegurarse de que la configuración sea un objeto
+      if (typeof connectionData.configuracion === 'string') {
+        try {
+          connectionData.configuracion = JSON.parse(connectionData.configuracion);
+        } catch (e) {
+          connectionData.configuracion = {};
+        }
+      } else if (!connectionData.configuracion) {
+        connectionData.configuracion = {};
+      }
+      
+      setCurrentConnection(connectionData);
+      setIsEditing(true);
+      setShowForm(true);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (error) {
+      console.error('Error:', error);
+      toast.error('Error al cargar conexión: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Eliminar conexión
+  const handleDeleteConnection = async (connectionId) => {
+    if (!confirm('¿Está seguro de eliminar esta conexión? Esta acción no se puede deshacer.')) {
+      return;
+    }
+    
+    try {
+      const response = await fetch(`/api/admin/database-connections/${connectionId}`, {
         method: 'DELETE',
       });
       
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Error al eliminar la conexión');
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Error al eliminar conexión');
       }
       
-      setConnections(connections.filter(c => c.id !== connectionToDelete.id));
       toast.success('Conexión eliminada correctamente');
+      fetchConnections();
     } catch (error) {
       console.error('Error:', error);
-      toast.error(error.message || 'Error al eliminar la conexión');
+      if (error.message.includes('referenciado')) {
+        toast.error('No se puede eliminar la conexión porque está siendo utilizada por materializaciones');
+      } else {
+        toast.error('Error al eliminar conexión: ' + error.message);
+      }
+    }
+  };
+
+  // Probar conexión
+  const handleTestConnection = async (connectionId) => {
+    try {
+      setTestingId(connectionId);
+      
+      const response = await fetch(`/api/admin/database-connections/${connectionId}/test`, {
+        method: 'POST',
+      });
+      
+      const result = await response.json();
+      
+      if (response.ok) {
+        toast.success('Conexión exitosa a la base de datos');
+      } else {
+        throw new Error(result.message || 'Error al probar conexión');
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      toast.error('Error al probar conexión: ' + error.message);
     } finally {
-      setConnectionToDelete(null);
-      setConfirmOpen(false);
+      setTestingId(null);
     }
   };
 
-  const getServerTypeBadge = (type) => {
-    switch (type) {
-      case 'postgresql':
-        return <Badge color="blue">PostgreSQL</Badge>;
-      case 'mysql':
-        return <Badge color="orange">MySQL</Badge>;
-      case 'sqlserver':
-        return <Badge color="indigo">SQL Server</Badge>;
-      case 'duckdb':
-        return <Badge color="green">DuckDB</Badge>;
+  // Cancelar formulario
+  const handleCancelForm = () => {
+    setShowForm(false);
+    setCurrentConnection(initialConnectionState);
+    setIsEditing(false);
+  };
+
+  // Probar todas las conexiones
+  const handleTestAllConnections = async () => {
+    try {
+      for (const connection of connections) {
+        await handleTestConnection(connection.id);
+      }
+    } catch (error) {
+      console.error('Error al probar todas las conexiones:', error);
+    }
+  };
+
+  // Obtener color del estado de una conexión
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'activo':
+      case 'ok':
+        return 'green';
+      case 'inactivo':
+        return 'gray';
+      case 'error':
+        return 'red';
       default:
-        return <Badge color="gray">{type}</Badge>;
+        return 'blue';
     }
   };
 
-  // Estadísticas básicas
-  const activeConnections = connections.filter(c => c.activo).length;
-  const dbTypes = {};
-  connections.forEach(conn => {
-    dbTypes[conn.tipo_servidor] = (dbTypes[conn.tipo_servidor] || 0) + 1;
-  });
+  // Encontrar nombre del secreto por ID
+  const getSecretNameById = (secretId) => {
+    const secret = secrets.find(s => s.id === secretId);
+    return secret ? secret.nombre : 'Desconocido';
+  };
 
   return (
-    <Layout>
-      <div className="px-4 sm:px-6 lg:px-8 py-8 w-full max-w-9xl mx-auto">
-        <Breadcrumbs items={[
-          { label: 'Admin', href: '/admin' },
-          { label: 'Materializaciones', href: '/admin/materializations' },
-          { label: 'Conexiones BD', current: true }
-        ]} />
-        
-        <div className="sm:flex sm:justify-between sm:items-center mb-8">
-          <Title>Conexiones a Bases de Datos</Title>
-          <div className="grid grid-flow-col sm:auto-cols-max justify-start sm:justify-end gap-2">
+    <>
+      <Head>
+        <title>SAGE - Conexiones a Bases de Datos</title>
+      </Head>
+      
+      <div className="p-6">
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <Title>Conexiones a Bases de Datos</Title>
+            <Text>Administra las conexiones a bases de datos para materializaciones</Text>
+          </div>
+          <div className="flex space-x-3">
             <Button 
-              variant="primary" 
-              icon={PlusIcon}
-              onClick={() => router.push('/admin/database-connections/new')}
+              icon={KeyIcon} 
+              onClick={() => router.push('/admin/db-secrets')}
+              color="cyan"
             >
-              Agregar Nueva
+              Gestionar Secretos
+            </Button>
+            <Button 
+              icon={CheckCircleIcon} 
+              onClick={handleTestAllConnections}
+              color="amber"
+              disabled={loading || connections.length === 0}
+            >
+              Test Conexiones
+            </Button>
+            <Button 
+              icon={PlusCircleIcon} 
+              onClick={() => setShowForm(!showForm)}
+              color="indigo"
+            >
+              {showForm ? 'Cancelar' : 'Nueva Conexión'}
             </Button>
           </div>
         </div>
-
-        <Grid numCols={1} numColsSm={2} numColsLg={3} className="gap-6 mb-6">
-          <Col>
-            <Card decoration="top" decorationColor="blue">
-              <Flex justifyContent="start" className="space-x-4">
-                <DatabaseIcon className="w-8 h-8 text-blue-500" />
+        
+        {showForm && (
+          <Card className="mb-6">
+            <Subtitle className="mb-4">
+              {isEditing ? 'Editar Conexión' : 'Nueva Conexión a Base de Datos'}
+            </Subtitle>
+            
+            <form onSubmit={handleSubmit}>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div>
-                  <Text>Conexiones Activas</Text>
-                  <Metric>{activeConnections} de {connections.length}</Metric>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Nombre de la Conexión*
+                  </label>
+                  <input
+                    type="text"
+                    name="nombre"
+                    value={currentConnection.nombre}
+                    onChange={handleInputChange}
+                    className="w-full p-2 border rounded-md"
+                    required
+                  />
                 </div>
-              </Flex>
-            </Card>
-          </Col>
-          
-          <Col>
-            <Card decoration="top" decorationColor="orange">
-              <Flex justifyContent="start" className="space-x-4">
-                <ServerIcon className="w-8 h-8 text-orange-500" />
+                
                 <div>
-                  <Text>Tipos de Bases de Datos</Text>
-                  <Metric>{Object.keys(dbTypes).length}</Metric>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Secreto de Base de Datos*
+                  </label>
+                  <select
+                    name="secret_id"
+                    value={currentConnection.secret_id || ''}
+                    onChange={handleInputChange}
+                    className="w-full p-2 border rounded-md"
+                    required
+                  >
+                    <option value="">Seleccione un secreto</option>
+                    {secrets.map(secret => (
+                      <option key={secret.id} value={secret.id}>
+                        {secret.nombre} ({secret.tipo})
+                      </option>
+                    ))}
+                  </select>
+                  {secrets.length === 0 && (
+                    <p className="text-sm text-red-500 mt-1">
+                      No hay secretos disponibles.{' '}
+                      <span 
+                        className="text-blue-500 cursor-pointer" 
+                        onClick={() => router.push('/admin/db-secrets')}
+                      >
+                        Crear un secreto
+                      </span>
+                    </p>
+                  )}
                 </div>
-              </Flex>
-            </Card>
-          </Col>
-          
-          <Col numColSpanSm={2} numColSpanLg={1}>
-            <Card decoration="top" decorationColor="green">
-              <Flex justifyContent="start" className="space-x-4">
-                <LinkIcon className="w-8 h-8 text-green-500" />
+                
                 <div>
-                  <Text>Tablas Materializadas</Text>
-                  <Metric>{connections.reduce((acc, conn) => acc + (conn.table_count || 0), 0)}</Metric>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Base de Datos*
+                  </label>
+                  <input
+                    type="text"
+                    name="base_datos"
+                    value={currentConnection.base_datos}
+                    onChange={handleInputChange}
+                    className="w-full p-2 border rounded-md"
+                    required
+                  />
                 </div>
-              </Flex>
-            </Card>
-          </Col>
-        </Grid>
-
-        <Card>
-          {loading ? (
-            <div className="text-center p-4">Cargando...</div>
-          ) : (
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableHeaderCell>Nombre</TableHeaderCell>
-                  <TableHeaderCell>Base de Datos</TableHeaderCell>
-                  <TableHeaderCell>Servidor</TableHeaderCell>
-                  <TableHeaderCell>Secret</TableHeaderCell>
-                  <TableHeaderCell>Tablas</TableHeaderCell>
-                  <TableHeaderCell>Estado</TableHeaderCell>
-                  <TableHeaderCell>Acciones</TableHeaderCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {connections.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-center">
-                      <div className="py-8">
-                        <Text className="text-lg text-gray-500">No hay conexiones a bases de datos configuradas</Text>
-                        <div className="mt-4">
-                          <Button
-                            variant="light"
-                            size="lg"
-                            icon={PlusIcon}
-                            onClick={() => router.push('/admin/database-connections/new')}
-                          >
-                            Configurar nueva conexión
-                          </Button>
-                        </div>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  connections.map((connection) => (
-                    <TableRow key={connection.id}>
-                      <TableCell>
-                        <div className="font-medium">{connection.nombre}</div>
-                        {connection.descripcion && (
-                          <div className="text-gray-500 text-xs truncate max-w-xs">{connection.descripcion}</div>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="font-medium">{connection.database || '-'}</div>
-                        {connection.schema && (
-                          <div className="text-gray-500 text-xs">Schema: {connection.schema}</div>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {getServerTypeBadge(connection.tipo_servidor)}
-                      </TableCell>
-                      <TableCell>
-                        {connection.secret_name || '-'}
-                      </TableCell>
-                      <TableCell>
-                        {connection.table_count || 0}
-                      </TableCell>
-                      <TableCell>
-                        <Badge color={connection.activo ? 'green' : 'gray'}>
-                          {connection.activo ? 'Activo' : 'Inactivo'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex space-x-2">
-                          <Button
-                            size="xs"
-                            variant="secondary"
-                            icon={PencilIcon}
-                            onClick={() => handleEdit(connection.id)}
-                          >
-                            Editar
-                          </Button>
-                          <Button
-                            size="xs"
-                            variant="light"
-                            color="red"
-                            icon={TrashIcon}
-                            onClick={() => handleDelete(connection)}
-                          >
-                            Eliminar
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          )}
-        </Card>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Esquema (opcional)
+                  </label>
+                  <input
+                    type="text"
+                    name="esquema"
+                    value={currentConnection.esquema}
+                    onChange={handleInputChange}
+                    className="w-full p-2 border rounded-md"
+                    placeholder="public"
+                  />
+                </div>
+              </div>
+              
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Descripción
+                </label>
+                <textarea
+                  name="descripcion"
+                  value={currentConnection.descripcion}
+                  onChange={handleInputChange}
+                  className="w-full p-2 border rounded-md"
+                  rows="2"
+                ></textarea>
+              </div>
+              
+              <div className="flex justify-end space-x-3">
+                <Button type="button" onClick={handleCancelForm} color="gray">
+                  Cancelar
+                </Button>
+                <Button type="submit" color="indigo">
+                  {isEditing ? 'Actualizar' : 'Guardar'}
+                </Button>
+              </div>
+            </form>
+          </Card>
+        )}
+        
+        {loading ? (
+          <div className="flex justify-center items-center py-10">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
+          </div>
+        ) : connections.length === 0 ? (
+          <Card className="py-8">
+            <div className="text-center">
+              <DatabaseIcon className="h-12 w-12 mx-auto text-gray-400" />
+              <h3 className="mt-2 text-lg font-medium text-gray-900 dark:text-gray-100">
+                No hay conexiones configuradas
+              </h3>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Comience creando una nueva conexión a una base de datos.
+              </p>
+              <div className="mt-6">
+                <Button onClick={() => setShowForm(true)} color="indigo">
+                  Agregar Nueva Conexión
+                </Button>
+              </div>
+            </div>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {connections.map((connection) => (
+              <Card key={connection.id} className="relative">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center">
+                    <DatabaseIcon className="h-5 w-5 text-indigo-500" />
+                    <div className="ml-2">
+                      <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">
+                        {connection.nombre}
+                      </h3>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        {connection.secret_name || getSecretNameById(connection.secret_id)}
+                      </p>
+                    </div>
+                  </div>
+                  <Badge color={getStatusColor(connection.estado_conexion || 'pendiente')}>
+                    {connection.estado_conexion || 'Pendiente'}
+                  </Badge>
+                </div>
+                
+                <div className="mt-3">
+                  <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-2">
+                    {connection.descripcion || 'Sin descripción'}
+                  </p>
+                </div>
+                
+                <div className="mt-4 grid grid-cols-2 gap-2 text-sm text-gray-500 dark:text-gray-400">
+                  <div>
+                    <span className="font-medium">Base de datos:</span> {connection.base_datos}
+                  </div>
+                  {connection.esquema && (
+                    <div>
+                      <span className="font-medium">Esquema:</span> {connection.esquema}
+                    </div>
+                  )}
+                  {connection.table_count > 0 && (
+                    <div className="flex items-center">
+                      <TableCellsIcon className="h-4 w-4 mr-1" />
+                      <span>{connection.table_count} tablas</span>
+                    </div>
+                  )}
+                </div>
+                
+                <div className="mt-4 flex justify-end space-x-2">
+                  <Button
+                    size="xs"
+                    color="amber"
+                    onClick={() => handleTestConnection(connection.id)}
+                    loading={testingId === connection.id}
+                    disabled={testingId === connection.id}
+                  >
+                    Test
+                  </Button>
+                  <Button
+                    size="xs"
+                    onClick={() => handleEditConnection(connection.id)}
+                    color="indigo"
+                  >
+                    Editar
+                  </Button>
+                  <Button
+                    size="xs"
+                    onClick={() => handleDeleteConnection(connection.id)}
+                    color="red"
+                  >
+                    Eliminar
+                  </Button>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
-
-      <ConfirmDialog
-        open={confirmOpen}
-        title="Confirmar eliminación"
-        message={`¿Está seguro que desea eliminar la conexión "${connectionToDelete?.nombre}"? Esta acción no se puede deshacer y podría afectar las materializaciones asociadas.`}
-        confirmLabel="Eliminar"
-        cancelLabel="Cancelar"
-        onConfirm={confirmDelete}
-        onCancel={() => {
-          setConnectionToDelete(null);
-          setConfirmOpen(false);
-        }}
-      />
-    </Layout>
+    </>
   );
 }
