@@ -59,17 +59,23 @@ export default function CreateMaterializationPage() {
     partitionBy: [] as string[]
   });
   
-  // Lista de destinos disponibles
-  const [destinosDisponibles, setDestinosDisponibles] = useState([
-    { id: 'archivo', nombre: 'Archivo (S3, Azure, GCP, SFTP)' },
-    { id: 'postgres', nombre: 'PostgreSQL' },
-    { id: 'mysql', nombre: 'MySQL/MariaDB' },
-    { id: 'sqlserver', nombre: 'SQL Server' },
-    { id: 'oracle', nombre: 'Oracle Database' },
-    { id: 'snowflake', nombre: 'Snowflake' },
-    { id: 'bigquery', nombre: 'Google BigQuery' },
-    { id: 'redshift', nombre: 'Amazon Redshift' }
+  // Tipos de destinos disponibles
+  const [tiposDestino, setTiposDestino] = useState([
+    { id: 'archivo', nombre: 'Archivo (Nube)' },
+    { id: 'base_datos', nombre: 'Base de Datos' }
   ]);
+  
+  // Proveedores de destino físico (nubes y bases de datos)
+  const [proveedoresDestino, setProveedoresDestino] = useState<{
+    clouds: Array<{id: number, nombre: string, tipo: string, activo: boolean}>,
+    databases: Array<{id: number, nombre: string, base_datos: string, activo: boolean}>
+  }>({
+    clouds: [],
+    databases: []
+  });
+
+  // ID del proveedor seleccionado (nube o base de datos)
+  const [proveedorSeleccionado, setProveedorSeleccionado] = useState<number | null>(null);
   
   // Lista de formatos disponibles según el destino
   const formatosPorDestino = {
@@ -149,6 +155,22 @@ export default function CreateMaterializationPage() {
           console.error('Error al cargar estructura YAML:', yamlResponse.statusText);
           toast.error('Error al cargar estructura YAML');
         }
+        
+        // Obtener destinos disponibles (nubes y bases de datos)
+        const destinationsResponse = await fetch('/api/admin/materializations/destinations');
+        
+        if (destinationsResponse.ok) {
+          const destinationsData = await destinationsResponse.json();
+          setProveedoresDestino(destinationsData);
+          
+          // Seleccionar primer proveedor de nube por defecto si hay alguno disponible
+          if (destinationsData.clouds && destinationsData.clouds.length > 0) {
+            setProveedorSeleccionado(destinationsData.clouds[0].id);
+          }
+        } else {
+          console.error('Error al cargar destinos:', destinationsResponse.statusText);
+          toast.error('Error al cargar destinos disponibles');
+        }
       } catch (error) {
         console.error('Error al cargar datos:', error);
         toast.error('Error al cargar datos');
@@ -208,10 +230,29 @@ export default function CreateMaterializationPage() {
   
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
+    
+    // Si cambia el tipo de destino, resetear el proveedor seleccionado
+    if (name === 'destino') {
+      if (value === 'archivo' && proveedoresDestino.clouds.length > 0) {
+        // Al cambiar a 'archivo', seleccionar el primer proveedor de nube
+        setProveedorSeleccionado(proveedoresDestino.clouds[0].id);
+      } else if (value === 'base_datos' && proveedoresDestino.databases.length > 0) {
+        // Al cambiar a 'base_datos', seleccionar la primera base de datos
+        setProveedorSeleccionado(proveedoresDestino.databases[0].id);
+      } else {
+        setProveedorSeleccionado(null);
+      }
+    }
+    
     setFormData(prev => ({
       ...prev,
       [name]: value
     }));
+  };
+  
+  const handleProveedorChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const proveedorId = parseInt(e.target.value);
+    setProveedorSeleccionado(proveedorId);
   };
   
   const handleColumnSelectionChange = (columnName: string, checked: boolean) => {
@@ -306,8 +347,16 @@ export default function CreateMaterializationPage() {
       return;
     }
     
+    if (!proveedorSeleccionado) {
+      toast.error('Debe seleccionar un proveedor de destino');
+      return;
+    }
+    
     try {
       setFormSubmitting(true);
+      
+      // Identificar el tipo de proveedor seleccionado (cloud o database)
+      const tipoProveedor = formData.destino === 'archivo' ? 'cloud' : 'database';
       
       const materializacionData = {
         nombre: formData.nombre,
@@ -320,6 +369,8 @@ export default function CreateMaterializationPage() {
           primaryKey: formData.primaryKey.length > 0 ? formData.primaryKey : undefined,
           partitionBy: formData.partitionBy.length > 0 ? formData.partitionBy : undefined,
           destino: formData.destino,
+          tipoProveedor: tipoProveedor,
+          proveedorId: proveedorSeleccionado,
           tablaDestino: formData.tablaDestino,
           estrategiaActualizacion: formData.estrategiaActualizacion
         }
@@ -486,11 +537,46 @@ export default function CreateMaterializationPage() {
                 className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md"
                 required
               >
-                {destinosDisponibles.map(destino => (
-                  <option key={destino.id} value={destino.id}>
-                    {destino.nombre}
+                {tiposDestino.map(tipo => (
+                  <option key={tipo.id} value={tipo.id}>
+                    {tipo.nombre}
                   </option>
                 ))}
+              </select>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Proveedor Específico *
+              </label>
+              <select
+                name="proveedorId"
+                value={proveedorSeleccionado || ''}
+                onChange={handleProveedorChange}
+                className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md"
+                required
+              >
+                {formData.destino === 'archivo' ? (
+                  proveedoresDestino.clouds.length > 0 ? (
+                    proveedoresDestino.clouds.map(cloud => (
+                      <option key={cloud.id} value={cloud.id}>
+                        {cloud.nombre} ({cloud.tipo})
+                      </option>
+                    ))
+                  ) : (
+                    <option value="" disabled>No hay proveedores de nube disponibles</option>
+                  )
+                ) : (
+                  proveedoresDestino.databases.length > 0 ? (
+                    proveedoresDestino.databases.map(db => (
+                      <option key={db.id} value={db.id}>
+                        {db.nombre} ({db.base_datos})
+                      </option>
+                    ))
+                  ) : (
+                    <option value="" disabled>No hay bases de datos disponibles</option>
+                  )
+                )}
               </select>
             </div>
             
@@ -512,9 +598,7 @@ export default function CreateMaterializationPage() {
                 ))}
               </select>
             </div>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
+            
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Nombre de Tabla/Archivo en Origen
