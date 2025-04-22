@@ -5,7 +5,7 @@ channel = "stable-24_05"
 packages = ["arrow-cpp", "cacert", "glibcLocales", "libyaml", "pkg-config"]
 
 [workflows]
-runButton = "UI Dev Server"
+runButton = "Project"
 
 [[workflows.workflow]]
 name = "UI Dev Server"
@@ -17,34 +17,10 @@ task = "shell.exec"
 args = "npm run dev"
 
 [[workflows.workflow]]
-name = "Project"
+name = "UI Dev Server"
 mode = "parallel"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "SAGE Daemon 2"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Janitor Daemon"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Janitor Manual Run"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Next.js Development Server"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Next.js Server"
-
-[[workflows.workflow]]
-name = "SAGE Daemon 2"
-author = "agent"
-
 [workflows.workflow.metadata]
 agentRequireRestartOnSave = false
 
@@ -53,83 +29,11 @@ task = "packager.installForAll"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "python run_sage_daemon2.py"
-
-[[workflows.workflow]]
-name = "Janitor Daemon"
-author = "agent"
-
-[workflows.workflow.metadata]
-agentRequireRestartOnSave = false
-
-[[workflows.workflow.tasks]]
-task = "packager.installForAll"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd /home/runner/$REPL_SLUG && python janitor_daemon.py"
-
-[[workflows.workflow]]
-name = "Janitor Manual Run"
-author = "agent"
-
-[workflows.workflow.metadata]
-agentRequireRestartOnSave = false
-
-[[workflows.workflow.tasks]]
-task = "packager.installForAll"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd /home/runner/workspace && python janitor_daemon.py"
-
-[[workflows.workflow]]
-name = "Next.js Development Server with Turbopack"
-author = "agent"
-
-[workflows.workflow.metadata]
-agentRequireRestartOnSave = false
-
-[[workflows.workflow.tasks]]
-task = "packager.installForAll"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd /home/runner/workspace && npx next dev -p 5000"
-waitForPort = 5000
-
-[[workflows.workflow]]
-name = "Next.js Development Server"
-author = "agent"
-
-[workflows.workflow.metadata]
-agentRequireRestartOnSave = false
-
-[[workflows.workflow.tasks]]
-task = "packager.installForAll"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd /home/runner/workspace && npx next dev -p 3001"
-waitForPort = 3001
-
-[[workflows.workflow]]
-name = "Next.js Server"
-author = "agent"
-
-[workflows.workflow.metadata]
-agentRequireRestartOnSave = false
-
-[[workflows.workflow.tasks]]
-task = "packager.installForAll"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd /home/runner/workspace && ps aux | grep node | grep -v grep | awk '{print $2}' | xargs kill -9 || true && npx next dev -p 5000 --hostname 0.0.0.0"
+args = "cd /home/runner/workspace && npx next dev -p 5000 --hostname 0.0.0.0"
 waitForPort = 5000
 
 [deployment]
-run = ["sh", "-c", "npm run dev"]
+run = ["sh", "-c", "cd /home/runner/workspace && npx next dev -p 5000 --hostname 0.0.0.0"]
 
 [[ports]]
 localPort = 3001
