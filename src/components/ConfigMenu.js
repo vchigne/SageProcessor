@@ -71,7 +71,7 @@ export default function ConfigMenu() {
     { 
       name: 'Parámetros de ejecuciones', 
       href: '/admin/ejecuciones-config', 
-      icon: CloudArrowUpIcon, 
+      icon: CloudIcon, 
       description: 'Configurar almacenamiento en la nube para ejecuciones' 
     },
     { 
