@@ -139,8 +139,8 @@ class MaterializationProcessor:
         
         try:
             cursor.execute("""
-                SELECT id, nombre, descripcion, config, metadata,
-                       fecha_creacion, fecha_modificacion, estado, casilla_id
+                SELECT id, nombre, descripcion, configuracion, 
+                       fecha_creacion, fecha_actualizacion, estado, casilla_id
                 FROM materializaciones
                 WHERE casilla_id = %s AND estado = 'activo'
             """, (casilla_id,))
