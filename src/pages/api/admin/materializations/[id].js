@@ -1,286 +1,331 @@
+import { Pool } from 'pg';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../auth/[...nextauth]';
-import { executeSQL } from '@/utils/db';
 
-/**
- * API para gestionar una materialización específica
- */
+// Obtener la conexión a la base de datos
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
+
 export default async function handler(req, res) {
   // Verificar autenticación
   const session = await getServerSession(req, res, authOptions);
-  if (!session || !session.user.isAdmin) {
+  if (!session) {
     return res.status(401).json({ message: 'No autorizado' });
   }
 
   const { id } = req.query;
   
   if (!id || isNaN(parseInt(id))) {
-    return res.status(400).json({ message: 'ID inválido' });
+    return res.status(400).json({ message: 'ID de materialización inválido' });
   }
-
+  
+  const materializationId = parseInt(id);
+  
   switch (req.method) {
     case 'GET':
-      return getMaterialization(req, res, id);
+      return getMaterialization(req, res, materializationId);
     case 'PUT':
-      return updateMaterialization(req, res, id);
+      return updateMaterialization(req, res, materializationId);
     case 'PATCH':
-      return patchMaterialization(req, res, id);
+      return patchMaterialization(req, res, materializationId);
     case 'DELETE':
-      return deleteMaterialization(req, res, id);
+      return deleteMaterialization(req, res, materializationId);
     default:
       return res.status(405).json({ message: 'Método no permitido' });
   }
 }
 
-/**
- * Obtener una materialización por ID
- */
+// GET: Obtener una materialización específica
 async function getMaterialization(req, res, id) {
   try {
     const query = `
       SELECT 
         m.id, 
-        m.nombre, 
         m.casilla_id,
+        m.nombre,
+        m.descripcion,
         m.tipo_materializacion,
-        m.tabla_origen,
         m.connection_id,
+        m.cloud_provider_id,
         m.tabla_destino,
         m.schema_destino,
-        m.estrategia_actualizacion,
-        m.columnas_clave,
-        m.columnas_particion,
         m.formato_destino,
-        m.configuracion_adicional,
-        m.activado,
+        m.estrategia_actualizacion,
+        m.clave_primaria,
+        m.particion_por,
         m.ultima_ejecucion,
-        m.errores,
-        m.fecha_creacion,
-        m.fecha_actualizacion,
-        c.nombre as nombre_casilla,
-        conn.nombre as connection_name,
-        conn.tipo_servidor
+        m.activado,
+        m.creado_en,
+        m.modificado_en,
+        db.nombre AS nombre_casilla,
+        dc.nombre AS connection_name,
+        cp.nombre AS cloud_provider_name
       FROM 
-        materializacion_configuraciones m
+        materializations m
       LEFT JOIN 
-        casillas c ON m.casilla_id = c.id
+        data_boxes db ON m.casilla_id = db.id
       LEFT JOIN 
-        materializacion_db_connections conn ON m.connection_id = conn.id
+        database_connections dc ON m.connection_id = dc.id
+      LEFT JOIN 
+        cloud_providers cp ON m.cloud_provider_id = cp.id
       WHERE 
         m.id = $1
     `;
     
-    const result = await executeSQL(query, [id]);
+    const result = await pool.query(query, [id]);
     
     if (result.rows.length === 0) {
       return res.status(404).json({ message: 'Materialización no encontrada' });
     }
     
-    // Transformar campos especiales
-    const materialization = {
-      ...result.rows[0],
-      columnas_clave: parseJsonField(result.rows[0].columnas_clave),
-      columnas_particion: parseJsonField(result.rows[0].columnas_particion),
-      configuracion_adicional: parseJsonField(result.rows[0].configuracion_adicional),
-      errores: parseJsonField(result.rows[0].errores)
-    };
-    
-    return res.status(200).json(materialization);
+    return res.status(200).json(result.rows[0]);
   } catch (error) {
     console.error('Error al obtener materialización:', error);
-    return res.status(500).json({ message: 'Error al obtener materialización' });
+    return res.status(500).json({ 
+      message: 'Error interno al obtener materialización', 
+      error: error.message 
+    });
   }
 }
 
-/**
- * Actualizar una materialización completa
- */
+// PUT: Actualizar una materialización
 async function updateMaterialization(req, res, id) {
   try {
-    const { 
-      nombre, 
-      tipo_materializacion,
-      connection_id,
-      tabla_destino,
-      schema_destino,
-      estrategia_actualizacion,
-      columnas_clave,
-      columnas_particion,
-      formato_destino,
-      configuracion_adicional,
-      activado
-    } = req.body;
-    
-    // Validar campos obligatorios
-    if (!nombre || !tipo_materializacion) {
-      return res.status(400).json({ message: 'Faltan campos obligatorios' });
-    }
-    
-    // Verificar que la materialización existe
-    const checkQuery = 'SELECT id FROM materializacion_configuraciones WHERE id = $1';
-    const checkResult = await executeSQL(checkQuery, [id]);
+    // Primero verificar que la materialización existe
+    const checkQuery = `SELECT id FROM materializations WHERE id = $1`;
+    const checkResult = await pool.query(checkQuery, [id]);
     
     if (checkResult.rows.length === 0) {
       return res.status(404).json({ message: 'Materialización no encontrada' });
     }
     
-    // Actualizar materialización
-    const query = `
-      UPDATE materializacion_configuraciones 
+    const {
+      nombre,
+      descripcion,
+      tipo_materializacion,
+      connection_id,
+      cloud_provider_id,
+      tabla_destino,
+      schema_destino,
+      formato_destino,
+      estrategia_actualizacion,
+      clave_primaria,
+      particion_por,
+      activado
+    } = req.body;
+    
+    // Validar datos requeridos
+    if (!nombre) {
+      return res.status(400).json({ message: 'Nombre requerido' });
+    }
+    
+    if (!tipo_materializacion) {
+      return res.status(400).json({ message: 'Tipo de materialización requerido' });
+    }
+    
+    if (!tabla_destino) {
+      return res.status(400).json({ message: 'Tabla de destino requerida' });
+    }
+    
+    // Validaciones específicas por tipo
+    if (tipo_materializacion === 'database' && !connection_id) {
+      return res.status(400).json({ message: 'ID de conexión a base de datos requerido' });
+    }
+    
+    if (tipo_materializacion === 'cloud_datalake' && !cloud_provider_id) {
+      return res.status(400).json({ message: 'ID de proveedor de nube requerido' });
+    }
+    
+    // Actualizar la materialización
+    const updateQuery = `
+      UPDATE materializations
       SET 
-        nombre = $1, 
-        tipo_materializacion = $2, 
-        connection_id = $3, 
-        tabla_destino = $4, 
-        schema_destino = $5,
-        estrategia_actualizacion = $6,
-        columnas_clave = $7,
-        columnas_particion = $8,
-        formato_destino = $9,
-        configuracion_adicional = $10,
-        activado = $11,
-        fecha_actualizacion = NOW()
-      WHERE 
-        id = $12
-      RETURNING id
+        nombre = $1,
+        descripcion = $2,
+        tipo_materializacion = $3,
+        connection_id = $4,
+        cloud_provider_id = $5,
+        tabla_destino = $6,
+        schema_destino = $7,
+        formato_destino = $8,
+        estrategia_actualizacion = $9,
+        clave_primaria = $10,
+        particion_por = $11,
+        activado = $12,
+        modificado_en = NOW()
+      WHERE id = $13
+      RETURNING *
     `;
     
-    const values = [
+    const updateParams = [
       nombre,
+      descripcion || null,
       tipo_materializacion,
       connection_id || null,
-      tabla_destino || null,
+      cloud_provider_id || null,
+      tabla_destino,
       schema_destino || null,
-      estrategia_actualizacion || 'append',
-      JSON.stringify(columnas_clave || []),
-      JSON.stringify(columnas_particion || []),
       formato_destino || null,
-      JSON.stringify(configuracion_adicional || {}),
+      estrategia_actualizacion || 'upsert',
+      clave_primaria || null,
+      particion_por || null,
       activado !== undefined ? activado : true,
       id
     ];
     
-    await executeSQL(query, values);
+    const updateResult = await pool.query(updateQuery, updateParams);
     
-    return res.status(200).json({ 
-      id: parseInt(id), 
-      message: 'Materialización actualizada correctamente' 
-    });
-  } catch (error) {
-    console.error('Error al actualizar materialización:', error);
-    return res.status(500).json({ message: 'Error al actualizar materialización' });
-  }
-}
-
-/**
- * Actualizar parcialmente una materialización (PATCH)
- */
-async function patchMaterialization(req, res, id) {
-  try {
-    // Obtener la materialización actual
-    const getQuery = 'SELECT * FROM materializacion_configuraciones WHERE id = $1';
-    const getResult = await executeSQL(getQuery, [id]);
+    // Enriquecer la respuesta con nombres de entidades relacionadas
+    const updatedMaterialization = updateResult.rows[0];
     
-    if (getResult.rows.length === 0) {
-      return res.status(404).json({ message: 'Materialización no encontrada' });
-    }
-    
-    const current = getResult.rows[0];
-    
-    // Preparar campos a actualizar
-    const updateFields = [];
-    const values = [];
-    let paramCounter = 1;
-    
-    // Iterar sobre los campos recibidos en el PATCH
-    for (const [key, value] of Object.entries(req.body)) {
-      // Solo permitir actualizar ciertos campos
-      if (['nombre', 'activado', 'tabla_destino', 'schema_destino', 
-           'estrategia_actualizacion', 'columnas_clave', 'columnas_particion', 
-           'formato_destino', 'configuracion_adicional'].includes(key)) {
-        
-        // Para campos JSON, convertir a string
-        if (['columnas_clave', 'columnas_particion', 'configuracion_adicional'].includes(key)) {
-          updateFields.push(`${key} = $${paramCounter}`);
-          values.push(JSON.stringify(value));
-        } else {
-          updateFields.push(`${key} = $${paramCounter}`);
-          values.push(value);
-        }
-        
-        paramCounter++;
+    if (updatedMaterialization.connection_id) {
+      const connectionQuery = `SELECT nombre FROM database_connections WHERE id = $1`;
+      const connectionResult = await pool.query(connectionQuery, [updatedMaterialization.connection_id]);
+      
+      if (connectionResult.rows.length > 0) {
+        updatedMaterialization.connection_name = connectionResult.rows[0].nombre;
       }
     }
     
-    // Si no hay campos para actualizar
-    if (updateFields.length === 0) {
-      return res.status(400).json({ message: 'No se proporcionaron campos válidos para actualizar' });
+    if (updatedMaterialization.cloud_provider_id) {
+      const providerQuery = `SELECT nombre FROM cloud_providers WHERE id = $1`;
+      const providerResult = await pool.query(providerQuery, [updatedMaterialization.cloud_provider_id]);
+      
+      if (providerResult.rows.length > 0) {
+        updatedMaterialization.cloud_provider_name = providerResult.rows[0].nombre;
+      }
     }
     
-    // Añadir fecha de actualización
-    updateFields.push(`fecha_actualizacion = NOW()`);
+    const casillaNameQuery = `SELECT nombre FROM data_boxes WHERE id = $1`;
+    const casillaNameResult = await pool.query(casillaNameQuery, [updatedMaterialization.casilla_id]);
     
-    // Construir la consulta
-    const query = `
-      UPDATE materializacion_configuraciones 
-      SET ${updateFields.join(', ')}
-      WHERE id = $${paramCounter}
-      RETURNING id
-    `;
+    if (casillaNameResult.rows.length > 0) {
+      updatedMaterialization.nombre_casilla = casillaNameResult.rows[0].nombre;
+    }
     
-    // Añadir ID a los valores
-    values.push(id);
-    
-    await executeSQL(query, values);
-    
-    return res.status(200).json({ 
-      id: parseInt(id), 
-      message: 'Materialización actualizada correctamente' 
-    });
+    return res.status(200).json(updatedMaterialization);
   } catch (error) {
     console.error('Error al actualizar materialización:', error);
-    return res.status(500).json({ message: 'Error al actualizar materialización' });
+    return res.status(500).json({ 
+      message: 'Error interno al actualizar materialización', 
+      error: error.message 
+    });
   }
 }
 
-/**
- * Eliminar una materialización
- */
-async function deleteMaterialization(req, res, id) {
+// PATCH: Actualizar parcialmente una materialización
+async function patchMaterialization(req, res, id) {
   try {
-    // Verificar que la materialización existe
-    const checkQuery = 'SELECT id FROM materializacion_configuraciones WHERE id = $1';
-    const checkResult = await executeSQL(checkQuery, [id]);
+    // Primero verificar que la materialización existe
+    const checkQuery = `SELECT * FROM materializations WHERE id = $1`;
+    const checkResult = await pool.query(checkQuery, [id]);
     
     if (checkResult.rows.length === 0) {
       return res.status(404).json({ message: 'Materialización no encontrada' });
     }
     
-    // Eliminar materialización
-    const query = 'DELETE FROM materializacion_configuraciones WHERE id = $1 RETURNING id';
-    await executeSQL(query, [id]);
+    const currentData = checkResult.rows[0];
+    const updates = {};
+    const allowedFields = [
+      'nombre', 'descripcion', 'tipo_materializacion', 'connection_id',
+      'cloud_provider_id', 'tabla_destino', 'schema_destino', 'formato_destino',
+      'estrategia_actualizacion', 'clave_primaria', 'particion_por', 'activado'
+    ];
     
-    return res.status(200).json({ 
-      id: parseInt(id), 
-      message: 'Materialización eliminada correctamente' 
-    });
+    // Recopilar campos para actualizar
+    for (const field of allowedFields) {
+      if (req.body[field] !== undefined) {
+        updates[field] = req.body[field];
+      }
+    }
+    
+    // Si no hay campos para actualizar, devolver los datos actuales
+    if (Object.keys(updates).length === 0) {
+      return res.status(200).json({ 
+        message: 'No hay cambios para aplicar',
+        data: currentData
+      });
+    }
+    
+    // Construir la consulta de actualización dinámica
+    let updateQuery = 'UPDATE materializations SET modificado_en = NOW()';
+    const updateParams = [];
+    let paramIndex = 1;
+    
+    for (const [key, value] of Object.entries(updates)) {
+      updateQuery += `, ${key} = $${paramIndex}`;
+      updateParams.push(value === null ? null : value);
+      paramIndex++;
+    }
+    
+    updateQuery += ` WHERE id = $${paramIndex} RETURNING *`;
+    updateParams.push(id);
+    
+    const updateResult = await pool.query(updateQuery, updateParams);
+    
+    // Enriquecer la respuesta con nombres de entidades relacionadas
+    const updatedMaterialization = updateResult.rows[0];
+    
+    if (updatedMaterialization.connection_id) {
+      const connectionQuery = `SELECT nombre FROM database_connections WHERE id = $1`;
+      const connectionResult = await pool.query(connectionQuery, [updatedMaterialization.connection_id]);
+      
+      if (connectionResult.rows.length > 0) {
+        updatedMaterialization.connection_name = connectionResult.rows[0].nombre;
+      }
+    }
+    
+    if (updatedMaterialization.cloud_provider_id) {
+      const providerQuery = `SELECT nombre FROM cloud_providers WHERE id = $1`;
+      const providerResult = await pool.query(providerQuery, [updatedMaterialization.cloud_provider_id]);
+      
+      if (providerResult.rows.length > 0) {
+        updatedMaterialization.cloud_provider_name = providerResult.rows[0].nombre;
+      }
+    }
+    
+    const casillaNameQuery = `SELECT nombre FROM data_boxes WHERE id = $1`;
+    const casillaNameResult = await pool.query(casillaNameQuery, [updatedMaterialization.casilla_id]);
+    
+    if (casillaNameResult.rows.length > 0) {
+      updatedMaterialization.nombre_casilla = casillaNameResult.rows[0].nombre;
+    }
+    
+    return res.status(200).json(updatedMaterialization);
   } catch (error) {
-    console.error('Error al eliminar materialización:', error);
-    return res.status(500).json({ message: 'Error al eliminar materialización' });
+    console.error('Error al actualizar materialización:', error);
+    return res.status(500).json({ 
+      message: 'Error interno al actualizar materialización', 
+      error: error.message 
+    });
   }
 }
 
-/**
- * Parsea un campo JSON de la base de datos
- * 
- * @param {string} jsonField - Campo JSON como string
- * @returns {any} - Valor parseado o valor por defecto
- */
-function parseJsonField(jsonField, defaultValue = []) {
+// DELETE: Eliminar una materialización
+async function deleteMaterialization(req, res, id) {
   try {
-    return jsonField ? JSON.parse(jsonField) : defaultValue;
+    // Primero verificar que la materialización existe
+    const checkQuery = `SELECT id FROM materializations WHERE id = $1`;
+    const checkResult = await pool.query(checkQuery, [id]);
+    
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Materialización no encontrada' });
+    }
+    
+    // Eliminar la materialización
+    const deleteQuery = `DELETE FROM materializations WHERE id = $1`;
+    await pool.query(deleteQuery, [id]);
+    
+    return res.status(200).json({ 
+      message: 'Materialización eliminada correctamente',
+      id
+    });
   } catch (error) {
-    console.error('Error al parsear campo JSON:', error);
-    return defaultValue;
+    console.error('Error al eliminar materialización:', error);
+    return res.status(500).json({ 
+      message: 'Error interno al eliminar materialización', 
+      error: error.message 
+    });
   }
 }

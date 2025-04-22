@@ -1,148 +1,217 @@
+import { Pool } from 'pg';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../auth/[...nextauth]';
-import yaml from 'yaml';
 
-/**
- * API para detectar tablas en la configuración YAML de una casilla
- */
+// Obtener la conexión a la base de datos
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
+
 export default async function handler(req, res) {
   // Verificar autenticación
   const session = await getServerSession(req, res, authOptions);
-  if (!session || !session.user.isAdmin) {
+  if (!session) {
     return res.status(401).json({ message: 'No autorizado' });
   }
 
-  // Solo permitir POST
   if (req.method !== 'POST') {
     return res.status(405).json({ message: 'Método no permitido' });
   }
-
+  
+  const { casilla_id } = req.body;
+  
+  if (!casilla_id) {
+    return res.status(400).json({ message: 'ID de casilla requerido' });
+  }
+  
   try {
-    const { casilla_id, yaml_config } = req.body;
+    // Obtener la configuración YAML de la casilla
+    const yamlQuery = `
+      SELECT yaml_config 
+      FROM data_boxes 
+      WHERE id = $1
+    `;
     
-    if (!yaml_config) {
-      return res.status(400).json({ message: 'Configuración YAML requerida' });
+    const yamlResult = await pool.query(yamlQuery, [casilla_id]);
+    
+    if (yamlResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Casilla no encontrada' });
     }
     
-    // Detectar tablas en el YAML
-    const detectedTables = detectTablesFromYaml(yaml_config, casilla_id);
+    const yamlConfig = yamlResult.rows[0].yaml_config;
     
-    return res.status(200).json({ tables: detectedTables });
+    if (!yamlConfig) {
+      return res.status(404).json({ 
+        message: 'La casilla no tiene configuración YAML',
+        tables: []
+      });
+    }
+    
+    // Parsear y analizar la configuración YAML
+    const detectedTables = await analyzeYamlConfig(yamlConfig);
+    
+    return res.status(200).json({
+      message: 'Tablas detectadas correctamente',
+      tables: detectedTables
+    });
   } catch (error) {
     console.error('Error al detectar tablas:', error);
-    return res.status(500).json({ message: 'Error al analizar el YAML y detectar tablas' });
+    return res.status(500).json({ 
+      message: 'Error interno al detectar tablas', 
+      error: error.message 
+    });
   }
 }
 
-/**
- * Detecta tablas en la configuración YAML
- * 
- * @param {string} yamlConfig - Configuración YAML
- * @param {number} casillaId - ID de la casilla
- * @returns {Array} - Lista de tablas detectadas
- */
-function detectTablesFromYaml(yamlConfig, casillaId) {
+// Función para analizar la configuración YAML y detectar tablas
+async function analyzeYamlConfig(yamlConfig) {
   try {
-    // Parsear YAML
-    const config = yaml.parse(yamlConfig);
+    // Llamar al servicio Python para analizar el YAML
+    const response = await fetch('http://localhost:3000/api/internal/analyze-yaml', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ yaml_config: yamlConfig }),
+    });
     
-    if (!config || !config.transformations) {
-      return [];
+    if (!response.ok) {
+      // Si el servicio Python no está disponible, hacemos un análisis básico en JS
+      return fallbackYamlAnalysis(yamlConfig);
     }
     
-    const tables = [];
-    let tableIdCounter = 1;
+    const data = await response.json();
+    return data.tables || [];
+  } catch (error) {
+    console.error('Error al analizar YAML:', error);
+    // Si falla el servicio Python, hacemos un análisis básico en JS
+    return fallbackYamlAnalysis(yamlConfig);
+  }
+}
+
+// Análisis básico de YAML en JavaScript como fallback
+function fallbackYamlAnalysis(yamlConfig) {
+  try {
+    // Buscar patrones de definición de tablas en el YAML
+    const tablesPattern = /tabla[s]?:\s*\n([\s\S]*?)(?:\n\w+:|$)/gi;
+    const tableNamePattern = /nombre:\s*["']?([\w\s-]+)["']?/i;
+    const columnsPattern = /columnas:\s*\n([\s\S]*?)(?:\n\w+:|$)/i;
+    const columnPattern = /-\s*["']?([\w\s-]+)["']?/gi;
+    const primaryKeyPattern = /clave_primaria:\s*\n([\s\S]*?)(?:\n\w+:|$)/i;
+    const pkColumnPattern = /-\s*["']?([\w\s-]+)["']?/gi;
+    const filePattern = /archivo:\s*["']?([\w\s\.-]+)["']?/i;
     
-    // Recorrer transformaciones para detectar outputs
-    for (const transform of config.transformations) {
-      // Solo procesar transformaciones con output definido
-      if (!transform.output) continue;
+    const tables = [];
+    let tableMatch;
+    
+    // Estructura básica si no hay sección de tablas
+    if (!yamlConfig.match(tablesPattern)) {
+      // Buscar secciones de datos o exportadores
+      const dataExportersPattern = /exportadores:\s*\n([\s\S]*?)(?:\n\w+:|$)/gi;
+      const dataPattern = /datos:\s*\n([\s\S]*?)(?:\n\w+:|$)/gi;
       
-      // Obtener nombre de la tabla desde output o transformation
-      const tableName = transform.output.name || transform.name || `tabla_${tableIdCounter}`;
+      let dataSections = [];
+      let match;
       
-      // Obtener tipo de tabla
-      const tableType = getTableType(transform);
+      while ((match = dataExportersPattern.exec(yamlConfig)) !== null) {
+        dataSections.push(match[1]);
+      }
       
-      // Obtener columnas si están disponibles
-      const columns = detectColumns(transform);
+      while ((match = dataPattern.exec(yamlConfig)) !== null) {
+        dataSections.push(match[1]);
+      }
       
-      // Generar ID único para la tabla
-      const tableId = `${casillaId}_${transform.name || tableIdCounter}`;
+      if (dataSections.length > 0) {
+        // Extraer archivos mencionados
+        const fileMatches = [];
+        for (const section of dataSections) {
+          const filePattern = /archivo:\s*["']?([\w\s\.-]+)["']?/gi;
+          let fileMatch;
+          while ((fileMatch = filePattern.exec(section)) !== null) {
+            fileMatches.push(fileMatch[1]);
+          }
+        }
+        
+        // Crear una tabla por cada archivo detectado
+        for (const file of [...new Set(fileMatches)]) {
+          tables.push({
+            name: file.replace(/\.\w+$/, ''), // Nombre sin extensión
+            columns: [],
+            primary_key: [],
+            source_file: file
+          });
+        }
+        
+        // Si no hay archivos explícitos pero hay secciones de datos
+        if (tables.length === 0 && dataSections.length > 0) {
+          tables.push({
+            name: 'Datos Principales',
+            columns: [],
+            primary_key: [],
+            source_file: 'datos.csv'
+          });
+        }
+      }
       
-      // Nombre sugerido para materialización
-      const suggestedName = `Materialización ${tableName}`;
+      // Si aún no hay tablas, crear una genérica
+      if (tables.length === 0) {
+        tables.push({
+          name: 'Tabla Principal',
+          columns: [],
+          primary_key: [],
+          source_file: null
+        });
+      }
+      
+      return tables;
+    }
+    
+    // Procesar secciones de tablas explícitas
+    while ((tableMatch = tablesPattern.exec(yamlConfig)) !== null) {
+      const tableSection = tableMatch[1];
+      
+      // Extraer nombre de la tabla
+      const nameMatch = tableSection.match(tableNamePattern);
+      const name = nameMatch ? nameMatch[1].trim() : `Tabla ${tables.length + 1}`;
+      
+      // Extraer columnas
+      const columns = [];
+      const columnsMatch = tableSection.match(columnsPattern);
+      if (columnsMatch) {
+        let columnMatch;
+        while ((columnMatch = columnPattern.exec(columnsMatch[1])) !== null) {
+          columns.push(columnMatch[1].trim());
+        }
+      }
+      
+      // Extraer clave primaria
+      const primaryKey = [];
+      const pkMatch = tableSection.match(primaryKeyPattern);
+      if (pkMatch) {
+        let pkColumnMatch;
+        while ((pkColumnMatch = pkColumnPattern.exec(pkMatch[1])) !== null) {
+          primaryKey.push(pkColumnMatch[1].trim());
+        }
+      }
+      
+      // Extraer archivo fuente
+      let sourceFile = null;
+      const fileMatch = tableSection.match(filePattern);
+      if (fileMatch) {
+        sourceFile = fileMatch[1].trim();
+      }
       
       tables.push({
-        id: tableId,
-        table_name: tableName,
-        type: tableType,
+        name,
         columns,
-        transformation: transform.name,
-        suggested_name: suggestedName
+        primary_key: primaryKey,
+        source_file: sourceFile
       });
-      
-      tableIdCounter++;
     }
     
     return tables;
   } catch (error) {
-    console.error('Error al parsear YAML:', error);
-    throw new Error('Error al analizar el YAML');
+    console.error('Error en análisis fallback:', error);
+    return [];
   }
-}
-
-/**
- * Detecta el tipo de tabla basado en la transformación
- * 
- * @param {Object} transform - Objeto de transformación
- * @returns {string} - Tipo de tabla
- */
-function getTableType(transform) {
-  if (transform.type === 'pandas') {
-    return 'Pandas DataFrame';
-  } else if (transform.type === 'sql') {
-    return 'SQL Query';
-  } else if (transform.type === 'csv') {
-    return 'CSV';
-  } else if (transform.type === 'excel') {
-    return 'Excel';
-  } else if (transform.type === 'json') {
-    return 'JSON';
-  } else {
-    return transform.type || 'Dataframe';
-  }
-}
-
-/**
- * Detecta columnas de la tabla basado en la transformación
- * 
- * @param {Object} transform - Objeto de transformación
- * @returns {Array} - Lista de columnas detectadas
- */
-function detectColumns(transform) {
-  // Si hay schema definido, extraer columnas
-  if (transform.output && transform.output.schema) {
-    return Object.keys(transform.output.schema).map(colName => ({
-      name: colName,
-      type: transform.output.schema[colName]
-    }));
-  }
-  
-  // Si hay columnas definidas en la transformación
-  if (transform.columns) {
-    return Array.isArray(transform.columns) 
-      ? transform.columns.map(col => ({ name: col, type: 'unknown' }))
-      : Object.keys(transform.columns).map(colName => ({
-          name: colName,
-          type: transform.columns[colName]
-        }));
-  }
-  
-  // Si estamos seleccionando columnas en una transformación
-  if (transform.select) {
-    return transform.select.map(col => ({ name: col, type: 'unknown' }));
-  }
-  
-  return [];
 }
