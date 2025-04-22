@@ -175,8 +175,8 @@ def process_files(yaml_path: str, data_path: str, casilla_id: Optional[int] = No
             warnings=warning_count
         )
         
-        # Procesar materializaciones si hay un dataframe válido y un ID de casilla
-        if casilla_id and hasattr(processor, 'last_processed_df') and processor.last_processed_df is not None:
+        # Procesar materializaciones si hay un dataframe válido, un ID de casilla y no hay errores en el procesamiento YAML
+        if casilla_id and hasattr(processor, 'last_processed_df') and processor.last_processed_df is not None and error_count == 0:
             try:
                 from .process_materializations import process_materializations
                 logger.message("Iniciando procesamiento de materializaciones...")
@@ -190,6 +190,8 @@ def process_files(yaml_path: str, data_path: str, casilla_id: Optional[int] = No
                 # No interrumpir el flujo principal si falla la materialización
                 logger.warning(f"Error al procesar materializaciones: {str(e)}")
                 logger.message("El procesamiento de materializaciones falló, pero la ejecución principal se completó correctamente")
+        elif error_count > 0:
+            logger.message("No se procesarán materializaciones debido a errores en el procesamiento YAML")
 
         return execution_uuid, error_count, warning_count
 
