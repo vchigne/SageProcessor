@@ -4,10 +4,10 @@ import Head from 'next/head';
 import { 
   PlusCircleIcon, 
   CheckCircleIcon, 
-  DatabaseIcon,
-  KeyIcon,
+  CloudIcon,
+  ShieldCheckIcon,
   ServerIcon,
-  TableCellsIcon
+  DocumentTextIcon
 } from '@heroicons/react/24/outline';
 import { toast } from 'react-toastify';
 import { Title, Text, Subtitle, Card, Button, Badge } from '@tremor/react';
