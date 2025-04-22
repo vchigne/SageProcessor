@@ -314,7 +314,8 @@ export default function MaterializationsPage() {
                 <table className="min-w-full border border-gray-200 dark:border-gray-700">
                   <thead>
                     <tr className="bg-gray-100 dark:bg-gray-800">
-                      <th className="py-2 px-4 border-b border-gray-200 dark:border-gray-700 text-left">Nombre</th>
+                      <th className="py-2 px-4 border-b border-gray-200 dark:border-gray-700 text-left">Nombre origen</th>
+                      <th className="py-2 px-4 border-b border-gray-200 dark:border-gray-700 text-left">Nombre destino</th>
                       <th className="py-2 px-4 border-b border-gray-200 dark:border-gray-700 text-left">Tipo</th>
                       <th className="py-2 px-4 border-b border-gray-200 dark:border-gray-700 text-left">Requerido</th>
                       <th className="py-2 px-4 border-b border-gray-200 dark:border-gray-700 text-left">Clave primaria</th>
@@ -328,6 +329,17 @@ export default function MaterializationsPage() {
                       getColumnsForCurrentSelection().map((column, index) => (
                         <tr key={index} className="border-b border-gray-200 dark:border-gray-700">
                           <td className="py-2 px-4">{column.name}</td>
+                          <td className="py-2 px-4">
+                            {column.targetName ? (
+                              <span className="text-blue-600 dark:text-blue-400">
+                                {column.targetName}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400 italic">
+                                (mismo)
+                              </span>
+                            )}
+                          </td>
                           <td className="py-2 px-4">{column.type}</td>
                           <td className="py-2 px-4">
                             {column.required ? (
@@ -363,7 +375,7 @@ export default function MaterializationsPage() {
                       ))
                     ) : (
                       <tr>
-                        <td colSpan={7} className="py-4 text-center text-gray-500 dark:text-gray-400">
+                        <td colSpan={8} className="py-4 text-center text-gray-500 dark:text-gray-400">
                           No hay columnas definidas en este archivo.
                         </td>
                       </tr>
@@ -394,14 +406,31 @@ export default function MaterializationsPage() {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Nombre
+                  Nombre en origen
                 </label>
                 <input
                   type="text"
                   value={selectedColumn.name}
                   onChange={(e) => handleColumnChange('name', e.target.value)}
                   className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md"
+                  readOnly
                 />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Nombre en destino
+                </label>
+                <input
+                  type="text"
+                  value={selectedColumn.targetName || selectedColumn.name}
+                  onChange={(e) => handleColumnChange('targetName', e.target.value)}
+                  className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md"
+                  placeholder="Dejar vacío para usar el mismo nombre"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Nombre que tendrá el campo al materializarse en el destino
+                </p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">

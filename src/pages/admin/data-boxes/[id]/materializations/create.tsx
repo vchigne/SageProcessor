@@ -480,7 +480,19 @@ export default function CreateMaterializationPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Nombre de Tabla/Archivo Destino *
+                Nombre de Tabla/Archivo en Origen
+              </label>
+              <input
+                type="text"
+                value={selectedFile?.name || 'Sin origen seleccionado'}
+                className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-100 dark:bg-gray-700"
+                disabled
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Nombre de Tabla/Archivo en Destino *
               </label>
               <input
                 type="text"
@@ -540,7 +552,8 @@ export default function CreateMaterializationPage() {
                 <thead>
                   <tr className="bg-gray-100 dark:bg-gray-800">
                     <th className="py-2 px-4 border-b border-gray-200 dark:border-gray-700 text-left">Incluir</th>
-                    <th className="py-2 px-4 border-b border-gray-200 dark:border-gray-700 text-left">Columna</th>
+                    <th className="py-2 px-4 border-b border-gray-200 dark:border-gray-700 text-left">Columna Origen</th>
+                    <th className="py-2 px-4 border-b border-gray-200 dark:border-gray-700 text-left">Columna Destino</th>
                     <th className="py-2 px-4 border-b border-gray-200 dark:border-gray-700 text-left">Tipo</th>
                     <th className="py-2 px-4 border-b border-gray-200 dark:border-gray-700 text-left">Clave Primaria</th>
                     <th className="py-2 px-4 border-b border-gray-200 dark:border-gray-700 text-left">Partición</th>
@@ -559,6 +572,30 @@ export default function CreateMaterializationPage() {
                         />
                       </td>
                       <td className="py-2 px-4 font-medium">{column.name}</td>
+                      <td className="py-2 px-4">
+                        <input
+                          type="text"
+                          placeholder={column.name}
+                          value={column.targetName || ''}
+                          onChange={(e) => {
+                            // Crear una copia modificada de la columna
+                            const updatedColumn = { ...column, targetName: e.target.value };
+                            // Actualizar la columna en el archivo seleccionado
+                            const updatedColumns = selectedFile.columns.map((c, i) => 
+                              i === index ? updatedColumn : c
+                            );
+                            // Actualizar el archivo seleccionado con las columnas actualizadas
+                            setYamlStructure(prev => {
+                              const updatedFiles = prev.files.map((file, i) => 
+                                i === selectedFileIndex ? { ...file, columns: updatedColumns } : file
+                              );
+                              return { ...prev, files: updatedFiles };
+                            });
+                          }}
+                          disabled={!columnSelection[column.name]}
+                          className="w-full p-1 border border-gray-300 dark:border-gray-600 rounded-md text-sm"
+                        />
+                      </td>
                       <td className="py-2 px-4">{getColumnTypeLabel(column.type)}</td>
                       <td className="py-2 px-4">
                         <input
