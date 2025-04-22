@@ -208,6 +208,18 @@ class MaterializationProcessor:
                 
                 # Obtener el ID del proveedor
                 destination_id = config.get('proveedorId')
+                
+            # Formato 3: destino "archivo" (para materializaciones a nube)
+            elif 'destino' in config and config.get('destino') == 'archivo':
+                # Cuando el destino es "archivo", asumimos que es un destino de tipo cloud
+                destination_type = 'cloud'
+                
+                # Buscar el destino_id en los diferentes campos posibles
+                destination_id = config.get('destino_id') or config.get('destino_cloud_id') or config.get('cloud_provider_id')
+                
+                # Si no encontramos un ID explícito, verificamos si hay un error en los logs
+                if not destination_id:
+                    self.logger.warning(f"Configuración con destino='archivo' pero sin especificar el ID del proveedor cloud. Recomendamos agregar 'destino_id' a la configuración.")
             
             # Verificar que se haya podido determinar el destino
             if not destination_type:
