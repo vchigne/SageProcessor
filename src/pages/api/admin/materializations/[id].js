@@ -1,4 +1,4 @@
-import { conectarDB } from '../../../../utils/db';
+import { pool } from '../../../../utils/db';
 
 export default async function handler(req, res) {
   const { id } = req.query;
@@ -8,7 +8,7 @@ export default async function handler(req, res) {
     return res.status(400).json({ message: 'ID de materialización inválido' });
   }
 
-  const conn = await conectarDB();
+  const conn = pool;
   
   // GET - Obtener una materialización específica
   if (req.method === 'GET') {

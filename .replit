@@ -5,7 +5,7 @@ channel = "stable-24_05"
 packages = ["arrow-cpp", "cacert", "glibcLocales", "libyaml", "pkg-config"]
 
 [workflows]
-runButton = "UI Dev Server"
+runButton = "Project"
 
 [[workflows.workflow]]
 name = "UI Dev Server"

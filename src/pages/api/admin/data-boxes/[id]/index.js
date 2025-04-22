@@ -1,4 +1,4 @@
-import { conectarDB } from '../../../../../utils/db';
+import { pool } from '../../../../../utils/db';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -14,7 +14,7 @@ export default async function handler(req, res) {
   const casillaId = parseInt(id);
 
   try {
-    const conn = await conectarDB();
+    const conn = pool;
     const query = `
       SELECT c.*, 
         i.nombre AS nombre_instalacion,
