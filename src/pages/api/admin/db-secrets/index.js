@@ -1,6 +1,18 @@
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '../../auth/[...nextauth]';
-import { executeSQL } from '@/utils/db';
+import { Pool } from 'pg';
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
+
+// Helper para ejecutar consultas SQL
+async function executeSQL(query, params = []) {
+  try {
+    return await pool.query(query, params);
+  } catch (error) {
+    console.error('Error ejecutando SQL:', error);
+    throw error;
+  }
+}
 
 /**
  * API para gestionar secretos de bases de datos
