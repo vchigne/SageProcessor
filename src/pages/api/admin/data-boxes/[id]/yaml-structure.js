@@ -32,108 +32,87 @@ export default async function handler(req, res) {
     
     const casilla = rows[0];
     
-    // Nota: no hacemos un return temprano aquí, manejamos el caso de YAML vacío más abajo
-    // Solo registramos que el contenido YAML no está definido
+    // Verificar si existe contenido YAML
     if (!casilla.yaml_content) {
       console.log(`Casilla ${casillaId} no tiene contenido YAML definido`);
+      return res.status(404).json({ message: 'La casilla no tiene contenido YAML definido' });
     }
     
     // Analizar estructura del YAML
     let yamlStructure;
     try {
-      // Convertir cadena JSON a objeto
+      // Parsear el contenido como YAML utilizando la biblioteca importada
       let yamlContent;
-      
-      if (!casilla.yaml_content) {
-        // En caso de que no haya contenido YAML, crear una estructura vacía
-        yamlContent = { files: [] };
-        console.log('YAML contenido no encontrado, usando estructura vacía');
-      } else {
-        try {
-          // Intentar parsear si es una cadena JSON
-          yamlContent = typeof casilla.yaml_content === 'string' 
-            ? JSON.parse(casilla.yaml_content) 
-            : casilla.yaml_content;
-        } catch (parseError) {
-          console.error('Error al parsear YAML contenido:', parseError);
-          yamlContent = { files: [] };
-        }
+      try {
+        yamlContent = typeof casilla.yaml_content === 'string' 
+          ? yaml.parse(casilla.yaml_content) 
+          : casilla.yaml_content;
+          
+        console.log('YAML parseado correctamente');
+      } catch (parseError) {
+        console.error('Error al parsear YAML contenido:', parseError);
+        return res.status(500).json({ 
+          message: 'Error al parsear el contenido YAML', 
+          error: parseError.message
+        });
       }
       
-      // Si después de todo el yamlContent es null o undefined, usar objeto vacío
+      // Si después de todo el yamlContent es null o undefined
       if (!yamlContent) {
-        yamlContent = { files: [] };
+        console.error('YAML contenido es nulo después de parsear');
+        return res.status(500).json({ message: 'Error al procesar el contenido YAML' });
+      }
+      
+      // Estructura específica de SAGE YAML
+      if (!yamlContent.sage_yaml || !yamlContent.catalogs) {
+        console.error('El YAML no tiene la estructura esperada de SAGE (sage_yaml, catalogs)');
+        return res.status(400).json({ message: 'El YAML no tiene la estructura esperada de SAGE' });
       }
         
       // Extraer estructura de archivos/tablas del YAML
       let fileStructures = [];
       
-      // Extraer los archivos definidos en el YAML
-      if (yamlContent.files && yamlContent.files.length > 0) {
-        // Formato multi-archivo
-        fileStructures = yamlContent.files.map(file => {
-          // Extraer las columnas de cada archivo
-          const columns = file.columns || [];
-          return {
-            name: file.name || 'Sin nombre',
-            description: file.description || '',
-            columns: columns.map(col => ({
-              name: col.name,
-              type: col.type || 'string',
-              required: col.required || false,
-              primary: col.primary || false,
-              description: col.description || ''
-            }))
-          };
-        });
-      } else if (yamlContent.columns) {
-        // Formato de archivo único
-        fileStructures = [{
-          name: yamlContent.name || 'Archivo principal',
-          description: yamlContent.description || '',
-          columns: yamlContent.columns.map(col => ({
-            name: col.name,
-            type: col.type || 'string',
-            required: col.required || false,
-            primary: col.primary || false,
-            description: col.description || ''
-          }))
-        }];
-      } else {
-        // Si no hay estructura definida, proporcionar un ejemplo básico
-        fileStructures = [{
-          name: 'Ejemplo',
-          description: 'Estructura de ejemplo generada automáticamente',
-          columns: [
-            {
-              name: 'id',
-              type: 'integer',
-              required: true,
-              primary: true,
-              description: 'Identificador único'
-            },
-            {
-              name: 'nombre',
-              type: 'string',
-              required: true,
-              primary: false,
-              description: 'Nombre del registro'
-            },
-            {
-              name: 'fecha',
-              type: 'date',
-              required: false,
-              primary: false,
-              description: 'Fecha del registro'
-            }
-          ]
-        }];
-      }
+      // Procesar los catálogos definidos en el YAML
+      const catalogs = yamlContent.catalogs || {};
       
+      // Convertir el objeto de catálogos a un array de estructuras de archivo
+      fileStructures = Object.entries(catalogs).map(([catalogId, catalog]) => {
+        console.log(`Procesando catálogo: ${catalogId}, name: ${catalog.name}`);
+        
+        // Verificar que el catálogo tenga la estructura esperada de fields
+        if (!catalog.fields || !Array.isArray(catalog.fields)) {
+          console.log(`El catálogo ${catalogId} no tiene campos definidos correctamente, o los campos no están en formato de array`);
+          return {
+            name: catalog.name || catalogId,
+            description: catalog.description || '',
+            columns: []
+          };
+        }
+        
+        console.log(`El catálogo ${catalogId} tiene ${catalog.fields.length} campos definidos`);
+        
+        // Convertir los campos del catálogo a columnas
+        const columns = catalog.fields.map(field => ({
+          name: field.name,
+          type: field.type || 'texto',
+          required: field.required || false,
+          primary: field.unique || false, // Usar unique como equivalente a primary key
+          partitionKey: false, // Por defecto no es clave de partición
+          description: field.description || ''
+        }));
+        
+        return {
+          name: catalog.name || catalogId,
+          description: catalog.description || '',
+          columns: columns
+        };
+      });
+      
+      // Crear la estructura final
       yamlStructure = {
         id: casilla.id,
-        name: casilla.nombre || yamlContent.name || casilla.nombre_yaml,
-        description: casilla.descripcion || yamlContent.description || '',
+        name: casilla.nombre || yamlContent.sage_yaml?.name || casilla.nombre_yaml,
+        description: casilla.descripcion || yamlContent.sage_yaml?.description || '',
         files: fileStructures
       };
     } catch (e) {

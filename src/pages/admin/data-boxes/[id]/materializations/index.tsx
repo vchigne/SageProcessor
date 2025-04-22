@@ -324,50 +324,64 @@ export default function MaterializationsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {getColumnsForCurrentSelection().map((column, index) => (
-                      <tr key={index} className="border-b border-gray-200 dark:border-gray-700">
-                        <td className="py-2 px-4">{column.name}</td>
-                        <td className="py-2 px-4">{column.type}</td>
-                        <td className="py-2 px-4">
-                          {column.required ? (
-                            <span className="text-green-600 dark:text-green-400">Sí</span>
-                          ) : (
-                            <span className="text-gray-400">No</span>
-                          )}
-                        </td>
-                        <td className="py-2 px-4">
-                          {column.primary ? (
-                            <span className="text-green-600 dark:text-green-400">Sí</span>
-                          ) : (
-                            <span className="text-gray-400">No</span>
-                          )}
-                        </td>
-                        <td className="py-2 px-4">
-                          {column.partitionKey ? (
-                            <span className="text-green-600 dark:text-green-400">Sí</span>
-                          ) : (
-                            <span className="text-gray-400">No</span>
-                          )}
-                        </td>
-                        <td className="py-2 px-4">{column.description || '-'}</td>
-                        <td className="py-2 px-4">
-                          <button
-                            onClick={() => handleEditColumn(column, index)}
-                            className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
-                          >
-                            <PencilIcon className="h-5 w-5" />
-                          </button>
+                    {getColumnsForCurrentSelection() && getColumnsForCurrentSelection().length > 0 ? (
+                      getColumnsForCurrentSelection().map((column, index) => (
+                        <tr key={index} className="border-b border-gray-200 dark:border-gray-700">
+                          <td className="py-2 px-4">{column.name}</td>
+                          <td className="py-2 px-4">{column.type}</td>
+                          <td className="py-2 px-4">
+                            {column.required ? (
+                              <span className="text-green-600 dark:text-green-400">Sí</span>
+                            ) : (
+                              <span className="text-gray-400">No</span>
+                            )}
+                          </td>
+                          <td className="py-2 px-4">
+                            {column.primary ? (
+                              <span className="text-green-600 dark:text-green-400">Sí</span>
+                            ) : (
+                              <span className="text-gray-400">No</span>
+                            )}
+                          </td>
+                          <td className="py-2 px-4">
+                            {column.partitionKey ? (
+                              <span className="text-green-600 dark:text-green-400">Sí</span>
+                            ) : (
+                              <span className="text-gray-400">No</span>
+                            )}
+                          </td>
+                          <td className="py-2 px-4">{column.description || '-'}</td>
+                          <td className="py-2 px-4">
+                            <button
+                              onClick={() => handleEditColumn(column, index)}
+                              className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
+                            >
+                              <PencilIcon className="h-5 w-5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={7} className="py-4 text-center text-gray-500 dark:text-gray-400">
+                          No hay columnas definidas en este archivo.
                         </td>
                       </tr>
-                    ))}
+                    )}
                   </tbody>
                 </table>
               </div>
             </div>
           </>
         ) : (
-          <div className="text-center py-8">
+          <div className="text-center py-8 space-y-4">
             <p className="text-gray-500 dark:text-gray-400">No se encontró estructura YAML para esta casilla.</p>
+            <p className="text-gray-500 dark:text-gray-400">
+              Para continuar, es necesario definir la estructura de datos en el archivo YAML asociado a esta casilla.
+            </p>
+            <p className="text-gray-500 dark:text-gray-400">
+              Por favor, contacte al administrador del sistema para configurar correctamente el formato de datos.
+            </p>
           </div>
         )}
       </div>
