@@ -142,7 +142,7 @@ class MaterializationProcessor:
                 SELECT id, nombre, descripcion, configuracion, 
                        fecha_creacion, fecha_actualizacion, estado, casilla_id
                 FROM materializaciones
-                WHERE casilla_id = %s AND estado = 'activo'
+                WHERE casilla_id = %s AND (estado = 'activo' OR estado = 'pendiente')
             """, (casilla_id,))
             
             columns = [desc[0] for desc in cursor.description]
@@ -152,19 +152,15 @@ class MaterializationProcessor:
                 row_dict = dict(zip(columns, row))
                 
                 # Deserializar los campos JSON
-                if 'config' in row_dict and row_dict['config']:
+                if 'configuracion' in row_dict and row_dict['configuracion']:
                     try:
-                        if isinstance(row_dict['config'], str):
-                            row_dict['config'] = json.loads(row_dict['config'])
+                        # Usar 'config' como alias de 'configuracion' para mantener compatibilidad
+                        if isinstance(row_dict['configuracion'], str):
+                            row_dict['config'] = json.loads(row_dict['configuracion'])
+                        else:
+                            row_dict['config'] = row_dict['configuracion']
                     except json.JSONDecodeError:
-                        self.logger.warning(f"No se pudo deserializar el campo config para la materialización {row_dict['id']}")
-                        
-                if 'metadata' in row_dict and row_dict['metadata']:
-                    try:
-                        if isinstance(row_dict['metadata'], str):
-                            row_dict['metadata'] = json.loads(row_dict['metadata'])
-                    except json.JSONDecodeError:
-                        self.logger.warning(f"No se pudo deserializar el campo metadata para la materialización {row_dict['id']}")
+                        self.logger.warning(f"No se pudo deserializar el campo configuracion para la materialización {row_dict['id']}")
                 
                 result.append(row_dict)
                 
@@ -188,17 +184,40 @@ class MaterializationProcessor:
             config = materialization.get('config', {})
             if not config:
                 raise ValueError("La materialización no tiene configuración")
+            
+            # Imprimir configuración para depuración
+            self.logger.message(f"Configuración de materialización: {json.dumps(config, ensure_ascii=False, default=str)}")
+            
+            # Determinar el tipo de destino y el ID, compatibles con ambos formatos
+            destination_type = None
+            destination_id = None
+            
+            # Formato 1: destination_type y destination_id directamente
+            if 'destination_type' in config:
+                destination_type = config.get('destination_type')
+                destination_id = config.get('destination_id')
+            
+            # Formato 2: tipoProveedor y proveedorId
+            elif 'tipoProveedor' in config:
+                # Mapear tipoProveedor a destination_type
+                tipo_proveedor = config.get('tipoProveedor')
+                if tipo_proveedor == 'cloud':
+                    destination_type = 'cloud'
+                elif tipo_proveedor == 'db':
+                    destination_type = 'db'
                 
-            # Obtener tipo de destino (db o cloud)
-            destination_type = config.get('destination_type')
+                # Obtener el ID del proveedor
+                destination_id = config.get('proveedorId')
+            
+            # Verificar que se haya podido determinar el destino
             if not destination_type:
-                raise ValueError("No se ha especificado el tipo de destino")
+                raise ValueError("No se ha podido determinar el tipo de destino. Configuración: " + json.dumps(config))
                 
-            # Obtener ID del destino
-            destination_id = config.get('destination_id')
             if not destination_id:
-                raise ValueError("No se ha especificado el ID del destino")
-                
+                raise ValueError("No se ha podido determinar el ID del destino. Configuración: " + json.dumps(config))
+            
+            self.logger.message(f"Destino determinado: tipo={destination_type}, id={destination_id}")
+            
             # Preparar el DataFrame según la configuración
             prepared_df = self._prepare_dataframe(dataframe, config)
             
@@ -236,14 +255,38 @@ class MaterializationProcessor:
         result_df = df.copy()
         
         # Aplicar selección de columnas si está configurado
+        # Verificar formato 1 (column_mapping como diccionario)
         column_mapping = config.get('column_mapping', {})
+        column_mappings_list = config.get('columnMappings', [])
+        
         if column_mapping:
+            # Formato 1: diccionario con dest_col -> source_col
             # Crear un nuevo DataFrame con las columnas mapeadas
             new_df = pd.DataFrame()
             for dest_col, source_col in column_mapping.items():
                 if source_col in result_df.columns:
                     new_df[dest_col] = result_df[source_col]
                 else:
+                    self.logger.warning(f"Columna {source_col} no existe en el DataFrame original")
+            
+            # Si no se pudo mapear ninguna columna, lanzar error
+            if new_df.empty and not result_df.empty:
+                raise ValueError("No se pudieron mapear columnas según la configuración")
+                
+            result_df = new_df
+        
+        elif column_mappings_list:
+            # Formato 2: lista de diccionarios con originName y targetName
+            self.logger.message(f"Usando mapeo de columnas en formato de lista: {column_mappings_list}")
+            new_df = pd.DataFrame()
+            
+            for mapping in column_mappings_list:
+                source_col = mapping.get('originName')
+                dest_col = mapping.get('targetName')
+                
+                if source_col and dest_col and source_col in result_df.columns:
+                    new_df[dest_col] = result_df[source_col]
+                elif source_col:
                     self.logger.warning(f"Columna {source_col} no existe en el DataFrame original")
             
             # Si no se pudo mapear ninguna columna, lanzar error
