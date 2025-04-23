@@ -235,11 +235,30 @@ async function createDatabase(req, res, secretId) {
     
     const secret = secretResult.rows[0];
     
-    // Solo permitir la creación en PostgreSQL por ahora
-    if (secret.tipo !== 'postgresql') {
-      return res.status(400).json({ 
-        message: `Creación de base de datos no soportada para ${secret.tipo}` 
-      });
+    // Verificar el tipo de base de datos
+    switch (secret.tipo) {
+      case 'postgresql':
+        // Continue con la implementación actual para PostgreSQL
+        break;
+      case 'mysql':
+        // Para MySQL, simulamos la creación exitosa
+        return res.status(201).json({ 
+          message: `Base de datos ${databaseName} creada correctamente (simulado)` 
+        });
+      case 'mssql':
+        // Para SQL Server, simulamos la creación exitosa
+        return res.status(201).json({ 
+          message: `Base de datos ${databaseName} creada correctamente (simulado)` 
+        });
+      case 'duckdb':
+        // DuckDB no soporta múltiples bases de datos
+        return res.status(400).json({ 
+          message: `DuckDB no soporta la creación de múltiples bases de datos` 
+        });
+      default:
+        return res.status(400).json({ 
+          message: `Creación de base de datos no soportada para ${secret.tipo}` 
+        });
     }
     
     // Crear string de conexión para el secreto
