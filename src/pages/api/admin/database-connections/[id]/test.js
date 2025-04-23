@@ -122,7 +122,7 @@ export default async function handler(req, res) {
         estado_conexion = testResult.success ? 'activo' : 'error';
         break;
       case 'mysql':
-        testResult = testMySQLConnection(
+        testResult = await testMySQLConnection(
           connection.servidor, 
           connection.puerto, 
           connection.usuario, 
@@ -133,7 +133,7 @@ export default async function handler(req, res) {
         estado_conexion = testResult.success ? 'activo' : 'error';
         break;
       case 'mssql':
-        testResult = testSQLServerConnection(
+        testResult = await testSQLServerConnection(
           connection.servidor, 
           connection.puerto, 
           connection.usuario, 
