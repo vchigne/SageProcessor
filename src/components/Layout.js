@@ -43,6 +43,7 @@ const navigation = [
       { name: 'Países', href: '/maestros/paises' },
       { name: 'Productos', href: '/maestros/productos' },
       { name: 'Instalaciones', href: '/maestros/instalaciones' },
+      { name: 'Emisores', href: '/admin/emisores' },
     ]
   },
 ]
@@ -211,7 +212,7 @@ export default function Layout({ children }) {
   // Abrir automáticamente el submenú cuando se navega a una de sus páginas
   useEffect(() => {
     // Comprueba la ruta actual
-    if (router.pathname.includes('/maestros/')) {
+    if (router.pathname.includes('/maestros/') || router.pathname === '/admin/emisores') {
       // Abre el submenú de Maestros
       setOpenSubmenus(prev => ({ ...prev, 'Maestros': true }));
     }
