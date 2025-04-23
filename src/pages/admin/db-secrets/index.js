@@ -2,12 +2,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { 
-  PlusCircleIcon, 
-  CheckCircleIcon, 
-  DatabaseIcon,
-  KeyIcon,
-  ServerIcon,
-  XMarkIcon
+  PlusCircleIcon
 } from '@heroicons/react/24/outline';
 import { toast } from 'react-toastify';
 import { Title, Text, Subtitle, Card, Button, Badge } from '@tremor/react';
@@ -267,7 +262,7 @@ export default function DatabaseSecrets() {
   // Obtener icono de tipo de base de datos
   const getDatabaseIcon = (type) => {
     // Solo usamos un único icono por ahora
-    return <DatabaseIcon className="h-5 w-5 text-indigo-500" />;
+    return <PlusCircleIcon className="h-5 w-5 text-indigo-500" />;
   };
   
   // Listar bases de datos disponibles en un secreto
@@ -350,14 +345,14 @@ export default function DatabaseSecrets() {
           </div>
           <div className="flex space-x-3">
             <Button 
-              icon={ServerIcon} 
+              icon={PlusCircleIcon} 
               onClick={() => router.push('/admin/database-connections')}
               color="cyan"
             >
               Volver a Conexiones
             </Button>
             <Button 
-              icon={CheckCircleIcon} 
+              icon={PlusCircleIcon} 
               onClick={handleTestAllSecrets}
               color="amber"
               disabled={loading || secrets.length === 0}
@@ -377,7 +372,7 @@ export default function DatabaseSecrets() {
         <div className="mb-6 p-4 bg-amber-50 dark:bg-amber-900 rounded-md border border-amber-200 dark:border-amber-800">
           <div className="flex items-start">
             <div className="flex-shrink-0">
-              <KeyIcon className="h-5 w-5 text-amber-500 dark:text-amber-400" />
+              <PlusCircleIcon className="h-5 w-5 text-amber-500 dark:text-amber-400" />
             </div>
             <div className="ml-3">
               <h3 className="text-sm font-medium text-amber-800 dark:text-amber-200">
@@ -516,7 +511,7 @@ export default function DatabaseSecrets() {
                             className="px-2 py-2 bg-blue-100 text-blue-600 rounded hover:bg-blue-200 flex items-center"
                             disabled={testingId !== null}
                           >
-                            <DatabaseIcon className="h-4 w-4" />
+                            <PlusCircleIcon className="h-4 w-4" />
                           </button>
                         )}
                       </div>
@@ -621,7 +616,7 @@ export default function DatabaseSecrets() {
         ) : secrets.length === 0 ? (
           <Card className="py-8">
             <div className="text-center">
-              <ServerIcon className="h-12 w-12 mx-auto text-gray-400" />
+              <PlusCircleIcon className="h-12 w-12 mx-auto text-gray-400" />
               <h3 className="mt-2 text-lg font-medium text-gray-900 dark:text-gray-100">
                 No hay secretos de bases de datos configurados
               </h3>
@@ -733,7 +728,7 @@ export default function DatabaseSecrets() {
                 onClick={() => setShowDatabaseModal(false)}
                 className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
               >
-                <XMarkIcon className="h-5 w-5" />
+                <PlusCircleIcon className="h-5 w-5" />
               </button>
             </div>
             
@@ -777,7 +772,7 @@ export default function DatabaseSecrets() {
                           <div key={index} className="p-3 rounded-md border hover:bg-gray-50 dark:hover:bg-gray-750">
                             <div className="flex items-center justify-between">
                               <div className="flex items-center">
-                                <DatabaseIcon className="h-4 w-4 text-indigo-500 mr-2" />
+                                <PlusCircleIcon className="h-4 w-4 text-indigo-500 mr-2" />
                                 <div>
                                   <p className="font-medium">{db.name}</p>
                                   <p className="text-xs text-gray-500">{db.description}</p>
