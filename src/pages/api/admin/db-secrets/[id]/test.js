@@ -124,7 +124,7 @@ async function testPostgresConnection(secret) {
     port: secret.puerto,
     user: secret.usuario,
     password: secret.contrasena,
-    database: secret.basedatos || 'postgres', // Usar 'postgres' como base de datos predeterminada
+    database: 'postgres', // Siempre usar 'postgres' como base de datos para el test
     // Si hay opciones adicionales de conexión, agregarlas aquí
     ...(typeof secret.opciones_conexion === 'object' ? secret.opciones_conexion : {}),
     // Timeout de conexión

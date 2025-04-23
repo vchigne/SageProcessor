@@ -531,7 +531,11 @@ async function createDatabase(req, res, secretId) {
     }
     
     // Crear string de conexión para el secreto
-    const connectionString = buildPostgresConnectionString(secret);
+    // Asegurarnos de usar 'postgres' como base de datos para esta operación
+    const connectionString = buildPostgresConnectionString({
+      ...secret,
+      basedatos: 'postgres' // Forzar el uso de 'postgres' para la creación de bases de datos
+    });
     
     // Conectar a la base de datos y crear la nueva base de datos
     const client = new Pool({
