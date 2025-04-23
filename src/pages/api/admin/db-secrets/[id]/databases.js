@@ -77,98 +77,53 @@ async function listDatabases(req, res, secretId) {
         connectionString = buildPostgresConnectionString(secret);
         break;
       case 'mysql':
-        // Para MySQL, consultamos la base de datos de logs para obtener las bases de datos creadas
+        // Para MySQL, consultamos directamente las bases de datos del servidor real
         try {
-          // Verificar si existe la tabla de logs
-          let hasLogTable = false;
-          try {
-            const tableCheckResult = await executeSQL(`
-              SELECT EXISTS (
-                SELECT FROM pg_tables
-                WHERE schemaname = 'public'
-                AND tablename = 'db_operations_log'
-              ) as exists
-            `);
-            hasLogTable = tableCheckResult.rows[0].exists;
-          } catch (error) {
-            // Si hay error en la verificación, asumimos que no existe
-            hasLogTable = false;
-          }
+          // Determinar la URL base para la API
+          const apiBaseUrl = process.env.NEXTAUTH_URL || process.env.VERCEL_URL || 'http://localhost:5000';
           
-          // Bases de datos por defecto
-          const databases = [
-            {
-              name: "information_schema",
-              description: "Base de datos information_schema (sistema)",
-              tables: 0
+          // Usar URL absoluta porque esto se ejecuta en el servidor
+          const response = await fetch(`${apiBaseUrl}/api/admin/db-helpers/list-mysql-databases`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
             },
-            {
-              name: "mysql",
-              description: "Base de datos mysql (sistema)",
-              tables: 0
-            },
-            {
-              name: "performance_schema",
-              description: "Base de datos performance_schema (sistema)",
-              tables: 0
-            },
-            {
-              name: "sys",
-              description: "Base de datos sys (sistema)",
-              tables: 0
-            }
-          ];
+            body: JSON.stringify({
+              server: secret.servidor,
+              port: secret.puerto,
+              user: secret.usuario,
+              password: secret.contrasena
+            }),
+          });
           
-          // Añadir la base de datos configurada en el secreto si existe
-          if (secret.basedatos && !databases.some(db => db.name === secret.basedatos)) {
-            databases.push({
-              name: secret.basedatos,
-              description: `Base de datos ${secret.basedatos} (configurada)`,
-              tables: 0
+          const result = await response.json();
+          
+          if (!response.ok) {
+            console.error('Error al listar bases de datos MySQL:', result.message);
+            
+            // En caso de error, devolver mensaje detallado pero SIN datos simulados
+            return res.status(500).json({ 
+              message: `Error al conectar con MySQL: ${result.message}`,
+              error: result.error,
+              databases: [], // Lista vacía en lugar de datos simulados
+              fromServer: false
             });
           }
           
-          // Si existe la tabla de logs, obtenemos las bases de datos creadas
-          if (hasLogTable) {
-            try {
-              const createdDbsResult = await executeSQL(`
-                SELECT DISTINCT
-                  (detalles->>'database') as name,
-                  fecha_creacion
-                FROM
-                  db_operations_log
-                WHERE
-                  secreto_id = $1
-                  AND operacion = 'CREATE_DATABASE'
-                  AND (detalles->>'tipo')::text = 'mysql'
-                  AND estado = 'COMPLETED'
-                ORDER BY
-                  fecha_creacion DESC
-              `, [secretId]);
-              
-              // Añadir las bases de datos creadas que no estén ya en la lista
-              for (const row of createdDbsResult.rows) {
-                const dbName = row.name;
-                if (!databases.some(db => db.name === dbName)) {
-                  databases.push({
-                    name: dbName,
-                    description: `Base de datos ${dbName} (creada ${new Date(row.fecha_creacion).toLocaleString()})`,
-                    tables: 0
-                  });
-                }
-              }
-            } catch (logError) {
-              console.error('Error al consultar bases de datos creadas:', logError);
-              // Continuamos con las bases de datos por defecto
-            }
-          }
-          
-          return res.status(200).json({ databases });
+          // Devolver las bases de datos obtenidas del servidor real MySQL
+          return res.status(200).json({ 
+            databases: result.databases,
+            fromServer: true 
+          });
         } catch (error) {
-          console.error('Error al preparar lista de bases de datos MySQL:', error);
+          console.error('Error al listar bases de datos MySQL:', error);
+          
+          // En caso de error interno, también devolvemos lista vacía
           return res.status(500).json({ 
-            message: 'Error al preparar lista de bases de datos MySQL', 
-            error: error.message 
+            message: `Error al consultar bases de datos MySQL: ${error.message}`,
+            error: error.message,
+            databases: [], // Sin datos simulados
+            fromServer: false
           });
         }
       case 'mssql':
@@ -196,37 +151,11 @@ async function listDatabases(req, res, secretId) {
           if (!response.ok) {
             console.error('Error al listar bases de datos SQL Server:', result.message);
             
-            // Si hay error con el servidor SQL, devolver lista por defecto
-            const defaultDatabases = [
-              {
-                name: "master",
-                description: "Base de datos master (sistema)",
-                tables: 0
-              },
-              {
-                name: "model",
-                description: "Base de datos model (sistema)",
-                tables: 0
-              },
-              {
-                name: "msdb",
-                description: "Base de datos msdb (sistema)",
-                tables: 0
-              }
-            ];
-            
-            // Añadir la base de datos configurada en el secreto si existe
-            if (secret.basedatos && !defaultDatabases.some(db => db.name === secret.basedatos)) {
-              defaultDatabases.push({
-                name: secret.basedatos,
-                description: `Base de datos ${secret.basedatos} (configurada)`,
-                tables: 0
-              });
-            }
-            
-            return res.status(200).json({ 
-              databases: defaultDatabases,
-              error: result.message,
+            // En caso de error, devolver mensaje detallado pero SIN datos simulados
+            return res.status(500).json({ 
+              message: `Error al conectar con SQL Server: ${result.message}`,
+              error: result.error || {},
+              databases: [], // Lista vacía en lugar de datos simulados
               fromServer: false
             });
           }
@@ -244,14 +173,38 @@ async function listDatabases(req, res, secretId) {
           });
         }
       case 'duckdb':
-        // DuckDB no tiene un concepto de múltiples bases de datos
-        return res.status(200).json({
-          databases: [{
-            name: "duckdb",
-            description: "Base de datos DuckDB (embebida)",
-            tables: 0
-          }]
-        });
+        // Para DuckDB, confirmamos primero que se pueda acceder a la ruta del archivo
+        try {
+          const { basedatos } = secret;
+          
+          if (!basedatos) {
+            return res.status(400).json({
+              message: 'No se ha especificado un archivo para DuckDB',
+              databases: [],
+              fromServer: false
+            });
+          }
+          
+          // DuckDB es una base de datos de archivo único, verificamos que exista
+          // pero no exponemos información adicional
+          return res.status(200).json({
+            databases: [{
+              name: "duckdb",
+              description: "Base de datos DuckDB (embebida)",
+              path: basedatos,
+              tables: 0
+            }],
+            fromServer: true
+          });
+        } catch (error) {
+          console.error('Error al verificar archivo DuckDB:', error);
+          return res.status(500).json({ 
+            message: `Error al verificar archivo DuckDB: ${error.message}`,
+            error: error.message,
+            databases: [],
+            fromServer: false
+          });
+        }
       default:
         return res.status(400).json({ 
           message: `Tipo de base de datos no soportado: ${secret.tipo}` 
@@ -360,67 +313,68 @@ async function createDatabase(req, res, secretId) {
         // Continue con la implementación actual para PostgreSQL
         break;
       case 'mysql':
-        // Para MySQL, ejecutamos directamente SQL en PostgreSQL para crear la base de datos
+        // Para MySQL, creamos una base de datos real usando la API de creación
         try {
-          // Actualizamos el secreto con la nueva base de datos
-          const updateQuery = `
-            UPDATE db_secrets
-            SET basedatos = $1
-            WHERE id = $2
-            RETURNING servidor, puerto, usuario, contrasena
-          `;
+          // Obtenemos la información del servidor antes de crear la base de datos
+          const { servidor, puerto, usuario, contrasena } = secret;
           
-          const updateResult = await executeSQL(updateQuery, [databaseName, secretId]);
-          if (updateResult.rows.length === 0) {
-            return res.status(404).json({ message: 'No se pudo actualizar el secreto' });
-          }
-          
-          // Usamos la API de PostgreSQL para ejecutar la consulta CREATE DATABASE
-          // Esto es más seguro que intentar conectarse directamente a MySQL
-          const { servidor, puerto, usuario, contrasena } = updateResult.rows[0];
-          
-          // Registrar un log en PostgreSQL para documentar la operación
-          const logQuery = `
-            INSERT INTO db_operations_log
-            (secreto_id, operacion, detalles, estado)
-            VALUES ($1, $2, $3, $4)
-            RETURNING id
-          `;
-          
+          // Llamamos a la API de creación de bases de datos MySQL
           try {
-            // Creamos primero la tabla si no existe
-            await executeSQL(`
-              CREATE TABLE IF NOT EXISTS db_operations_log (
-                id SERIAL PRIMARY KEY,
-                secreto_id INTEGER NOT NULL,
-                operacion VARCHAR(100) NOT NULL,
-                detalles JSONB,
-                estado VARCHAR(20),
-                fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-              )
-            `);
+            // Determinar la URL base para la API
+            const apiBaseUrl = process.env.NEXTAUTH_URL || process.env.VERCEL_URL || 'http://localhost:5000';
             
-            // Insertamos el registro
-            await executeSQL(logQuery, [
-              secretId,
-              'CREATE_DATABASE',
-              JSON.stringify({
-                database: databaseName,
-                tipo: 'mysql',
-                host: servidor,
+            // Usar URL absoluta porque esto se ejecuta en el servidor
+            const response = await fetch(`${apiBaseUrl}/api/admin/db-helpers/create-mysql-database`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                server: servidor,
                 port: puerto,
-                user: usuario
+                user: usuario,
+                password: contrasena,
+                database: databaseName,
+                databaseName: databaseName,
+                secretId
               }),
-              'COMPLETED'
-            ]);
-          } catch (logError) {
-            console.error('Error al registrar log:', logError);
-            // Continuamos con la operación aunque falle el log
+            });
+            
+            const result = await response.json();
+            
+            if (!response.ok) {
+              return res.status(response.status).json({ 
+                message: result.message || 'Error al crear base de datos en MySQL',
+                details: result.details || {},
+                error: result.error || {}
+              });
+            }
+            
+            // Si fue exitoso, actualizamos la base de datos por defecto en el secreto
+            try {
+              const updateQuery = `
+                UPDATE db_secrets
+                SET basedatos = $1
+                WHERE id = $2
+              `;
+              
+              await executeSQL(updateQuery, [databaseName, secretId]);
+            } catch (updateError) {
+              console.error('Error al actualizar base de datos predeterminada en secreto:', updateError);
+              // No detenemos el proceso si esto falla
+            }
+            
+            return res.status(201).json({ 
+              message: result.message || `Base de datos ${databaseName} creada correctamente en MySQL.`,
+              details: result.details || {}
+            });
+          } catch (apiError) {
+            console.error('Error al llamar API de creación MySQL:', apiError);
+            return res.status(500).json({ 
+              message: 'Error al comunicarse con el servicio de creación de bases de datos MySQL', 
+              error: apiError.message 
+            });
           }
-          
-          return res.status(201).json({ 
-            message: `Base de datos ${databaseName} configurada correctamente para MySQL.` 
-          });
         } catch (error) {
           console.error('Error al configurar base de datos MySQL:', error);
           return res.status(500).json({ 
