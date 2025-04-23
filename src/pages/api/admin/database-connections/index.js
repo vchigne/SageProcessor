@@ -36,7 +36,7 @@ export default async function handler(req, res) {
  */
 async function getDBConnections(req, res) {
   try {
-    // Consultar conexiones con información del secreto
+    // Consultar conexiones con información del secreto, incluyendo servidor y usuario
     const query = `
       SELECT 
         c.id, 
@@ -51,6 +51,9 @@ async function getDBConnections(req, res) {
         c.fecha_creacion,
         s.nombre as secret_name,
         s.tipo as tipo_bd,
+        s.servidor,
+        s.puerto,
+        s.usuario,
         0 as table_count
       FROM 
         database_connections c

@@ -26,6 +26,12 @@ export default function DatabaseConnections() {
   const [currentConnection, setCurrentConnection] = useState(initialConnectionState);
   const [isEditing, setIsEditing] = useState(false);
   const [testingId, setTestingId] = useState(null);
+  
+  // Estado para el modal de selección de esquemas
+  const [showSchemaModal, setShowSchemaModal] = useState(false);
+  const [schemas, setSchemas] = useState([]);
+  const [loadingSchemas, setLoadingSchemas] = useState(false);
+  const [selectedSecretIdForSchemas, setSelectedSecretIdForSchemas] = useState(null);
 
   // Cargar datos iniciales
   useEffect(() => {
@@ -250,6 +256,47 @@ export default function DatabaseConnections() {
     const secret = secrets.find(s => s.id === secretId);
     return secret ? secret.nombre : 'Desconocido';
   };
+  
+  // Obtener un secreto completo por ID
+  const getSecretById = (secretId) => {
+    return secrets.find(s => s.id === secretId) || null;
+  };
+  
+  // Listar esquemas de PostgreSQL
+  const handleListSchemas = async (secretId) => {
+    if (!secretId) {
+      toast.error('Primero debe seleccionar un secreto PostgreSQL');
+      return;
+    }
+    
+    try {
+      setLoadingSchemas(true);
+      setSelectedSecretIdForSchemas(secretId);
+      
+      const response = await fetch(`/api/admin/db-secrets/${secretId}/schemas`);
+      if (!response.ok) {
+        throw new Error('Error al obtener esquemas');
+      }
+      
+      const data = await response.json();
+      setSchemas(data.schemas || []);
+      setShowSchemaModal(true);
+    } catch (error) {
+      console.error('Error al listar esquemas:', error);
+      toast.error(`Error al listar esquemas: ${error.message}`);
+    } finally {
+      setLoadingSchemas(false);
+    }
+  };
+  
+  // Seleccionar un esquema del modal
+  const handleSelectSchema = (schema) => {
+    setCurrentConnection(prev => ({
+      ...prev,
+      esquema: schema
+    }));
+    setShowSchemaModal(false);
+  };
 
   return (
     <>
@@ -383,14 +430,27 @@ export default function DatabaseConnections() {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Esquema (opcional)
                   </label>
-                  <input
-                    type="text"
-                    name="esquema"
-                    value={currentConnection.esquema}
-                    onChange={handleInputChange}
-                    className="w-full p-2 border rounded-md"
-                    placeholder="public"
-                  />
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      name="esquema"
+                      value={currentConnection.esquema}
+                      onChange={handleInputChange}
+                      className="w-full p-2 border rounded-md"
+                      placeholder="public"
+                    />
+                    {getSecretById(currentConnection.secret_id)?.tipo === 'postgresql' && (
+                      <Button
+                        size="xs"
+                        type="button"
+                        onClick={() => handleListSchemas(currentConnection.secret_id)}
+                        color="blue"
+                        className="whitespace-nowrap"
+                      >
+                        Listar Esquemas
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </div>
               
@@ -469,6 +529,12 @@ export default function DatabaseConnections() {
                 
                 <div className="mt-4 grid grid-cols-2 gap-2 text-sm text-gray-500 dark:text-gray-400">
                   <div>
+                    <span className="font-medium">Servidor:</span> {connection.servidor}:{connection.puerto}
+                  </div>
+                  <div>
+                    <span className="font-medium">Usuario:</span> {connection.usuario}
+                  </div>
+                  <div>
                     <span className="font-medium">Base de datos:</span> {connection.base_datos}
                   </div>
                   {connection.esquema && (
@@ -514,6 +580,57 @@ export default function DatabaseConnections() {
           </div>
         )}
       </div>
+      {/* Modal para seleccionar esquemas */}
+      {showSchemaModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full max-h-[80vh] overflow-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-medium">Seleccionar Esquema PostgreSQL</h3>
+              <button 
+                type="button" 
+                onClick={() => setShowSchemaModal(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <span className="text-xl">&times;</span>
+              </button>
+            </div>
+            
+            {loadingSchemas ? (
+              <div className="py-6 flex justify-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-500"></div>
+              </div>
+            ) : schemas.length === 0 ? (
+              <div className="py-4 text-center text-gray-500">
+                No se encontraron esquemas en esta base de datos.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-2 mt-2">
+                {schemas.map((schema) => (
+                  <button
+                    key={schema}
+                    type="button"
+                    onClick={() => handleSelectSchema(schema)}
+                    className="p-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                  >
+                    {schema}
+                  </button>
+                ))}
+              </div>
+            )}
+            
+            <div className="mt-4 flex justify-end">
+              <Button
+                type="button"
+                onClick={() => setShowSchemaModal(false)}
+                color="gray"
+                size="sm"
+              >
+                Cancelar
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
