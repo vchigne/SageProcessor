@@ -674,14 +674,14 @@ export default function DatabaseSecrets() {
                     </>
                   ) : (
                     <>
-                      <div>
-                        <span className="font-medium">Servidor:</span> {`${secret.servidor || ''}:${secret.puerto || ''}`}
+                      <div className="col-span-1">
+                        <span className="font-medium">Servidor:</span> {secret.servidor}
                       </div>
-                      <div>
-                        <span className="font-medium">Usuario:</span> {secret.usuario || ''}
+                      <div className="col-span-1">
+                        <span className="font-medium">Puerto:</span> {secret.puerto}
                       </div>
-                      <div className="col-span-2 text-xs text-red-500">
-                        ID: {secret.id}, Tipo: {secret.tipo}
+                      <div className="col-span-2">
+                        <span className="font-medium">Usuario:</span> {secret.usuario}
                       </div>
                       {secret.basedatos && (
                         <div className="col-span-2">
