@@ -282,8 +282,12 @@ async function listDatabases(req, res, secretId) {
     }
     
     // Conectar a la base de datos y listar las bases de datos disponibles
+    // Asegurarnos de que estamos usando la base de datos postgres para esta consulta
+    // para evitar errores de conexión a bases de datos inexistentes
+    const modifiedConnectionString = connectionString.replace(/\/[^/]*$/, '/postgres');
+    
     const client = new Pool({
-      connectionString,
+      connectionString: modifiedConnectionString,
       // Tiempo de espera corto para la prueba
       connectionTimeoutMillis: 5000,
     });

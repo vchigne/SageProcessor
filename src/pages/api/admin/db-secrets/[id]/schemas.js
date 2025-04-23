@@ -78,12 +78,14 @@ async function getSecret(id) {
  * Lista los esquemas de una base de datos PostgreSQL
  */
 async function listPostgresSchemas(secret) {
+  // Siempre usar la base de datos postgres para esta consulta 
+  // para evitar errores de conexión a bases de datos inexistentes
   const client = new Client({
     host: secret.servidor,
     port: secret.puerto,
     user: secret.usuario,
     password: secret.contrasena,
-    database: secret.basedatos || 'postgres', // Usar 'postgres' como base de datos predeterminada
+    database: 'postgres', // Siempre usar 'postgres' como base de datos para esta consulta
     // Timeout de conexión
     connectionTimeoutMillis: 5000,
   });
