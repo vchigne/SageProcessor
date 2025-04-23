@@ -778,12 +778,19 @@ class MaterializationProcessor:
         if not container_name:
             raise ValueError(f"No se ha configurado un container para el proveedor Azure {provider_info['nombre']}")
         
-        # Preparar el cliente de Azure
-        connection_string = credentials.get('connection_string')
+        # Preparar el cliente de Azure - Buscar connection_string en credenciales o configuración
+        connection_string = credentials.get('connection_string') or config.get('connection_string')
         
         # Log para depuración
         self.logger.message(f"Credenciales Azure: {list(credentials.keys()) if credentials else 'No hay credenciales'}")
         self.logger.message(f"Configuración Azure: {list(config.keys()) if config else 'No hay configuración'}")
+        
+        # Log adicional para connection_string
+        if connection_string:
+            self.logger.message(f"Usando connection_string de {'credenciales' if credentials.get('connection_string') else 'configuración'}")
+            # Solo mostrar parte inicial y final de la cadena para seguridad
+            safe_str = connection_string[:20] + "..." + connection_string[-20:] if len(connection_string) > 50 else "***"
+            self.logger.message(f"Connection string (parcial): {safe_str}")
         
         # Crear cliente de blob service según el tipo de credenciales
         blob_service_client = None
@@ -884,9 +891,9 @@ class MaterializationProcessor:
                     raise ValueError(f"No se pudo procesar la URL de Azure: {e}")
         elif not connection_string:
             # No hay connection_string, intentamos con account_name y otras credenciales
-            account_name = credentials.get('account_name')
-            account_key = credentials.get('account_key')
-            sas_token = credentials.get('sas_token')
+            account_name = credentials.get('account_name') or config.get('account_name')
+            account_key = credentials.get('account_key') or config.get('account_key')
+            sas_token = credentials.get('sas_token') or config.get('sas_token')
             
             if account_name and sas_token:
                 # Usar SAS token
