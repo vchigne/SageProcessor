@@ -155,18 +155,32 @@ except Exception as e:
 
       // Cuando el proceso termina
       pythonProcess.on('close', (code) => {
-        if (code === 0 && resultData) {
-          try {
-            const result = JSON.parse(resultData);
-            resolve(result);
-          } catch (e) {
-            console.error('Error parsing Python output:', e, resultData);
-            reject(new Error(`Error al procesar la salida del script Python: ${resultData}`));
+        // Intentar analizar la salida siempre, incluso si hay error
+        try {
+          // Verificar primero si hay un JSON válido en resultData
+          if (resultData && resultData.trim()) {
+            try {
+              // Intentar parsear la salida como JSON
+              const result = JSON.parse(resultData);
+              return resolve(result);
+            } catch (parseError) {
+              console.error('Error parsing JSON output:', parseError);
+              // No es JSON válido, continuamos con el procesamiento de error
+            }
           }
-        } else {
+          
           console.error('Python process error (code ' + code + '):', errorData || 'No error output', 'Result data:', resultData);
           
-          // Verificar si pymssql está instalado
+          // Si hay datos en resultData pero no es JSON válido, buscar mensajes de error específicos
+          if (resultData && resultData.includes('CREATE DATABASE permission denied')) {
+            return reject(new Error('El usuario no tiene permisos para crear bases de datos en SQL Server'));
+          }
+          
+          if (resultData && resultData.includes('Login failed for user')) {
+            return reject(new Error('Error de autenticación con SQL Server: Credenciales inválidas'));
+          }
+          
+          // Verificar si pymssql está instalado como diagnóstico adicional
           const checkPymssql = spawn('python', ['-c', 'import pymssql; print("pymssql installed, version:", pymssql.__version__)']);
           
           let pymssqlCheck = '';
@@ -181,8 +195,16 @@ except Exception as e:
           
           checkPymssql.on('close', (checkCode) => {
             console.log('PyMSSQL check:', pymssqlCheck || 'No output', 'Error:', pymssqlError || 'No error');
-            reject(new Error(`Error al ejecutar el script Python (código ${code}): ${errorData || 'Error desconocido'}`));
+            
+            if (errorData && errorData.includes('permission denied')) {
+              reject(new Error('No tienes permisos suficientes para crear bases de datos en SQL Server'));
+            } else {
+              reject(new Error(`Error al ejecutar el script Python: ${errorData || 'Error de comunicación con SQL Server'}`));
+            }
           });
+        } catch (e) {
+          console.error('Error en el procesamiento del resultado:', e);
+          reject(new Error('Error inesperado al procesar la respuesta del servidor SQL'));
         }
       });
 
