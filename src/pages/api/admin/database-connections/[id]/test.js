@@ -1,6 +1,10 @@
-import { Pool, Client } from 'pg';
-// La dependencia mysql2 no está disponible
-// import mysql from 'mysql2/promise';
+import { Pool } from 'pg';
+import { 
+  testPostgresConnection, 
+  testMySQLConnection,
+  testSQLServerConnection,
+  testDuckDBConnection
+} from '@/utils/db-test-utils';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -116,7 +120,7 @@ export default async function handler(req, res) {
         );
         break;
       case 'mysql':
-        testResult = await testMySQLConnection(
+        testResult = testMySQLConnection(
           connection.servidor, 
           connection.puerto, 
           connection.usuario, 
@@ -126,23 +130,17 @@ export default async function handler(req, res) {
         );
         break;
       case 'mssql':
-        // Simular prueba para SQL Server
-        testResult = {
-          success: true,
-          message: 'Verificación de SQL Server simulada - Se requiere instalar el paquete mssql',
-          details: {
-            version: 'No disponible - Paquete mssql no instalado',
-            server: connection.servidor,
-            port: connection.puerto,
-            database: connection.base_datos,
-            user: connection.usuario ? '****' : 'No configurado',
-            notes: 'Esta es una verificación simulada ya que el paquete mssql no está instalado. La conexión real no se ha probado.'
-          }
-        };
+        testResult = testSQLServerConnection(
+          connection.servidor, 
+          connection.puerto, 
+          connection.usuario, 
+          connection.contrasena, 
+          connection.base_datos,
+          combinedConfig
+        );
         break;
       case 'duckdb':
-        // DuckDB es una base de datos en memoria/archivo, no requiere conexión
-        testResult = { success: true, message: 'DuckDB es una base de datos en archivo, no requiere prueba de conexión remota' };
+        testResult = testDuckDBConnection(connection.base_datos);
         break;
       default:
         testResult = { success: false, message: 'Tipo de base de datos no soportado' };
@@ -180,147 +178,4 @@ export default async function handler(req, res) {
       error: error.message
     });
   }
-}
-
-/**
- * Probar conexión a PostgreSQL
- */
-async function testPostgresConnection(host, port, user, password, database, schema, options = {}) {
-  const client = new Client({
-    host,
-    port,
-    user,
-    password,
-    database,
-    // Si hay opciones adicionales de conexión, agregarlas aquí
-    ...options,
-    // Timeout de conexión
-    connectionTimeoutMillis: 5000,
-  });
-  
-  try {
-    await client.connect();
-    
-    // Probar si el esquema existe (si se especificó)
-    if (schema) {
-      try {
-        const schemaQuery = `SELECT EXISTS (
-          SELECT 1 FROM information_schema.schemata WHERE schema_name = $1
-        )`;
-        const schemaResult = await client.query(schemaQuery, [schema]);
-        
-        if (!schemaResult.rows[0].exists) {
-          await client.end();
-          return {
-            success: false,
-            message: `El esquema "${schema}" no existe en la base de datos`,
-          };
-        }
-      } catch (schemaError) {
-        console.error('Error al verificar esquema:', schemaError);
-        // Continuar aunque falle la verificación del esquema
-      }
-    }
-    
-    // Obtener información del servidor
-    const versionResult = await client.query('SELECT version()');
-    const tablesQuery = `
-      SELECT count(*) as table_count 
-      FROM information_schema.tables 
-      WHERE table_schema = $1
-    `;
-    const tablesResult = await client.query(tablesQuery, [schema || 'public']);
-    
-    await client.end();
-    
-    return {
-      success: true,
-      message: 'Conexión exitosa a PostgreSQL',
-      details: {
-        version: versionResult.rows[0].version,
-        table_count: tablesResult.rows[0].table_count,
-        schema: schema || 'public'
-      }
-    };
-  } catch (error) {
-    try {
-      await client.end();
-    } catch (e) {
-      // Ignorar errores al cerrar la conexión
-    }
-    
-    return {
-      success: false,
-      message: `Error al conectar a PostgreSQL: ${error.message}`,
-      details: {
-        code: error.code,
-        sqlMessage: error.message
-      }
-    };
-  }
-}
-
-/**
- * Probar conexión a MySQL
- */
-async function testMySQLConnection(host, port, user, password, database, options = {}) {
-  // La dependencia mysql2 no está disponible, retornamos un mensaje informativo
-  return {
-    success: true,
-    message: 'Verificación de MySQL simulada - Se requiere instalar el paquete mysql2',
-    details: {
-      version: 'No disponible - Paquete mysql2 no instalado',
-      table_count: 0,
-      database,
-      host,
-      port,
-      user: user ? '****' : 'No configurado', // No mostrar la contraseña
-      notes: 'Esta es una verificación simulada ya que el paquete mysql2 no está instalado. La conexión real no se ha probado.'
-    }
-  };
-  
-  /* La implementación real requeriría el paquete mysql2:
-  try {
-    const connection = await mysql.createConnection({
-      host,
-      port,
-      user,
-      password,
-      database,
-      // Si hay opciones adicionales de conexión, agregarlas aquí
-      ...options,
-      // Timeout de conexión
-      connectTimeout: 5000,
-    });
-    
-    // Obtener información del servidor
-    const [versionRows] = await connection.execute('SELECT VERSION() as version');
-    const [tablesResult] = await connection.execute(`
-      SELECT COUNT(*) as table_count 
-      FROM information_schema.tables 
-      WHERE table_schema = ?
-    `, [database]);
-    
-    await connection.end();
-    
-    return {
-      success: true,
-      message: 'Conexión exitosa a MySQL',
-      details: {
-        version: versionRows[0].version,
-        table_count: tablesResult[0].table_count,
-        database
-      }
-    };
-  } catch (error) {
-    return {
-      success: false,
-      message: `Error al conectar a MySQL: ${error.message}`,
-      details: {
-        code: error.code,
-        sqlMessage: error.sqlMessage || error.message
-      }
-    };
-  }
-  */
 }

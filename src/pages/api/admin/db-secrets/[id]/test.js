@@ -1,4 +1,10 @@
-import { Pool, Client } from 'pg';
+import { Pool } from 'pg';
+import { 
+  testPostgresConnection, 
+  testMySQLConnection,
+  testSQLServerConnection,
+  testDuckDBConnection
+} from '@/utils/db-test-utils';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -61,21 +67,54 @@ export default async function handler(req, res) {
     const secret = result.rows[0];
     let testResult = null;
     
+    // Extraer opciones de conexión
+    let connectionOptions = {};
+    try {
+      if (typeof secret.opciones_conexion === 'string') {
+        connectionOptions = JSON.parse(secret.opciones_conexion);
+      } else if (secret.opciones_conexion) {
+        connectionOptions = secret.opciones_conexion;
+      }
+    } catch (e) {
+      // Ignorar error de parseo
+      connectionOptions = {};
+    }
+    
     // Probar conexión según el tipo de base de datos
     switch (secret.tipo) {
       case 'postgresql':
-        testResult = await testPostgresConnection(secret);
+        testResult = await testPostgresConnection(
+          secret.servidor, 
+          secret.puerto, 
+          secret.usuario, 
+          secret.contrasena, 
+          'postgres', // Siempre probar con la base de datos postgres primero
+          null, // No probar esquema en el test de secreto
+          connectionOptions
+        );
         break;
       case 'mysql':
-        testResult = await testMySQLConnection(secret);
+        testResult = testMySQLConnection(
+          secret.servidor, 
+          secret.puerto, 
+          secret.usuario, 
+          secret.contrasena, 
+          secret.basedatos || 'mysql',
+          connectionOptions
+        );
         break;
       case 'mssql':
-        // Usar nuestra implementación para SQL Server
-        testResult = await testSQLServerConnection(secret);
+        testResult = testSQLServerConnection(
+          secret.servidor, 
+          secret.puerto, 
+          secret.usuario, 
+          secret.contrasena, 
+          secret.basedatos || 'master',
+          connectionOptions
+        );
         break;
       case 'duckdb':
-        // DuckDB es una base de datos en memoria/archivo, no requiere conexión
-        testResult = { success: true, message: 'DuckDB es una base de datos en archivo, no requiere prueba de conexión remota' };
+        testResult = testDuckDBConnection(secret.basedatos);
         break;
       default:
         testResult = { success: false, message: 'Tipo de base de datos no soportado' };
@@ -112,226 +151,5 @@ export default async function handler(req, res) {
       message: 'Error al probar conexión a la base de datos',
       error: error.message
     });
-  }
-}
-
-/**
- * Probar conexión a PostgreSQL
- */
-async function testPostgresConnection(secret) {
-  const client = new Client({
-    host: secret.servidor,
-    port: secret.puerto,
-    user: secret.usuario,
-    password: secret.contrasena,
-    database: 'postgres', // Siempre usar 'postgres' como base de datos para el test
-    // Si hay opciones adicionales de conexión, agregarlas aquí
-    ...(typeof secret.opciones_conexion === 'object' ? secret.opciones_conexion : {}),
-    // Timeout de conexión
-    connectionTimeoutMillis: 5000,
-  });
-  
-  try {
-    await client.connect();
-    const result = await client.query('SELECT version()');
-    
-    return {
-      success: true,
-      message: 'Conexión exitosa a PostgreSQL',
-      details: {
-        version: result.rows[0].version
-      }
-    };
-  } catch (error) {
-    return {
-      success: false,
-      message: `Error al conectar a PostgreSQL: ${error.message}`,
-      details: {
-        code: error.code,
-        sqlMessage: error.message
-      }
-    };
-  } finally {
-    try {
-      await client.end();
-    } catch (e) {
-      // Ignorar errores al cerrar la conexión
-    }
-  }
-}
-
-/**
- * Probar conexión a SQL Server
- */
-async function testSQLServerConnection(secret) {
-  // Para probar SQL Server sin la biblioteca mssql, registramos la petición en los logs
-  // y devolvemos una respuesta basada en la validez de los parámetros
-  
-  try {
-    // Crear la tabla de logs si no existe
-    try {
-      await executeSQL(`
-        CREATE TABLE IF NOT EXISTS db_operations_log (
-          id SERIAL PRIMARY KEY,
-          secreto_id INTEGER NOT NULL,
-          operacion VARCHAR(100) NOT NULL,
-          detalles JSONB,
-          estado VARCHAR(20),
-          fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-    } catch (tableError) {
-      console.error('Error al crear tabla de logs:', tableError);
-      // Continuamos aunque falle la creación de la tabla
-    }
-    
-    // Registrar la información de conexión en la base de datos (omitiendo contraseña)
-    await executeSQL(`
-      INSERT INTO db_operations_log 
-      (secreto_id, operacion, detalles, estado) 
-      VALUES ($1, $2, $3, $4)
-    `, [
-      secret.id,
-      'TEST_CONNECTION',
-      JSON.stringify({
-        type: 'mssql',
-        host: secret.servidor,
-        port: secret.puerto,
-        user: secret.usuario,
-        database: secret.basedatos
-      }),
-      'ATTEMPTED'
-    ]);
-    
-    // Validación básica de parámetros
-    if (!secret.servidor) {
-      return {
-        success: false,
-        message: `Error al conectar a SQL Server: Falta el servidor`,
-        details: {
-          code: 'INVALID_CONFIG',
-          sqlMessage: 'Configuración inválida: falta servidor'
-        }
-      };
-    }
-    
-    if (!secret.puerto) {
-      return {
-        success: false,
-        message: `Error al conectar a SQL Server: Falta el puerto`,
-        details: {
-          code: 'INVALID_CONFIG',
-          sqlMessage: 'Configuración inválida: falta puerto'
-        }
-      };
-    }
-    
-    // Si los parámetros son válidos, consideramos exitosa la prueba.
-    // En un entorno de producción, aquí se usaría mssql para la conexión real.
-    return {
-      success: true,
-      message: 'Base de datos SQL Server configurada correctamente',
-      details: {
-        note: 'Para conexión y consultas reales, instalar biblioteca mssql',
-        host: secret.servidor,
-        port: secret.puerto
-      }
-    };
-  } catch (error) {
-    return {
-      success: false,
-      message: `Error al registrar prueba de SQL Server: ${error.message}`,
-      details: {
-        error: error.message
-      }
-    };
-  }
-}
-
-/**
- * Probar conexión a MySQL usando un método alternativo
- */
-async function testMySQLConnection(secret) {
-  // Para probar MySQL sin la biblioteca mysql2, registramos la petición en los logs
-  // y devolvemos una respuesta basada en la validez de los parámetros
-  
-  try {
-    // Crear la tabla de logs si no existe
-    try {
-      await executeSQL(`
-        CREATE TABLE IF NOT EXISTS db_operations_log (
-          id SERIAL PRIMARY KEY,
-          secreto_id INTEGER NOT NULL,
-          operacion VARCHAR(100) NOT NULL,
-          detalles JSONB,
-          estado VARCHAR(20),
-          fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-    } catch (tableError) {
-      console.error('Error al crear tabla de logs:', tableError);
-      // Continuamos aunque falle la creación de la tabla
-    }
-    
-    // Registrar la información de conexión en la base de datos (omitiendo contraseña)
-    await executeSQL(`
-      INSERT INTO db_operations_log 
-      (secreto_id, operacion, detalles, estado) 
-      VALUES ($1, $2, $3, $4)
-    `, [
-      secret.id,
-      'TEST_CONNECTION',
-      JSON.stringify({
-        type: 'mysql',
-        host: secret.servidor,
-        port: secret.puerto,
-        user: secret.usuario,
-        database: secret.basedatos
-      }),
-      'ATTEMPTED'
-    ]);
-    
-    // Validación básica de parámetros
-    if (!secret.servidor) {
-      return {
-        success: false,
-        message: `Error al conectar a MySQL: Falta el servidor`,
-        details: {
-          code: 'INVALID_CONFIG',
-          sqlMessage: 'Configuración inválida: falta servidor'
-        }
-      };
-    }
-    
-    if (!secret.puerto) {
-      return {
-        success: false,
-        message: `Error al conectar a MySQL: Falta el puerto`,
-        details: {
-          code: 'INVALID_CONFIG',
-          sqlMessage: 'Configuración inválida: falta puerto'
-        }
-      };
-    }
-    
-    // Si los parámetros son válidos, consideramos exitosa la prueba.
-    // En un entorno de producción, aquí se usaría mysql2 para la conexión real.
-    return {
-      success: true,
-      message: 'Base de datos MySQL configurada correctamente',
-      details: {
-        note: 'Para conexión y consultas reales, instalar biblioteca mysql2',
-        host: secret.servidor,
-        port: secret.puerto
-      }
-    };
-  } catch (error) {
-    return {
-      success: false,
-      message: `Error al registrar prueba de MySQL: ${error.message}`,
-      details: {
-        error: error.message
-      }
-    };
   }
 }
