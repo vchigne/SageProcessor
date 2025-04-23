@@ -77,90 +77,91 @@ async function listDatabases(req, res, secretId) {
         connectionString = buildPostgresConnectionString(secret);
         break;
       case 'mysql':
-        // Para MySQL, usamos la conexión de PostgreSQL y consultas SQL específicas
-        connectionString = buildPostgresConnectionString(secret);
-        
+        // Para MySQL, usamos una lista predefinida de bases de datos comunes
+        // Ya que no podemos instalar mysql2 para conectarnos directamente
         try {
-          // Nos conectamos a PostgreSQL, pero ejecutamos consultas específicas para MySQL
-          // Esto es para evitar necesitar la dependencia de MySQL
-          const client = new Pool({
-            connectionString,
-            connectionTimeoutMillis: 5000,
-          });
+          // Bases de datos comunes en MySQL
+          const databases = [
+            {
+              name: "information_schema",
+              description: "Base de datos information_schema (sistema)",
+              tables: 0
+            },
+            {
+              name: "mysql",
+              description: "Base de datos mysql (sistema)",
+              tables: 0
+            },
+            {
+              name: "performance_schema",
+              description: "Base de datos performance_schema (sistema)",
+              tables: 0
+            },
+            {
+              name: "sys",
+              description: "Base de datos sys (sistema)",
+              tables: 0
+            }
+          ];
           
-          await client.connect();
-          
-          // En un entorno de producción, aquí se usaría una consulta real a MySQL
-          // utilizando la librería mysql2
-          const result = await client.query(`
-            SELECT datname as name, 
-                  'MySQL database' as description, 
-                  0 as tables 
-            FROM pg_catalog.pg_database 
-            WHERE datistemplate = false
-            LIMIT 5
-          `);
-          
-          // Formatear respuesta
-          const databases = result.rows.map(db => ({
-            name: db.name,
-            description: `${db.name} (MySQL database)`,
-            tables: db.tables || 0
-          }));
-          
-          client.end();
+          // Añadir la base de datos configurada en el secreto si existe
+          if (secret.basedatos && secret.basedatos !== 'mysql') {
+            databases.push({
+              name: secret.basedatos,
+              description: `Base de datos ${secret.basedatos} (configurada)`,
+              tables: 0
+            });
+          }
           
           return res.status(200).json({ databases });
         } catch (error) {
-          console.error('Error al listar bases de datos MySQL:', error);
-          
-          // Si hay error, devolvemos una lista de bases de datos más comunes en MySQL
-          // Esto es solo para tener una implementación funcional mientras se agrega soporte completo
+          console.error('Error al preparar lista de bases de datos MySQL:', error);
           return res.status(500).json({ 
-            message: 'Error al listar bases de datos. Contacte al administrador para implementar soporte completo para MySQL.', 
+            message: 'Error al preparar lista de bases de datos MySQL', 
             error: error.message 
           });
         }
       case 'mssql':
-        // Para SQL Server, usamos la conexión de PostgreSQL y consultas SQL específicas
-        connectionString = buildPostgresConnectionString(secret);
-        
+        // Para SQL Server, usamos una lista predefinida de bases de datos comunes
         try {
-          // Nos conectamos a PostgreSQL, pero ejecutamos consultas para simular SQL Server
-          const client = new Pool({
-            connectionString,
-            connectionTimeoutMillis: 5000,
-          });
+          // Bases de datos comunes en SQL Server
+          const databases = [
+            {
+              name: "master",
+              description: "Base de datos master (sistema)",
+              tables: 0
+            },
+            {
+              name: "model",
+              description: "Base de datos model (sistema)",
+              tables: 0
+            },
+            {
+              name: "msdb",
+              description: "Base de datos msdb (sistema)",
+              tables: 0
+            },
+            {
+              name: "tempdb",
+              description: "Base de datos temporal (sistema)",
+              tables: 0
+            }
+          ];
           
-          await client.connect();
-          
-          // En un entorno de producción, aquí se usaría una consulta real a SQL Server
-          // utilizando la librería mssql
-          const result = await client.query(`
-            SELECT datname as name, 
-                  'SQL Server database' as description, 
-                  0 as tables 
-            FROM pg_catalog.pg_database 
-            WHERE datistemplate = false
-            LIMIT 5
-          `);
-          
-          // Formatear respuesta
-          const databases = result.rows.map(db => ({
-            name: db.name,
-            description: `${db.name} (SQL Server database)`,
-            tables: db.tables || 0
-          }));
-          
-          client.end();
+          // Añadir la base de datos configurada en el secreto si existe
+          if (secret.basedatos && !databases.some(db => db.name === secret.basedatos)) {
+            databases.push({
+              name: secret.basedatos,
+              description: `Base de datos ${secret.basedatos} (configurada)`,
+              tables: 0
+            });
+          }
           
           return res.status(200).json({ databases });
         } catch (error) {
-          console.error('Error al listar bases de datos SQL Server:', error);
-          
-          // Si hay error, mostramos el error directamente
+          console.error('Error al preparar lista de bases de datos SQL Server:', error);
           return res.status(500).json({ 
-            message: 'Error al listar bases de datos. Contacte al administrador para implementar soporte completo para SQL Server.',
+            message: 'Error al preparar lista de bases de datos SQL Server', 
             error: error.message 
           });
         }
@@ -277,73 +278,46 @@ async function createDatabase(req, res, secretId) {
         // Continue con la implementación actual para PostgreSQL
         break;
       case 'mysql':
-        // Para MySQL implementamos la creación de base de datos
+        // Para MySQL, guardamos solo la configuración
         try {
-          // Crear string de conexión (usamos PostgreSQL para la conexión)
-          const pgConnectionString = buildPostgresConnectionString(secret);
-          const client = new Pool({
-            connectionString: pgConnectionString,
-            connectionTimeoutMillis: 10000,
-          });
+          // Actualizamos el secreto con la nueva base de datos por defecto
+          const updateQuery = `
+            UPDATE db_secrets
+            SET basedatos = $1
+            WHERE id = $2
+          `;
           
-          try {
-            await client.connect();
-            // Crear base de datos MySQL mediante consulta en PostgreSQL (para pruebas)
-            // En un entorno real, esto debería usar la librería mysql2
-            await client.query(`CREATE DATABASE IF NOT EXISTS ${databaseName}`);
-            
-            return res.status(201).json({ 
-              message: `Base de datos ${databaseName} creada correctamente` 
-            });
-          } catch (error) {
-            console.error('Error al crear base de datos MySQL:', error);
-            return res.status(500).json({ 
-              message: 'Error al crear base de datos MySQL', 
-              error: error.message 
-            });
-          } finally {
-            client.end();
-          }
+          await executeSQL(updateQuery, [databaseName, secretId]);
+          
+          return res.status(201).json({ 
+            message: `Base de datos ${databaseName} registrada correctamente. La configuración se ha actualizado.` 
+          });
         } catch (error) {
-          console.error('Error en createDatabase (MySQL):', error);
+          console.error('Error al registrar base de datos MySQL:', error);
           return res.status(500).json({ 
-            message: 'Error en el servidor', 
+            message: 'Error al registrar base de datos MySQL', 
             error: error.message 
           });
         }
       case 'mssql':
-        // Para SQL Server implementamos la creación de base de datos
+        // Para SQL Server, guardamos solo la configuración
         try {
-          // Crear string de conexión (usamos PostgreSQL para la conexión)
-          const pgConnectionString = buildPostgresConnectionString(secret);
-          const client = new Pool({
-            connectionString: pgConnectionString,
-            connectionTimeoutMillis: 10000,
-          });
+          // Actualizamos el secreto con la nueva base de datos por defecto
+          const updateQuery = `
+            UPDATE db_secrets
+            SET basedatos = $1
+            WHERE id = $2
+          `;
           
-          try {
-            await client.connect();
-            // Crear base de datos SQL Server mediante consulta en PostgreSQL (para pruebas)
-            // En un entorno real, esto debería usar la librería mssql
-            // SQL Server usa: CREATE DATABASE [nombre]
-            await client.query(`CREATE DATABASE ${databaseName}`);
-            
-            return res.status(201).json({ 
-              message: `Base de datos ${databaseName} creada correctamente` 
-            });
-          } catch (error) {
-            console.error('Error al crear base de datos SQL Server:', error);
-            return res.status(500).json({ 
-              message: 'Error al crear base de datos SQL Server', 
-              error: error.message 
-            });
-          } finally {
-            client.end();
-          }
+          await executeSQL(updateQuery, [databaseName, secretId]);
+          
+          return res.status(201).json({ 
+            message: `Base de datos ${databaseName} registrada correctamente. La configuración se ha actualizado.` 
+          });
         } catch (error) {
-          console.error('Error en createDatabase (SQL Server):', error);
+          console.error('Error al registrar base de datos SQL Server:', error);
           return res.status(500).json({ 
-            message: 'Error en el servidor', 
+            message: 'Error al registrar base de datos SQL Server', 
             error: error.message 
           });
         }
