@@ -589,6 +589,8 @@ class MaterializationProcessor:
                 self._materialize_to_azure(df, provider_info, destination_path, file_format, partition_columns, config)
             elif provider_type == 'gcp':
                 self._materialize_to_gcp(df, provider_info, destination_path, file_format, partition_columns, config)
+            elif provider_type == 'sftp':
+                self._materialize_to_sftp(df, provider_info, destination_path, file_format, partition_columns, config)
             else:
                 raise ValueError(f"Tipo de proveedor cloud no soportado: {provider_type}")
                 
@@ -984,6 +986,145 @@ class MaterializationProcessor:
         
         self.logger.message(f"Archivo materializado en azure://{container_name}/{destination_key}")
     
+    def _materialize_to_sftp(self, df: pd.DataFrame, provider_info: Dict[str, Any], 
+                           destination_path: str, file_format: str, 
+                           partition_columns: List[str], config: Dict[str, Any] = None) -> None:
+        """
+        Materializa el DataFrame a un servidor SFTP.
+        
+        Args:
+            df: DataFrame preparado
+            provider_info: Información del proveedor
+            destination_path: Ruta de destino
+            file_format: Formato del archivo
+            partition_columns: Columnas para particionar los datos
+        """
+        import paramiko
+        import tempfile
+        import os
+        
+        # Parsear credenciales y configuración
+        config = provider_info.get('configuracion', {}) or {}
+        credentials = provider_info.get('credenciales', {}) or {}
+        
+        # Los parámetros pueden estar en credenciales o en configuración
+        host = credentials.get('host') or config.get('host')
+        port = int(credentials.get('port', 22) or config.get('port', 22))
+        user = credentials.get('user') or config.get('user')
+        password = credentials.get('password') or config.get('password')
+        
+        if not host:
+            raise ValueError("No se configuró correctamente el host para SFTP")
+            
+        if not user:
+            raise ValueError("No se configuró correctamente el usuario para SFTP")
+            
+        if not password:
+            raise ValueError("No se configuró correctamente la contraseña para SFTP")
+            
+        # Logs para depuración
+        self.logger.message(f"Credenciales SFTP: {list(credentials.keys()) if credentials else 'No hay credenciales'}")
+        self.logger.message(f"Configuración SFTP: {list(config.keys()) if config else 'No hay configuración'}")
+        self.logger.message(f"Conexión SFTP a {host}:{port} como {user}")
+        
+        # Crear archivo temporal para el DataFrame según el formato
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_file_path = os.path.join(temp_dir, f"data")
+            
+            # Añadir extensión según formato
+            if file_format == 'parquet':
+                temp_file_path += '.parquet'
+                df.to_parquet(temp_file_path, engine='pyarrow', index=False)
+            elif file_format == 'csv':
+                temp_file_path += '.csv'
+                df.to_csv(temp_file_path, index=False)
+            elif file_format == 'excel':
+                temp_file_path += '.xlsx'
+                df.to_excel(temp_file_path, index=False, engine='openpyxl')
+            elif file_format == 'json':
+                temp_file_path += '.json'
+                df.to_json(temp_file_path, orient='records', lines=True)
+            elif file_format in ['avro', 'orc', 'hudi', 'iceberg']:
+                # Para formatos avanzados, no implementados aún para SFTP
+                raise NotImplementedError(f"Formato {file_format} aún no implementado para SFTP")
+            else:
+                raise ValueError(f"Formato de archivo no soportado: {file_format}")
+                
+            # Crear cliente SFTP
+            ssh_client = paramiko.SSHClient()
+            ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            
+            try:
+                # Conectar al servidor
+                self.logger.message(f"Conectando a servidor SFTP {host}:{port}...")
+                ssh_client.connect(
+                    hostname=host,
+                    port=port,
+                    username=user,
+                    password=password
+                )
+                
+                # Crear cliente SFTP
+                sftp_client = ssh_client.open_sftp()
+                
+                # Asegurarse de que el directorio remoto existe
+                self._sftp_mkdir_p(sftp_client, destination_path)
+                
+                # Determinar el nombre del archivo remoto (añadir extensión si no la tiene)
+                remote_file_name = os.path.basename(destination_path)
+                if '.' not in remote_file_name:
+                    remote_file_name = f"{remote_file_name}{os.path.splitext(temp_file_path)[1]}"
+                
+                # Construir la ruta completa
+                remote_dir = os.path.dirname(destination_path)
+                if not remote_dir:
+                    remote_dir = '.'  # Directorio actual si no se especificó
+                
+                remote_path = f"{remote_dir}/{remote_file_name}"
+                
+                # Subir el archivo
+                self.logger.message(f"Subiendo archivo a sftp://{host}:{port}/{remote_path}...")
+                sftp_client.put(temp_file_path, remote_path)
+                self.logger.message(f"Archivo materializado en sftp://{host}:{port}/{remote_path}")
+                
+            except Exception as e:
+                self.logger.error(f"Error al conectar o subir archivo a SFTP: {str(e)}")
+                raise
+            
+            finally:
+                # Cerrar la conexión
+                if 'sftp_client' in locals():
+                    sftp_client.close()
+                if 'ssh_client' in locals():
+                    ssh_client.close()
+    
+    def _sftp_mkdir_p(self, sftp, remote_directory):
+        """Crear directorio remoto recursivamente (mkdir -p)"""
+        if remote_directory == '/':
+            # Directorio raíz
+            return
+        
+        if remote_directory == '':
+            # Directorio vacío
+            return
+        
+        try:
+            sftp.stat(remote_directory)
+        except IOError:
+            # El directorio no existe, crearlo
+            parent = os.path.dirname(remote_directory)
+            if parent:
+                self._sftp_mkdir_p(sftp, parent)
+            
+            try:
+                sftp.mkdir(remote_directory)
+            except IOError as e:
+                if 'Failure' in str(e):
+                    # Puede ser que el directorio ya exista (debido a una condición de carrera)
+                    pass
+                else:
+                    raise
+                
     def _materialize_to_gcp(self, df: pd.DataFrame, provider_info: Dict[str, Any], 
                           destination_path: str, file_format: str, 
                           partition_columns: List[str], config: Dict[str, Any] = None) -> None:
