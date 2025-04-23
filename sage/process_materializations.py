@@ -460,30 +460,51 @@ class MaterializationProcessor:
                     try:
                         server = db_connection_info['servidor']
                         port = int(db_connection_info['puerto'] or 1433)
-                        database = db_connection_info['basedatos'] or "master"
+                        database = db_connection_info['basedatos']
                         user = db_connection_info['usuario']
                         password = db_connection_info['contrasena']
                         
-                        self.logger.message(f"Intentando conexión directa con pymssql a {server}:{port}/{database}")
+                        # Solo usar master si realmente no hay base de datos configurada
+                        if not database or database.strip() == '':
+                            database = "master"
+                            self.logger.message(f"No se especificó base de datos, usando 'master' por defecto para SQL Server")
+                        else:
+                            self.logger.message(f"Usando base de datos configurada: '{database}' para SQL Server")
+                        
+                        # Definir opciones avanzadas de conexión igual que en db-secrets
+                        connect_options = {
+                            "charset": "utf8",
+                            "autocommit": True,
+                            "timeout": 10,  # Timeout en segundos
+                            "tds_version": "7.3"  # Versión TDS para mejor compatibilidad
+                        }
+                        
+                        # Si hay opciones de conexión adicionales, incorporarlas
+                        if 'opciones_conexion' in db_connection_info and isinstance(db_connection_info['opciones_conexion'], dict):
+                            for key, value in db_connection_info['opciones_conexion'].items():
+                                connect_options[key] = value
+                            self.logger.message(f"Añadidas opciones personalizadas: {list(db_connection_info['opciones_conexion'].keys())}")
+                        
+                        self.logger.message(f"Intentando conexión directa con pymssql a {server}:{port}/{database} con opciones avanzadas")
                         test_conn = pymssql.connect(
                             server=server,
                             port=port,
                             user=user,
                             password=password,
                             database=database,
-                            charset='utf8',
-                            as_dict=True
+                            charset=connect_options["charset"],
+                            timeout=connect_options["timeout"],
+                            tds_version=connect_options["tds_version"],
+                            as_dict=True,
+                            autocommit=connect_options["autocommit"]
                         )
                         test_conn.close()
                         self.logger.message("Prueba de conexión directa con pymssql exitosa")
                     except Exception as e:
                         self.logger.warning(f"Prueba de conexión directa con pymssql falló: {str(e)}")
                     
-                    # Configurar opciones básicas de conexión para SQLAlchemy
-                    engine_kwargs['connect_args'] = {
-                        "charset": "utf8",
-                        "autocommit": True
-                    }
+                    # Configurar opciones avanzadas de conexión para SQLAlchemy (mismas que en conexión directa)
+                    engine_kwargs['connect_args'] = connect_options
                     self.logger.message(f"Usando argumentos de conexión para SQL Server: {engine_kwargs['connect_args']}")
                 except ImportError:
                     self.logger.error("Módulo pymssql no está disponible. Instalelo con: pip install pymssql")
@@ -2055,9 +2076,12 @@ class MaterializationProcessor:
             password = db_info['contrasena']
             
             # Si no hay base de datos especificada, usamos 'master' como predeterminada para SQL Server
-            if not database:
+            # PERO SOLO si realmente no tiene base de datos configurada
+            if not database or database.strip() == '':
                 database = "master"
                 self.logger.message(f"No se especificó base de datos, usando 'master' por defecto para SQL Server")
+            else:
+                self.logger.message(f"Usando base de datos configurada: '{database}' para SQL Server")
             
             # Crear un connection string con un formato más seguro para SQL Server
             # Formato: mssql+pymssql://username:password@hostname:port/database_name
@@ -2075,17 +2099,25 @@ class MaterializationProcessor:
             # Verificar si los valores de conexión están presentes
             self.logger.message(f"Parámetros de conexión: servidor={server}, puerto={port}, base de datos={database}")
             
-            # Opciones más básicas para mejorar compatibilidad
+            # Opciones más completas para mejorar compatibilidad
+            # Usamos exactamente las mismas opciones que funcionan en db-secrets
             connect_args = {
                 "charset": "utf8",
-                "autocommit": True
+                "autocommit": True,
+                "timeout": 10,
+                "tds_version": "7.3"  # Agregado para mejor compatibilidad
             }
             
-            self.logger.message(f"Usando pymssql para conexión a SQL Server")
+            self.logger.message(f"Usando pymssql para conexión a SQL Server con opciones avanzadas")
             self.logger.message(f"Connection string para SQL Server (credenciales ocultas): {conn_string.replace(password, '***')}")
             
-            # Si la conexión tiene opciones adicionales, guardarlas para uso posterior
-            # Las usaremos al crear el motor de SQLAlchemy
+            # Si la conexión tiene opciones adicionales de la base de datos, incorporarlas
+            if 'opciones_conexion' in db_info and isinstance(db_info['opciones_conexion'], dict):
+                for key, value in db_info['opciones_conexion'].items():
+                    connect_args[key] = value
+                self.logger.message(f"Añadidas opciones personalizadas desde la configuración: {list(db_info['opciones_conexion'].keys())}")
+            
+            # Guardar opciones para uso posterior con SQLAlchemy
             db_info['connect_args'] = connect_args
             
             return conn_string
