@@ -47,6 +47,9 @@ export default function DatabaseSecrets() {
       if (!response.ok) throw new Error('Error al cargar secretos de bases de datos');
       const data = await response.json();
       
+      // Para diagnosticar problemas
+      console.log('Secretos obtenidos:', data);
+      
       setSecrets(data);
     } catch (error) {
       console.error('Error:', error);
@@ -672,10 +675,13 @@ export default function DatabaseSecrets() {
                   ) : (
                     <>
                       <div>
-                        <span className="font-medium">Servidor:</span> {secret.servidor}:{secret.puerto}
+                        <span className="font-medium">Servidor:</span> {`${secret.servidor || ''}:${secret.puerto || ''}`}
                       </div>
                       <div>
-                        <span className="font-medium">Usuario:</span> {secret.usuario}
+                        <span className="font-medium">Usuario:</span> {secret.usuario || ''}
+                      </div>
+                      <div className="col-span-2 text-xs text-red-500">
+                        ID: {secret.id}, Tipo: {secret.tipo}
                       </div>
                       {secret.basedatos && (
                         <div className="col-span-2">
