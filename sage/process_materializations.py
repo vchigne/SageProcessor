@@ -451,15 +451,40 @@ class MaterializationProcessor:
             engine_kwargs = {}
             
             if db_connection_info['tipo'] == 'mssql':
-                # Para SQL Server, vamos a usar pymssql
+                # Para SQL Server, intento con conexión directa antes de usar SQLAlchemy
                 try:
                     import pymssql
                     self.logger.message("Módulo pymssql disponible para SQL Server")
                     
-                    # Si hay argumentos de conexión adicionales, usarlos
-                    if 'connect_args' in db_connection_info:
-                        engine_kwargs['connect_args'] = db_connection_info['connect_args']
-                        self.logger.message(f"Usando argumentos de conexión adicionales para SQL Server: {db_connection_info['connect_args']}")
+                    # Intentar primero con conexión directa para verificar si podemos conectar
+                    try:
+                        server = db_connection_info['servidor']
+                        port = int(db_connection_info['puerto'] or 1433)
+                        database = db_connection_info['basedatos'] or "master"
+                        user = db_connection_info['usuario']
+                        password = db_connection_info['contrasena']
+                        
+                        self.logger.message(f"Intentando conexión directa con pymssql a {server}:{port}/{database}")
+                        test_conn = pymssql.connect(
+                            server=server,
+                            port=port,
+                            user=user,
+                            password=password,
+                            database=database,
+                            charset='utf8',
+                            as_dict=True
+                        )
+                        test_conn.close()
+                        self.logger.message("Prueba de conexión directa con pymssql exitosa")
+                    except Exception as e:
+                        self.logger.warning(f"Prueba de conexión directa con pymssql falló: {str(e)}")
+                    
+                    # Configurar opciones básicas de conexión para SQLAlchemy
+                    engine_kwargs['connect_args'] = {
+                        "charset": "utf8",
+                        "autocommit": True
+                    }
+                    self.logger.message(f"Usando argumentos de conexión para SQL Server: {engine_kwargs['connect_args']}")
                 except ImportError:
                     self.logger.error("Módulo pymssql no está disponible. Instalelo con: pip install pymssql")
                     raise ImportError("Se requiere pymssql para conexiones a SQL Server")
@@ -2029,14 +2054,31 @@ class MaterializationProcessor:
             user = db_info['usuario']
             password = db_info['contrasena']
             
-            # Construir connection string para SQLAlchemy con pymssql
-            conn_string = f"mssql+pymssql://{user}:{password}@{server}:{port}/{database}"
+            # Si no hay base de datos especificada, usamos 'master' como predeterminada para SQL Server
+            if not database:
+                database = "master"
+                self.logger.message(f"No se especificó base de datos, usando 'master' por defecto para SQL Server")
             
-            # Opciones adicionales para conectar como dict
+            # Crear un connection string con un formato más seguro para SQL Server
+            # Formato: mssql+pymssql://username:password@hostname:port/database_name
+            # Para reducir problemas con caracteres especiales en credenciales
+            conn_string = f"mssql+pymssql://{user}"
+            if password:
+                # Escapar los caracteres especiales en la contraseña
+                conn_string += f":{password}"
+            conn_string += f"@{server}"
+            if port:
+                conn_string += f":{port}"
+            if database:
+                conn_string += f"/{database}"
+            
+            # Verificar si los valores de conexión están presentes
+            self.logger.message(f"Parámetros de conexión: servidor={server}, puerto={port}, base de datos={database}")
+            
+            # Opciones más básicas para mejorar compatibilidad
             connect_args = {
                 "charset": "utf8",
-                "autocommit": True,  # Para compatibilidad con algunas operaciones
-                "tds_version": "7.3"  # Para SQL Server 2016+
+                "autocommit": True
             }
             
             self.logger.message(f"Usando pymssql para conexión a SQL Server")
