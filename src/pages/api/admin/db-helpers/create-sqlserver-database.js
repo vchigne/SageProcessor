@@ -6,21 +6,24 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { server, port, user, password, database } = req.body;
+    const { server, port, user, password, database, databaseName } = req.body;
+    
+    // Usar databaseName si está presente, database como alternativa
+    const dbName = databaseName || database;
 
-    if (!server || !port || !user || !password || !database) {
+    if (!server || !port || !user || !password || !dbName) {
       return res.status(400).json({
         success: false,
         message: 'Parámetros incompletos',
         details: {
           code: 'INVALID_PARAMS',
-          sqlMessage: 'Faltan parámetros requeridos (server, port, user, password, database)'
+          sqlMessage: 'Faltan parámetros requeridos (server, port, user, password, database/databaseName)'
         }
       });
     }
 
     // Ejecutar script Python para crear la base de datos
-    const result = await createSQLServerDatabase(server, port, user, password, database);
+    const result = await createSQLServerDatabase(server, port, user, password, dbName);
 
     if (result.success) {
       return res.status(200).json(result);

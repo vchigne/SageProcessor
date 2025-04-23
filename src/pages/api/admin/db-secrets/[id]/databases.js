@@ -450,7 +450,8 @@ async function createDatabase(req, res, secretId) {
                 port: puerto,
                 user: usuario,
                 password: contrasena,
-                databaseName,
+                database: databaseName,  // Enviamos con los dos nombres para compatibilidad
+                databaseName: databaseName,
                 secretId
               }),
             });
