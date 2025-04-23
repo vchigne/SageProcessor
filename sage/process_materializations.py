@@ -209,7 +209,7 @@ class MaterializationProcessor:
                 tipo_proveedor = config.get('tipoProveedor')
                 if tipo_proveedor == 'cloud':
                     destination_type = 'cloud'
-                elif tipo_proveedor == 'db':
+                elif tipo_proveedor == 'db' or tipo_proveedor == 'database':
                     destination_type = 'db'
                 
                 # Obtener el ID del proveedor
