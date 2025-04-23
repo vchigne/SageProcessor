@@ -32,6 +32,11 @@ export default function DatabaseConnections() {
   const [schemas, setSchemas] = useState([]);
   const [loadingSchemas, setLoadingSchemas] = useState(false);
   const [selectedSecretIdForSchemas, setSelectedSecretIdForSchemas] = useState(null);
+  
+  // Estado para el modal de selección de bases de datos
+  const [showDatabaseModal, setShowDatabaseModal] = useState(false);
+  const [databases, setDatabases] = useState([]);
+  const [loadingDatabases, setLoadingDatabases] = useState(false);
 
   // Cargar datos iniciales
   useEffect(() => {
@@ -297,6 +302,41 @@ export default function DatabaseConnections() {
     }));
     setShowSchemaModal(false);
   };
+  
+  // Listar bases de datos disponibles
+  const handleListDatabases = async (secretId) => {
+    if (!secretId) {
+      toast.error('Primero debe seleccionar un secreto de base de datos');
+      return;
+    }
+    
+    try {
+      setLoadingDatabases(true);
+      
+      const response = await fetch(`/api/admin/db-secrets/${secretId}/databases`);
+      if (!response.ok) {
+        throw new Error('Error al obtener bases de datos');
+      }
+      
+      const data = await response.json();
+      setDatabases(data.databases || []);
+      setShowDatabaseModal(true);
+    } catch (error) {
+      console.error('Error al listar bases de datos:', error);
+      toast.error(`Error al listar bases de datos: ${error.message}`);
+    } finally {
+      setLoadingDatabases(false);
+    }
+  };
+  
+  // Seleccionar una base de datos del modal
+  const handleSelectDatabase = (database) => {
+    setCurrentConnection(prev => ({
+      ...prev,
+      base_datos: database.name
+    }));
+    setShowDatabaseModal(false);
+  };
 
   return (
     <>
@@ -416,14 +456,27 @@ export default function DatabaseConnections() {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Base de Datos*
                   </label>
-                  <input
-                    type="text"
-                    name="base_datos"
-                    value={currentConnection.base_datos}
-                    onChange={handleInputChange}
-                    className="w-full p-2 border rounded-md"
-                    required
-                  />
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      name="base_datos"
+                      value={currentConnection.base_datos}
+                      onChange={handleInputChange}
+                      className="w-full p-2 border rounded-md"
+                      required
+                    />
+                    {currentConnection.secret_id && (
+                      <Button
+                        size="xs"
+                        type="button"
+                        onClick={() => handleListDatabases(currentConnection.secret_id)}
+                        color="blue"
+                        className="whitespace-nowrap"
+                      >
+                        Seleccionar
+                      </Button>
+                    )}
+                  </div>
                 </div>
                 
                 <div>
@@ -622,6 +675,61 @@ export default function DatabaseConnections() {
               <Button
                 type="button"
                 onClick={() => setShowSchemaModal(false)}
+                color="gray"
+                size="sm"
+              >
+                Cancelar
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Modal para seleccionar bases de datos */}
+      {showDatabaseModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full max-h-[80vh] overflow-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-medium">Seleccionar Base de Datos</h3>
+              <button 
+                type="button" 
+                onClick={() => setShowDatabaseModal(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <span className="text-xl">&times;</span>
+              </button>
+            </div>
+            
+            {loadingDatabases ? (
+              <div className="py-6 flex justify-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-500"></div>
+              </div>
+            ) : databases.length === 0 ? (
+              <div className="py-4 text-center text-gray-500">
+                No se encontraron bases de datos para este secreto.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-2 mt-2">
+                {databases.map((database, index) => (
+                  <button
+                    key={index}
+                    type="button"
+                    onClick={() => handleSelectDatabase(database)}
+                    className="p-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                  >
+                    <div className="font-medium">{database.name}</div>
+                    {database.description && (
+                      <div className="text-xs text-gray-500">{database.description}</div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+            
+            <div className="mt-4 flex justify-end">
+              <Button
+                type="button"
+                onClick={() => setShowDatabaseModal(false)}
                 color="gray"
                 size="sm"
               >
