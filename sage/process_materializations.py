@@ -1067,20 +1067,47 @@ class MaterializationProcessor:
                 # Crear cliente SFTP
                 sftp_client = ssh_client.open_sftp()
                 
-                # Asegurarse de que el directorio remoto existe
-                self._sftp_mkdir_p(sftp_client, destination_path)
+                # Normalizar la ruta de destino
+                destination_path = destination_path.lstrip('/')
                 
                 # Determinar el nombre del archivo remoto (añadir extensión si no la tiene)
-                remote_file_name = os.path.basename(destination_path)
+                if '/' in destination_path:
+                    remote_dir = os.path.dirname(destination_path)
+                    remote_file_name = os.path.basename(destination_path)
+                else:
+                    remote_dir = ''
+                    remote_file_name = destination_path
+                
+                # Añadir extensión si es necesario
                 if '.' not in remote_file_name:
                     remote_file_name = f"{remote_file_name}{os.path.splitext(temp_file_path)[1]}"
                 
-                # Construir la ruta completa
-                remote_dir = os.path.dirname(destination_path)
-                if not remote_dir:
-                    remote_dir = '.'  # Directorio actual si no se especificó
+                # Obtener la ruta base desde credenciales o configuración
+                base_path = credentials.get('path', '') or config.get('path', '')
+                base_path = base_path.rstrip('/') if base_path else ''
                 
-                remote_path = f"{remote_dir}/{remote_file_name}"
+                # Construir la ruta completa
+                if base_path and remote_dir:
+                    remote_path = f"{base_path}/{remote_dir}/{remote_file_name}"
+                elif base_path:
+                    remote_path = f"{base_path}/{remote_file_name}"
+                elif remote_dir:
+                    remote_path = f"{remote_dir}/{remote_file_name}"
+                else:
+                    remote_path = remote_file_name
+                
+                # Log para depuración
+                self.logger.message(f"Ruta remota calculada: {remote_path}")
+                
+                # Intentar crear el directorio remoto si es necesario
+                if remote_dir:
+                    full_remote_dir = f"{base_path}/{remote_dir}" if base_path else remote_dir
+                    try:
+                        self.logger.message(f"Verificando/creando directorio remoto: {full_remote_dir}")
+                        self._sftp_mkdir_p(sftp_client, full_remote_dir)
+                    except Exception as e:
+                        self.logger.warning(f"No se pudo crear el directorio remoto {full_remote_dir}: {str(e)}")
+                        self.logger.message("Intentando subir archivo directamente en el directorio actual...")
                 
                 # Subir el archivo
                 self.logger.message(f"Subiendo archivo a sftp://{host}:{port}/{remote_path}...")
