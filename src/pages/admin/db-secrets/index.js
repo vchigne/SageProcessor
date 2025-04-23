@@ -6,7 +6,8 @@ import {
   CheckCircleIcon, 
   DatabaseIcon,
   KeyIcon,
-  ServerIcon
+  ServerIcon,
+  XMarkIcon
 } from '@heroicons/react/24/outline';
 import { toast } from 'react-toastify';
 import { Title, Text, Subtitle, Card, Button, Badge } from '@tremor/react';
@@ -32,6 +33,11 @@ export default function DatabaseSecrets() {
   const [currentSecret, setCurrentSecret] = useState(initialSecretState);
   const [isEditing, setIsEditing] = useState(false);
   const [testingId, setTestingId] = useState(null);
+  const [showDatabaseModal, setShowDatabaseModal] = useState(false);
+  const [databases, setDatabases] = useState([]);
+  const [loadingDatabases, setLoadingDatabases] = useState(false);
+  const [newDatabaseName, setNewDatabaseName] = useState("");
+  const [selectedSecretId, setSelectedSecretId] = useState(null);
 
   // Cargar secretos
   useEffect(() => {
@@ -263,6 +269,72 @@ export default function DatabaseSecrets() {
     // Solo usamos un único icono por ahora
     return <DatabaseIcon className="h-5 w-5 text-indigo-500" />;
   };
+  
+  // Listar bases de datos disponibles en un secreto
+  const handleListDatabases = async (secretId) => {
+    try {
+      setLoadingDatabases(true);
+      setSelectedSecretId(secretId);
+      
+      const response = await fetch(`/api/admin/db-secrets/${secretId}/databases`);
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Error al listar bases de datos');
+      }
+      
+      const data = await response.json();
+      setDatabases(data.databases || []);
+      setShowDatabaseModal(true);
+    } catch (error) {
+      console.error('Error:', error);
+      toast.error('Error al listar bases de datos: ' + error.message);
+    } finally {
+      setLoadingDatabases(false);
+    }
+  };
+  
+  // Crear nueva base de datos
+  const handleCreateDatabase = async () => {
+    if (!newDatabaseName || !newDatabaseName.trim()) {
+      toast.error('Debe indicar un nombre para la base de datos');
+      return;
+    }
+    
+    // Validar formato del nombre de base de datos
+    if (!/^[a-zA-Z0-9_]+$/.test(newDatabaseName)) {
+      toast.error('Nombre de base de datos inválido. Use solo letras, números y guiones bajos.');
+      return;
+    }
+    
+    try {
+      setLoadingDatabases(true);
+      
+      const response = await fetch(`/api/admin/db-secrets/${selectedSecretId}/databases`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ databaseName: newDatabaseName })
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Error al crear base de datos');
+      }
+      
+      toast.success(`Base de datos ${newDatabaseName} creada correctamente`);
+      setNewDatabaseName('');
+      
+      // Actualizar la lista de bases de datos
+      handleListDatabases(selectedSecretId);
+    } catch (error) {
+      console.error('Error:', error);
+      toast.error('Error al crear base de datos: ' + error.message);
+    } finally {
+      setLoadingDatabases(false);
+    }
+  };
 
   return (
     <>
@@ -282,7 +354,7 @@ export default function DatabaseSecrets() {
               onClick={() => router.push('/admin/database-connections')}
               color="cyan"
             >
-              Gestionar Conexiones
+              Volver a Conexiones
             </Button>
             <Button 
               icon={CheckCircleIcon} 
@@ -299,6 +371,28 @@ export default function DatabaseSecrets() {
             >
               {showForm ? 'Cancelar' : 'Nuevo Secreto'}
             </Button>
+          </div>
+        </div>
+        
+        <div className="mb-6 p-4 bg-amber-50 dark:bg-amber-900 rounded-md border border-amber-200 dark:border-amber-800">
+          <div className="flex items-start">
+            <div className="flex-shrink-0">
+              <KeyIcon className="h-5 w-5 text-amber-500 dark:text-amber-400" />
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                Gestión de Secretos
+              </h3>
+              <div className="mt-2 text-sm text-amber-700 dark:text-amber-300">
+                <p>
+                  Los secretos de base de datos almacenan credenciales de conexión de forma segura y pueden ser 
+                  referenciados desde múltiples conexiones.
+                </p>
+                <p className="mt-1">
+                  Después de crear un secreto, regrese a la página de <a href="/admin/database-connections" className="text-blue-600 dark:text-blue-400 underline">Conexiones a Bases de Datos</a> para crear conexiones específicas a bases de datos.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
         
@@ -407,13 +501,25 @@ export default function DatabaseSecrets() {
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                         Base de Datos (predeterminada)
                       </label>
-                      <input
-                        type="text"
-                        name="basedatos"
-                        value={currentSecret.basedatos}
-                        onChange={handleInputChange}
-                        className="w-full p-2 border rounded-md"
-                      />
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="text"
+                          name="basedatos"
+                          value={currentSecret.basedatos}
+                          onChange={handleInputChange}
+                          className="w-full p-2 border rounded-md"
+                        />
+                        {isEditing && (
+                          <button
+                            type="button"
+                            onClick={() => handleListDatabases(currentSecret.id)}
+                            className="px-2 py-2 bg-blue-100 text-blue-600 rounded hover:bg-blue-200 flex items-center"
+                            disabled={testingId !== null}
+                          >
+                            <DatabaseIcon className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </>
                 ) : (
@@ -615,6 +721,102 @@ export default function DatabaseSecrets() {
           </div>
         )}
       </div>
+      
+      {/* Modal para listar y crear bases de datos */}
+      {showDatabaseModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg w-full max-w-2xl overflow-hidden">
+            <div className="p-4 border-b flex justify-between items-center">
+              <h3 className="text-lg font-medium">Bases de Datos Disponibles</h3>
+              <button 
+                type="button" 
+                onClick={() => setShowDatabaseModal(false)}
+                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              >
+                <XMarkIcon className="h-5 w-5" />
+              </button>
+            </div>
+            
+            <div className="p-4">
+              {loadingDatabases ? (
+                <div className="flex justify-center items-center py-10">
+                  <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-500"></div>
+                </div>
+              ) : (
+                <>
+                  <div className="mb-6">
+                    <h4 className="text-sm font-medium mb-2">Crear Nueva Base de Datos</h4>
+                    <div className="flex space-x-2">
+                      <input
+                        type="text"
+                        placeholder="Nombre de la base de datos"
+                        value={newDatabaseName}
+                        onChange={(e) => setNewDatabaseName(e.target.value)}
+                        className="flex-1 p-2 border rounded-md"
+                      />
+                      <Button 
+                        color="indigo"
+                        onClick={handleCreateDatabase}
+                        disabled={loadingDatabases || !newDatabaseName.trim()}
+                      >
+                        Crear
+                      </Button>
+                    </div>
+                  </div>
+                  
+                  <div className="border-t pt-4">
+                    <h4 className="text-sm font-medium mb-2">Bases de Datos Existentes</h4>
+                    
+                    {databases.length === 0 ? (
+                      <p className="text-sm text-gray-500 dark:text-gray-400 py-2">
+                        No se encontraron bases de datos para este secreto.
+                      </p>
+                    ) : (
+                      <div className="grid gap-2">
+                        {databases.map((db, index) => (
+                          <div key={index} className="p-3 rounded-md border hover:bg-gray-50 dark:hover:bg-gray-750">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center">
+                                <DatabaseIcon className="h-4 w-4 text-indigo-500 mr-2" />
+                                <div>
+                                  <p className="font-medium">{db.name}</p>
+                                  <p className="text-xs text-gray-500">{db.description}</p>
+                                </div>
+                              </div>
+                              <div className="flex space-x-2">
+                                <Button 
+                                  size="xs"
+                                  color="indigo"
+                                  onClick={() => {
+                                    // Establecer la base de datos seleccionada en el input
+                                    setCurrentSecret(prev => ({
+                                      ...prev,
+                                      basedatos: db.name
+                                    }));
+                                    setShowDatabaseModal(false);
+                                  }}
+                                >
+                                  Seleccionar
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+            
+            <div className="p-4 border-t flex justify-end">
+              <Button onClick={() => setShowDatabaseModal(false)} color="gray">
+                Cerrar
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

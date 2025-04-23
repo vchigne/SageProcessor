@@ -8,7 +8,9 @@ import {
   DocumentTextIcon,
   CloudIcon,
   ShieldCheckIcon,
-  WrenchIcon
+  WrenchIcon,
+  KeyIcon,
+  DatabaseIcon
 } from '@heroicons/react/24/outline';
 
 export default function ConfigMenu() {
@@ -42,16 +44,10 @@ export default function ConfigMenu() {
       description: 'Gestionar proveedores de almacenamiento en la nube' 
     },
     { 
-      name: 'Secretos de Bases de Datos', 
-      href: '/admin/db-secrets', 
-      icon: ShieldCheckIcon,
-      description: 'Gestionar secretos y credenciales para conexiones a bases de datos' 
-    },
-    { 
-      name: 'Conexiones a Bases de Datos', 
+      name: 'Bases de Datos', 
       href: '/admin/database-connections', 
-      icon: WrenchIcon,
-      description: 'Gestionar conexiones a bases de datos para materializaciones' 
+      icon: DatabaseIcon,
+      description: 'Administrar conexiones y secretos de bases de datos para materializaciones' 
     },
     { 
       name: 'Parámetros de ejecuciones', 

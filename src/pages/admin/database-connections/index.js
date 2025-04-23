@@ -7,7 +7,8 @@ import {
   CloudIcon,
   ShieldCheckIcon,
   ServerIcon,
-  DocumentTextIcon
+  DocumentTextIcon,
+  DatabaseIcon
 } from '@heroicons/react/24/outline';
 import { toast } from 'react-toastify';
 import { Title, Text, Subtitle, Card, Button, Badge } from '@tremor/react';
@@ -291,6 +292,29 @@ export default function DatabaseConnections() {
             >
               {showForm ? 'Cancelar' : 'Nueva Conexión'}
             </Button>
+          </div>
+        </div>
+        
+        <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900 rounded-md border border-blue-200 dark:border-blue-800">
+          <div className="flex items-start">
+            <div className="flex-shrink-0">
+              <DatabaseIcon className="h-5 w-5 text-blue-500 dark:text-blue-400" />
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                Configuración de Base de Datos
+              </h3>
+              <div className="mt-2 text-sm text-blue-700 dark:text-blue-300">
+                <p>
+                  Las conexiones a bases de datos utilizan <strong>secretos</strong> para almacenar las credenciales de forma segura. 
+                  Para agregar una conexión:
+                </p>
+                <ol className="mt-1 list-decimal list-inside pl-2">
+                  <li>Primero, cree un secreto con sus credenciales usando el botón "Gestionar Secretos"</li>
+                  <li>Luego, cree una conexión seleccionando el secreto y la base de datos específica</li>
+                </ol>
+              </div>
+            </div>
           </div>
         </div>
         
