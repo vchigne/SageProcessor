@@ -172,97 +172,74 @@ async function listDatabases(req, res, secretId) {
           });
         }
       case 'mssql':
-        // Para SQL Server, consultamos la base de datos de logs para obtener las bases de datos creadas
+        // Para SQL Server, consultamos directamente las bases de datos del servidor
         try {
-          // Verificar si existe la tabla de logs
-          let hasLogTable = false;
-          try {
-            const tableCheckResult = await executeSQL(`
-              SELECT EXISTS (
-                SELECT FROM pg_tables
-                WHERE schemaname = 'public'
-                AND tablename = 'db_operations_log'
-              ) as exists
-            `);
-            hasLogTable = tableCheckResult.rows[0].exists;
-          } catch (error) {
-            // Si hay error en la verificación, asumimos que no existe
-            hasLogTable = false;
-          }
+          // Determinar la URL base para la API
+          const apiBaseUrl = process.env.NEXTAUTH_URL || process.env.VERCEL_URL || 'http://localhost:5000';
           
-          // Bases de datos por defecto
-          const databases = [
-            {
-              name: "master",
-              description: "Base de datos master (sistema)",
-              tables: 0
+          // Usar URL absoluta porque esto se ejecuta en el servidor
+          const response = await fetch(`${apiBaseUrl}/api/admin/db-helpers/list-sqlserver-databases`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
             },
-            {
-              name: "model",
-              description: "Base de datos model (sistema)",
-              tables: 0
-            },
-            {
-              name: "msdb",
-              description: "Base de datos msdb (sistema)",
-              tables: 0
-            },
-            {
-              name: "tempdb",
-              description: "Base de datos temporal (sistema)",
-              tables: 0
+            body: JSON.stringify({
+              server: secret.servidor,
+              port: secret.puerto,
+              user: secret.usuario,
+              password: secret.contrasena
+            }),
+          });
+          
+          const result = await response.json();
+          
+          if (!response.ok) {
+            console.error('Error al listar bases de datos SQL Server:', result.message);
+            
+            // Si hay error con el servidor SQL, devolver lista por defecto
+            const defaultDatabases = [
+              {
+                name: "master",
+                description: "Base de datos master (sistema)",
+                tables: 0
+              },
+              {
+                name: "model",
+                description: "Base de datos model (sistema)",
+                tables: 0
+              },
+              {
+                name: "msdb",
+                description: "Base de datos msdb (sistema)",
+                tables: 0
+              }
+            ];
+            
+            // Añadir la base de datos configurada en el secreto si existe
+            if (secret.basedatos && !defaultDatabases.some(db => db.name === secret.basedatos)) {
+              defaultDatabases.push({
+                name: secret.basedatos,
+                description: `Base de datos ${secret.basedatos} (configurada)`,
+                tables: 0
+              });
             }
-          ];
-          
-          // Añadir la base de datos configurada en el secreto si existe
-          if (secret.basedatos && !databases.some(db => db.name === secret.basedatos)) {
-            databases.push({
-              name: secret.basedatos,
-              description: `Base de datos ${secret.basedatos} (configurada)`,
-              tables: 0
+            
+            return res.status(200).json({ 
+              databases: defaultDatabases,
+              error: result.message,
+              fromServer: false
             });
           }
           
-          // Si existe la tabla de logs, obtenemos las bases de datos creadas
-          if (hasLogTable) {
-            try {
-              const createdDbsResult = await executeSQL(`
-                SELECT DISTINCT
-                  (detalles->>'database') as name,
-                  fecha_creacion
-                FROM
-                  db_operations_log
-                WHERE
-                  secreto_id = $1
-                  AND operacion = 'CREATE_DATABASE'
-                  AND (detalles->>'tipo')::text = 'mssql'
-                  AND estado = 'COMPLETED'
-                ORDER BY
-                  fecha_creacion DESC
-              `, [secretId]);
-              
-              // Añadir las bases de datos creadas que no estén ya en la lista
-              for (const row of createdDbsResult.rows) {
-                const dbName = row.name;
-                if (!databases.some(db => db.name === dbName)) {
-                  databases.push({
-                    name: dbName,
-                    description: `Base de datos ${dbName} (creada ${new Date(row.fecha_creacion).toLocaleString()})`,
-                    tables: 0
-                  });
-                }
-              }
-            } catch (logError) {
-              console.error('Error al consultar bases de datos creadas:', logError);
-              // Continuamos con las bases de datos por defecto
-            }
-          }
-          
-          return res.status(200).json({ databases });
+          // Devolver las bases de datos obtenidas del servidor real SQL Server
+          return res.status(200).json({ 
+            databases: result.databases,
+            fromServer: true 
+          });
         } catch (error) {
-          console.error('Error al preparar lista de bases de datos SQL Server:', error);
+          console.error('Error al listar bases de datos SQL Server:', error);
           return res.status(500).json({ 
-            message: 'Error al preparar lista de bases de datos SQL Server', 
+            message: 'Error al listar bases de datos SQL Server', 
             error: error.message 
           });
         }
