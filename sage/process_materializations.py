@@ -799,38 +799,52 @@ class MaterializationProcessor:
         account_name = None
         
         # Verificar si la connection_string es en formato URL+SAS (como en janitor_daemon.py)
-        if connection_string and 'blob.core.windows.net' in connection_string:
-            use_sas = True
-            self.logger.message("Detectado formato connection_string con URL Blob Storage, activando modo SAS")
+        if connection_string:
+            # La cadena puede estar en dos formatos:
+            # 1. URL+SAS: comienza con https:// o tiene https:// y 'blob.core.windows.net'
+            # 2. Formato estándar: comienza con BlobEndpoint=, DefaultEndpointsProtocol=, etc.
+            if connection_string.startswith('https://') or ('https://' in connection_string and 'blob.core.windows.net' in connection_string):
+                use_sas = True
+                self.logger.message("Detectado formato connection_string con URL Blob Storage, activando modo SAS")
+            elif connection_string.startswith('BlobEndpoint=') or connection_string.startswith('DefaultEndpointsProtocol='):
+                use_sas = False
+                self.logger.message("Detectado formato connection_string estándar de Azure")
             
-            # Intentar extraer el account_name de la URL
-            try:
-                parts = connection_string.split(';')
-                for part in parts:
-                    if part.startswith('https://'):
-                        parsed_url = urlparse(part)
-                        hostname = parsed_url.netloc
-                        account_match = re.match(r'([^\.]+)\.blob\.core\.windows\.net', hostname)
-                        if account_match:
-                            account_name = account_match.group(1)
-                            self.logger.message(f"Extraído account_name de la URL: {account_name}")
-                            break
-            except Exception as e:
-                self.logger.warning(f"No se pudo extraer el account_name de la URL: {e}")
+            # Solo intentar extraer el account_name para URLs de Azure Blob
+            if use_sas:
+                try:
+                    parts = connection_string.split(';')
+                    for part in parts:
+                        if part.startswith('https://'):
+                            parsed_url = urlparse(part)
+                            hostname = parsed_url.netloc
+                            account_match = re.match(r'([^\.]+)\.blob\.core\.windows\.net', hostname)
+                            if account_match:
+                                account_name = account_match.group(1)
+                                self.logger.message(f"Extraído account_name de la URL: {account_name}")
+                                break
+                except Exception as e:
+                    self.logger.warning(f"No se pudo extraer el account_name de la URL: {e}")
         
         # Crear cliente de blob service según el tipo de credenciales
         if use_sas:
             self.logger.message("Usando modo SAS para Azure con URL + SAS token")
             
-            # Si la connection_string incluye 'SharedAccessSignature=' necesitamos procesarla
-            if ';SharedAccessSignature=' in connection_string:
+            # Formato estándar de conexión con SAS incluido
+            # Ejemplos:
+            # 1. BlobEndpoint=https://account.blob.core.windows.net/;SharedAccessSignature=token
+            # 2. https://account.blob.core.windows.net/;SharedAccessSignature=token
+            if connection_string and (';SharedAccessSignature=' in connection_string or 'SharedAccessSignature=' in connection_string):
+                self.logger.message("Detectado formato con SharedAccessSignature explícito")
                 parts = connection_string.split(';')
                 base_url = None
                 sas_token = None
                 
                 for part in parts:
-                    if part.startswith('https://'):
-                        base_url = part
+                    if part.startswith('https://') or part.startswith('BlobEndpoint=https://'):
+                        # Eliminar BlobEndpoint= si existe
+                        clean_part = part.replace('BlobEndpoint=', '')
+                        base_url = clean_part
                     elif part.startswith('SharedAccessSignature='):
                         sas_token = part.replace('SharedAccessSignature=', '')
                 
