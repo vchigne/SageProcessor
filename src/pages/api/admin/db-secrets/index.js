@@ -90,10 +90,31 @@ async function createDBSecret(req, res) {
     } = req.body;
     
     // Validaciones básicas
-    if (!nombre || !tipo || !servidor || !puerto || !usuario || !contrasena) {
+    if (!nombre || !tipo || !servidor || !usuario || !contrasena) {
       return res.status(400).json({ 
-        message: 'Faltan campos obligatorios: nombre, tipo, servidor, puerto, usuario, contraseña' 
+        message: 'Faltan campos obligatorios: nombre, tipo, servidor, usuario, contraseña' 
       });
+    }
+    
+    // Asignar valores predeterminados según el tipo de base de datos
+    let puertoFinal = puerto;
+    if (!puertoFinal) {
+      switch (tipo) {
+        case 'postgresql':
+          puertoFinal = '5432';
+          break;
+        case 'mysql':
+          puertoFinal = '3306';
+          break;
+        case 'mssql':
+          puertoFinal = '1433';
+          break;
+        case 'duckdb':
+          puertoFinal = '0'; // DuckDB es embebido, no usa puerto
+          break;
+        default:
+          puertoFinal = '0';
+      }
     }
 
     // Validar que el tipo sea uno de los permitidos
@@ -129,7 +150,7 @@ async function createDBSecret(req, res) {
       descripcion || '',
       tipo,
       servidor,
-      puerto,
+      puertoFinal, // Usamos el puerto con valor predeterminado si no se especificó
       usuario,
       contrasena,
       basedatos || '',

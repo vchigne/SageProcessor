@@ -103,10 +103,31 @@ async function updateDBSecret(req, res, id) {
     } = req.body;
     
     // Validaciones básicas
-    if (!nombre || !tipo || !servidor || !puerto || !usuario) {
+    if (!nombre || !tipo || !servidor || !usuario) {
       return res.status(400).json({ 
-        message: 'Faltan campos obligatorios: nombre, tipo, servidor, puerto, usuario' 
+        message: 'Faltan campos obligatorios: nombre, tipo, servidor, usuario' 
       });
+    }
+    
+    // Asignar valores predeterminados según el tipo de base de datos
+    let puertoFinal = puerto;
+    if (!puertoFinal) {
+      switch (tipo) {
+        case 'postgresql':
+          puertoFinal = '5432';
+          break;
+        case 'mysql':
+          puertoFinal = '3306';
+          break;
+        case 'mssql':
+          puertoFinal = '1433';
+          break;
+        case 'duckdb':
+          puertoFinal = '0'; // DuckDB es embebido, no usa puerto
+          break;
+        default:
+          puertoFinal = '0';
+      }
     }
     
     // Validar que el tipo sea uno de los permitidos
@@ -144,7 +165,7 @@ async function updateDBSecret(req, res, id) {
       descripcion || '',
       tipo,
       servidor,
-      puerto,
+      puertoFinal, // Usamos el puerto con valor predeterminado si no se especificó
       usuario,
       basedatos || '',
       opciones_conexion ? JSON.stringify(opciones_conexion) : '{}',
