@@ -2,13 +2,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { 
-  PlusCircleIcon, 
-  CheckCircleIcon, 
-  CloudIcon,
-  ShieldCheckIcon,
-  ServerIcon,
-  DocumentTextIcon,
-  DatabaseIcon
+  PlusCircleIcon 
 } from '@heroicons/react/24/outline';
 import { toast } from 'react-toastify';
 import { Title, Text, Subtitle, Card, Button, Badge } from '@tremor/react';
@@ -271,14 +265,14 @@ export default function DatabaseConnections() {
           </div>
           <div className="flex space-x-3">
             <Button 
-              icon={ShieldCheckIcon} 
+              icon={PlusCircleIcon} 
               onClick={() => router.push('/admin/db-secrets')}
               color="cyan"
             >
               Gestionar Secretos
             </Button>
             <Button 
-              icon={CheckCircleIcon} 
+              icon={PlusCircleIcon} 
               onClick={handleTestAllConnections}
               color="amber"
               disabled={loading || connections.length === 0}
@@ -298,7 +292,7 @@ export default function DatabaseConnections() {
         <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900 rounded-md border border-blue-200 dark:border-blue-800">
           <div className="flex items-start">
             <div className="flex-shrink-0">
-              <DatabaseIcon className="h-5 w-5 text-blue-500 dark:text-blue-400" />
+              <PlusCircleIcon className="h-5 w-5 text-blue-500 dark:text-blue-400" />
             </div>
             <div className="ml-3">
               <h3 className="text-sm font-medium text-blue-800 dark:text-blue-200">
@@ -432,7 +426,7 @@ export default function DatabaseConnections() {
         ) : connections.length === 0 ? (
           <Card className="py-8">
             <div className="text-center">
-              <CloudIcon className="h-12 w-12 mx-auto text-gray-400" />
+              <PlusCircleIcon className="h-12 w-12 mx-auto text-gray-400" />
               <h3 className="mt-2 text-lg font-medium text-gray-900 dark:text-gray-100">
                 No hay conexiones configuradas
               </h3>
@@ -452,7 +446,7 @@ export default function DatabaseConnections() {
               <Card key={connection.id} className="relative">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center">
-                    <CloudIcon className="h-5 w-5 text-indigo-500" />
+                    <PlusCircleIcon className="h-5 w-5 text-indigo-500" />
                     <div className="ml-2">
                       <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">
                         {connection.nombre}
@@ -484,7 +478,7 @@ export default function DatabaseConnections() {
                   )}
                   {connection.table_count > 0 && (
                     <div className="flex items-center">
-                      <DocumentTextIcon className="h-4 w-4 mr-1" />
+                      <PlusCircleIcon className="h-4 w-4 mr-1" />
                       <span>{connection.table_count} tablas</span>
                     </div>
                   )}
