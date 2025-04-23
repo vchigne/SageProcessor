@@ -313,6 +313,8 @@ export default function DatabaseConnections() {
     try {
       setLoadingDatabases(true);
       
+      // Usamos el endpoint directo del secreto para mostrar las bases cuando estamos creando
+      // Una nueva conexión (ya que aún no tenemos un ID de conexión)
       const response = await fetch(`/api/admin/db-secrets/${secretId}/databases`);
       if (!response.ok) {
         throw new Error('Error al obtener bases de datos');
@@ -329,12 +331,79 @@ export default function DatabaseConnections() {
     }
   };
   
+  // Listar bases de datos para una conexión existente
+  const handleListDatabasesForConnection = async (connectionId) => {
+    if (!connectionId) {
+      toast.error('ID de conexión no válido');
+      return;
+    }
+    
+    try {
+      setLoadingDatabases(true);
+      
+      const response = await fetch(`/api/admin/database-connections/${connectionId}/databases`);
+      if (!response.ok) {
+        throw new Error('Error al obtener bases de datos');
+      }
+      
+      const data = await response.json();
+      setDatabases(data.databases || []);
+      setShowDatabaseModal(true);
+    } catch (error) {
+      console.error('Error al listar bases de datos para conexión:', error);
+      toast.error(`Error al listar bases de datos: ${error.message}`);
+    } finally {
+      setLoadingDatabases(false);
+    }
+  };
+  
   // Seleccionar una base de datos del modal
   const handleSelectDatabase = (database) => {
-    setCurrentConnection(prev => ({
-      ...prev,
-      base_datos: database.name
-    }));
+    // Si estamos editando una conexión existente
+    if (isEditing) {
+      // Actualiza la base de datos en la conexión actual
+      setCurrentConnection(prev => ({
+        ...prev,
+        base_datos: database.name
+      }));
+      
+      // Si ya tenemos el ID de la conexión, actualizarla directamente
+      if (currentConnection.id) {
+        const updateConnection = async () => {
+          try {
+            const response = await fetch(`/api/admin/database-connections/${currentConnection.id}`, {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                ...currentConnection,
+                base_datos: database.name
+              }),
+            });
+            
+            if (!response.ok) {
+              throw new Error('Error al actualizar la base de datos');
+            }
+            
+            toast.success('Base de datos actualizada correctamente');
+            fetchConnections(); // Recargar las conexiones
+          } catch (error) {
+            console.error('Error al actualizar la base de datos:', error);
+            toast.error(`Error al actualizar la base de datos: ${error.message}`);
+          }
+        };
+        
+        updateConnection();
+      }
+    } else {
+      // Si es una nueva conexión, simplemente actualizar el estado
+      setCurrentConnection(prev => ({
+        ...prev,
+        base_datos: database.name
+      }));
+    }
+    
     setShowDatabaseModal(false);
   };
 
@@ -587,8 +656,19 @@ export default function DatabaseConnections() {
                   <div>
                     <span className="font-medium">Usuario:</span> {connection.usuario}
                   </div>
-                  <div>
+                  <div className="flex items-center gap-1">
                     <span className="font-medium">Base de datos:</span> {connection.base_datos}
+                    <button 
+                      type="button"
+                      onClick={() => handleListDatabasesForConnection(connection.id)}
+                      className="ml-1 inline-flex items-center p-0.5 text-xs font-medium text-blue-500 hover:text-blue-700"
+                      title="Seleccionar otra base de datos"
+                    >
+                      <span className="sr-only">Seleccionar</span>
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                        <path d="M10 3a1.5 1.5 0 110 3 1.5 1.5 0 010-3zM10 8.5a1.5 1.5 0 110 3 1.5 1.5 0 010-3zM11.5 15.5a1.5 1.5 0 10-3 0 1.5 1.5 0 003 0z" />
+                      </svg>
+                    </button>
                   </div>
                   {connection.esquema && (
                     <div>
