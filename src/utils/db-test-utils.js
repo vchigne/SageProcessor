@@ -1,4 +1,5 @@
 import { Client } from 'pg';
+import { testSQLServerConnection as testSQL } from './sql-test';
 
 /**
  * Probar conexión a PostgreSQL
@@ -107,90 +108,7 @@ export async function testSQLServerConnection(
   database,
   options = {}
 ) {
-  // Validación básica de parámetros
-  if (!host) {
-    return {
-      success: false,
-      message: `Error al conectar a SQL Server: Falta el servidor`,
-      details: {
-        code: 'INVALID_CONFIG',
-        sqlMessage: 'Configuración inválida: falta servidor'
-      }
-    };
-  }
-  
-  if (!port) {
-    return {
-      success: false,
-      message: `Error al conectar a SQL Server: Falta el puerto`,
-      details: {
-        code: 'INVALID_CONFIG',
-        sqlMessage: 'Configuración inválida: falta puerto'
-      }
-    };
-  }
-  
-  // Si no hay base de datos especificada, usar master por defecto
-  const useDatabase = database || 'master';
-  
-  try {
-    // Determinar si estamos ejecutando en el servidor o en el cliente
-    let apiUrl;
-    if (typeof window === 'undefined') {
-      // Estamos en el servidor, necesitamos una URL absoluta
-      const baseUrl = process.env.NEXTAUTH_URL || process.env.VERCEL_URL || 'http://localhost:5000';
-      apiUrl = `${baseUrl}/api/admin/db-helpers/test-sqlserver-connection`;
-    } else {
-      // Estamos en el cliente, podemos usar una URL relativa
-      apiUrl = '/api/admin/db-helpers/test-sqlserver-connection';
-    }
-    
-    // Conectar a SQL Server utilizando pymssql a través del servidor Python
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        server: host,
-        port: parseInt(port),
-        user,
-        password,
-        database: useDatabase
-      }),
-    });
-    
-    const result = await response.json();
-    
-    if (!response.ok) {
-      return {
-        success: false,
-        message: `Error al conectar a SQL Server: ${result.message || 'Error de conexión'}`,
-        details: result.details || { error: 'Error de conexión desconocido' }
-      };
-    }
-    
-    return {
-      success: true,
-      message: result.message || 'Conexión exitosa a SQL Server',
-      details: result.details || {
-        server: host,
-        port,
-        database: useDatabase,
-        user: user ? '****' : 'No configurado'
-      }
-    };
-  } catch (error) {
-    console.error('Error testing SQL Server connection:', error);
-    return {
-      success: false,
-      message: `Error al conectar a SQL Server: ${error.message}`,
-      details: {
-        code: 'CONNECTION_ERROR',
-        sqlMessage: error.message
-      }
-    };
-  }
+  return testSQL(host, port, user, password, database, options);
 }
 
 /**
