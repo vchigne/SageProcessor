@@ -1,16 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { 
-  EnvelopeIcon, 
-  ServerIcon,
-  Cog6ToothIcon,
-  CodeBracketIcon,
-  DocumentTextIcon,
-  CloudIcon,
-  ShieldCheckIcon,
-  WrenchIcon,
-  KeyIcon,
-  DatabaseIcon
+  Cog6ToothIcon
 } from '@heroicons/react/24/outline';
 
 export default function ConfigMenu() {
@@ -22,43 +13,43 @@ export default function ConfigMenu() {
     { 
       name: 'Configuraciones Email', 
       href: '/admin/configuraciones-email', 
-      icon: EnvelopeIcon,
+      icon: Cog6ToothIcon,
       description: 'Gestionar configuración de correos y notificaciones' 
     },
     { 
       name: 'Configuración de Plantillas de Email', 
       href: '/admin/plantillas-email', 
-      icon: DocumentTextIcon,
+      icon: Cog6ToothIcon,
       description: 'Personalizar plantillas para diferentes tipos de notificaciones' 
     },
     { 
       name: 'Configuración YAML Studio', 
       href: '/settings', 
-      icon: WrenchIcon,
+      icon: Cog6ToothIcon,
       description: 'Administrar configuración del YAML Studio' 
     },
     { 
       name: 'SAGE Clouds', 
       href: '/admin/clouds', 
-      icon: CloudIcon,
+      icon: Cog6ToothIcon,
       description: 'Gestionar proveedores de almacenamiento en la nube' 
     },
     { 
       name: 'Bases de Datos', 
       href: '/admin/database-connections', 
-      icon: DatabaseIcon,
+      icon: Cog6ToothIcon,
       description: 'Administrar conexiones y secretos de bases de datos para materializaciones' 
     },
     { 
       name: 'Parámetros de ejecuciones', 
       href: '/admin/ejecuciones-config', 
-      icon: CodeBracketIcon,
+      icon: Cog6ToothIcon,
       description: 'Configurar almacenamiento en la nube para ejecuciones' 
     },
     { 
       name: 'Gestión Administrativa', 
       href: '/admin/system-config', 
-      icon: ShieldCheckIcon,
+      icon: Cog6ToothIcon,
       description: 'Administrar notificaciones y monitoreo del sistema' 
     }
   ];
@@ -101,7 +92,7 @@ export default function ConfigMenu() {
                   className="flex items-center gap-x-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                   onClick={() => setIsOpen(false)}
                 >
-                  <option.icon className="h-5 w-5 text-gray-500" aria-hidden="true" />
+                  {option.icon && <option.icon className="h-5 w-5 text-gray-500" aria-hidden="true" />}
                   <div>
                     <p className="font-medium">{option.name}</p>
                     <p className="text-xs text-gray-500">{option.description}</p>
