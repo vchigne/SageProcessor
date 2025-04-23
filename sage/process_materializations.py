@@ -14,7 +14,8 @@ import io
 import tempfile
 from typing import Optional, Dict, List, Any, Tuple, Union
 from urllib.parse import urlparse
-from azure.storage.blob import BlobServiceClient, ContentSettings
+from azure.storage.blob import BlobServiceClient, ContentSettings, ContainerClient
+import re
 from google.cloud.storage import Client as GCPStorageClient
 from google.oauth2 import service_account
 from .logger import SageLogger
@@ -786,8 +787,103 @@ class MaterializationProcessor:
         
         # Crear cliente de blob service según el tipo de credenciales
         blob_service_client = None
+        container_client = None
+        use_sas = False
+        account_name = None
         
-        if not connection_string:
+        # Verificar si la connection_string es en formato URL+SAS (como en janitor_daemon.py)
+        if connection_string and 'blob.core.windows.net' in connection_string:
+            use_sas = True
+            self.logger.message("Detectado formato connection_string con URL Blob Storage, activando modo SAS")
+            
+            # Intentar extraer el account_name de la URL
+            try:
+                parts = connection_string.split(';')
+                for part in parts:
+                    if part.startswith('https://'):
+                        parsed_url = urlparse(part)
+                        hostname = parsed_url.netloc
+                        account_match = re.match(r'([^\.]+)\.blob\.core\.windows\.net', hostname)
+                        if account_match:
+                            account_name = account_match.group(1)
+                            self.logger.message(f"Extraído account_name de la URL: {account_name}")
+                            break
+            except Exception as e:
+                self.logger.warning(f"No se pudo extraer el account_name de la URL: {e}")
+        
+        # Crear cliente de blob service según el tipo de credenciales
+        if use_sas:
+            self.logger.message("Usando modo SAS para Azure con URL + SAS token")
+            
+            # Si la connection_string incluye 'SharedAccessSignature=' necesitamos procesarla
+            if ';SharedAccessSignature=' in connection_string:
+                parts = connection_string.split(';')
+                base_url = None
+                sas_token = None
+                
+                for part in parts:
+                    if part.startswith('https://'):
+                        base_url = part
+                    elif part.startswith('SharedAccessSignature='):
+                        sas_token = part.replace('SharedAccessSignature=', '')
+                
+                if not base_url or not sas_token:
+                    raise ValueError("No se pudo extraer la URL base o el SAS token de la cadena de conexión")
+                
+                # Si el base_url no incluye el container, lo añadimos
+                if not f"/{container_name}" in base_url:
+                    container_url = f"{base_url}/{container_name}"
+                else:
+                    container_url = base_url
+                
+                # Asegurarnos de que el SAS token comience con ?
+                if not sas_token.startswith('?'):
+                    sas_token = f"?{sas_token}"
+                
+                self.logger.message(f"URL del contenedor: {container_url}")
+                self.logger.message(f"Longitud del SAS token: {len(sas_token)}")
+                
+                # Crear el container_client directamente con la URL + SAS
+                container_client = ContainerClient.from_container_url(f"{container_url}{sas_token}")
+                
+                # Si necesitamos un BlobServiceClient para operaciones a nivel de servicio 
+                if account_name:
+                    blob_service_url = f"https://{account_name}.blob.core.windows.net"
+                    blob_service_client = BlobServiceClient(account_url=blob_service_url, credential=sas_token)
+                else:
+                    # En este caso no podemos crear un BlobServiceClient, pero no lo necesitamos
+                    # si ya tenemos un ContainerClient
+                    blob_service_client = None
+            else:
+                # La cadena parece ser una URL completa con SAS token en la query
+                try:
+                    parsed_url = urlparse(connection_string)
+                    base_url = f"{parsed_url.scheme}://{parsed_url.netloc}{parsed_url.path}"
+                    sas_token = f"?{parsed_url.query}" if parsed_url.query else ""
+                    
+                    # Si la URL no incluye el contenedor, lo añadimos
+                    if not f"/{container_name}" in base_url:
+                        container_url = f"{base_url}/{container_name}"
+                    else:
+                        container_url = base_url
+                    
+                    self.logger.message(f"URL del contenedor: {container_url}")
+                    self.logger.message(f"Longitud del SAS token: {len(sas_token)}")
+                    
+                    # Crear el container_client directamente con la URL + SAS
+                    container_client = ContainerClient.from_container_url(f"{container_url}{sas_token}")
+                    
+                    # Si necesitamos un BlobServiceClient para operaciones a nivel de servicio
+                    if account_name:
+                        blob_service_url = f"https://{account_name}.blob.core.windows.net"
+                        blob_service_client = BlobServiceClient(account_url=blob_service_url, credential=sas_token.lstrip('?'))
+                    else:
+                        blob_service_client = None
+                except Exception as e:
+                    self.logger.error(f"Error al procesar la URL de Azure: {e}")
+                    raise ValueError(f"No se pudo procesar la URL de Azure: {e}")
+        elif not connection_string:
+            # No hay connection_string, intentamos con account_name y otras credenciales
             account_name = credentials.get('account_name')
             account_key = credentials.get('account_key')
             sas_token = credentials.get('sas_token')
@@ -807,15 +903,20 @@ class MaterializationProcessor:
             else:
                 raise ValueError("Se requiere connection_string, account_name + sas_token, o account_name + account_key para Azure")
         else:
-            # Usar connection_string
-            self.logger.message(f"Usando autenticación con connection_string para Azure")
-            blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+            # Usar connection_string estándar
+            self.logger.message(f"Usando autenticación con connection_string estándar para Azure")
+            try:
+                blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+            except Exception as e:
+                self.logger.error(f"Error al crear el cliente de Azure con connection_string estándar: {e}")
+                raise ValueError(f"Error al crear el cliente de Azure con connection_string estándar: {e}")
         
-        if not blob_service_client:
-            raise ValueError("No se pudo crear el cliente de blob service para Azure")
+        # Si tenemos blob_service_client pero no container_client, creamos el container_client
+        if blob_service_client and not container_client:
+            container_client = blob_service_client.get_container_client(container_name)
         
-        # Obtener el cliente del contenedor
-        container_client = blob_service_client.get_container_client(container_name)
+        if not container_client:
+            raise ValueError("No se pudo crear el cliente de contenedor para Azure")
         
         # Procesar según formato
         buffer = io.BytesIO()
