@@ -105,6 +105,7 @@ export default async function handler(req, res) {
     };
     
     let testResult = null;
+    let estado_conexion = 'pendiente';
     
     // Probar conexión según el tipo de base de datos
     switch (connection.tipo) {
@@ -118,6 +119,7 @@ export default async function handler(req, res) {
           connection.esquema,
           combinedConfig
         );
+        estado_conexion = testResult.success ? 'activo' : 'error';
         break;
       case 'mysql':
         testResult = testMySQLConnection(
@@ -128,6 +130,7 @@ export default async function handler(req, res) {
           connection.base_datos,
           combinedConfig
         );
+        estado_conexion = testResult.success ? 'activo' : 'error';
         break;
       case 'mssql':
         testResult = testSQLServerConnection(
@@ -138,12 +141,20 @@ export default async function handler(req, res) {
           connection.base_datos,
           combinedConfig
         );
+        estado_conexion = testResult.success ? 'activo' : 'error';
         break;
       case 'duckdb':
         testResult = testDuckDBConnection(connection.base_datos);
+        estado_conexion = testResult.success ? 'activo' : 'error';
         break;
       default:
         testResult = { success: false, message: 'Tipo de base de datos no soportado' };
+        estado_conexion = 'error';
+    }
+    
+    // Asegurarse de que el estado de conexión sea válido
+    if (!['activo', 'error', 'inactivo'].includes(estado_conexion)) {
+      estado_conexion = testResult.success ? 'activo' : 'error';
     }
     
     // Actualizar estado de la conexión en la base de datos
@@ -155,27 +166,42 @@ export default async function handler(req, res) {
       WHERE id = $2
     `;
     
-    await executeSQL(updateQuery, [
-      testResult.success ? 'activo' : 'error',
-      id
-    ]);
+    await executeSQL(updateQuery, [estado_conexion, id]);
     
     if (testResult.success) {
       return res.status(200).json({ 
         message: testResult.message || 'Conexión exitosa a la base de datos',
-        details: testResult.details || {}
+        details: testResult.details || {},
+        estado_conexion
       });
     } else {
       return res.status(400).json({ 
         message: testResult.message || 'Error al conectar a la base de datos',
-        details: testResult.details || {}
+        details: testResult.details || {},
+        estado_conexion
       });
     }
   } catch (error) {
     console.error('Error al probar conexión de BD:', error);
+    
+    // Actualizar estado a error en caso de excepción
+    try {
+      const updateQuery = `
+        UPDATE database_connections
+        SET 
+          estado_conexion = 'error',
+          ultimo_test = NOW()
+        WHERE id = $1
+      `;
+      await executeSQL(updateQuery, [id]);
+    } catch (updateError) {
+      console.error('Error al actualizar estado de conexión:', updateError);
+    }
+    
     return res.status(500).json({ 
       message: 'Error al probar conexión a la base de datos',
-      error: error.message
+      error: error.message,
+      estado_conexion: 'error'
     });
   }
 }

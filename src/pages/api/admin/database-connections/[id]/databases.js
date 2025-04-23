@@ -69,7 +69,7 @@ export default async function handler(req, res) {
     try {
       // Hacer una solicitud interna a /api/admin/db-secrets/{secretId}/databases
       // Esto se hace a nivel de servidor para evitar CORS
-      const response = await fetch(`${process.env.NEXTAUTH_URL || process.env.VERCEL_URL || 'http://localhost:3000'}/api/admin/db-secrets/${secretId}/databases`);
+      const response = await fetch(`${process.env.NEXTAUTH_URL || process.env.VERCEL_URL || 'http://localhost:5000'}/api/admin/db-secrets/${secretId}/databases`);
       const data = await response.json();
       
       return res.status(response.status).json(data);

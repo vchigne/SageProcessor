@@ -212,12 +212,16 @@ export default function DatabaseConnections() {
       
       if (response.ok) {
         toast.success('Conexión exitosa a la base de datos');
+        // Recargar las conexiones para ver el estado actualizado
+        await fetchConnections();
       } else {
         throw new Error(result.message || 'Error al probar conexión');
       }
     } catch (error) {
       console.error('Error:', error);
       toast.error('Error al probar conexión: ' + error.message);
+      // Recargar las conexiones para ver el estado actualizado incluso si hay error
+      await fetchConnections();
     } finally {
       setTestingId(null);
     }
