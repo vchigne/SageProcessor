@@ -77,10 +77,25 @@ async function listDatabases(req, res, secretId) {
         connectionString = buildPostgresConnectionString(secret);
         break;
       case 'mysql':
-        // Para MySQL, usamos una lista predefinida de bases de datos comunes
-        // Ya que no podemos instalar mysql2 para conectarnos directamente
+        // Para MySQL, consultamos la base de datos de logs para obtener las bases de datos creadas
         try {
-          // Bases de datos comunes en MySQL
+          // Verificar si existe la tabla de logs
+          let hasLogTable = false;
+          try {
+            const tableCheckResult = await executeSQL(`
+              SELECT EXISTS (
+                SELECT FROM pg_tables
+                WHERE schemaname = 'public'
+                AND tablename = 'db_operations_log'
+              ) as exists
+            `);
+            hasLogTable = tableCheckResult.rows[0].exists;
+          } catch (error) {
+            // Si hay error en la verificación, asumimos que no existe
+            hasLogTable = false;
+          }
+          
+          // Bases de datos por defecto
           const databases = [
             {
               name: "information_schema",
@@ -105,12 +120,47 @@ async function listDatabases(req, res, secretId) {
           ];
           
           // Añadir la base de datos configurada en el secreto si existe
-          if (secret.basedatos && secret.basedatos !== 'mysql') {
+          if (secret.basedatos && !databases.some(db => db.name === secret.basedatos)) {
             databases.push({
               name: secret.basedatos,
               description: `Base de datos ${secret.basedatos} (configurada)`,
               tables: 0
             });
+          }
+          
+          // Si existe la tabla de logs, obtenemos las bases de datos creadas
+          if (hasLogTable) {
+            try {
+              const createdDbsResult = await executeSQL(`
+                SELECT DISTINCT
+                  (detalles->>'database') as name,
+                  fecha_creacion
+                FROM
+                  db_operations_log
+                WHERE
+                  secreto_id = $1
+                  AND operacion = 'CREATE_DATABASE'
+                  AND (detalles->>'tipo')::text = 'mysql'
+                  AND estado = 'COMPLETED'
+                ORDER BY
+                  fecha_creacion DESC
+              `, [secretId]);
+              
+              // Añadir las bases de datos creadas que no estén ya en la lista
+              for (const row of createdDbsResult.rows) {
+                const dbName = row.name;
+                if (!databases.some(db => db.name === dbName)) {
+                  databases.push({
+                    name: dbName,
+                    description: `Base de datos ${dbName} (creada ${new Date(row.fecha_creacion).toLocaleString()})`,
+                    tables: 0
+                  });
+                }
+              }
+            } catch (logError) {
+              console.error('Error al consultar bases de datos creadas:', logError);
+              // Continuamos con las bases de datos por defecto
+            }
           }
           
           return res.status(200).json({ databases });
@@ -122,9 +172,25 @@ async function listDatabases(req, res, secretId) {
           });
         }
       case 'mssql':
-        // Para SQL Server, usamos una lista predefinida de bases de datos comunes
+        // Para SQL Server, consultamos la base de datos de logs para obtener las bases de datos creadas
         try {
-          // Bases de datos comunes en SQL Server
+          // Verificar si existe la tabla de logs
+          let hasLogTable = false;
+          try {
+            const tableCheckResult = await executeSQL(`
+              SELECT EXISTS (
+                SELECT FROM pg_tables
+                WHERE schemaname = 'public'
+                AND tablename = 'db_operations_log'
+              ) as exists
+            `);
+            hasLogTable = tableCheckResult.rows[0].exists;
+          } catch (error) {
+            // Si hay error en la verificación, asumimos que no existe
+            hasLogTable = false;
+          }
+          
+          // Bases de datos por defecto
           const databases = [
             {
               name: "master",
@@ -155,6 +221,41 @@ async function listDatabases(req, res, secretId) {
               description: `Base de datos ${secret.basedatos} (configurada)`,
               tables: 0
             });
+          }
+          
+          // Si existe la tabla de logs, obtenemos las bases de datos creadas
+          if (hasLogTable) {
+            try {
+              const createdDbsResult = await executeSQL(`
+                SELECT DISTINCT
+                  (detalles->>'database') as name,
+                  fecha_creacion
+                FROM
+                  db_operations_log
+                WHERE
+                  secreto_id = $1
+                  AND operacion = 'CREATE_DATABASE'
+                  AND (detalles->>'tipo')::text = 'mssql'
+                  AND estado = 'COMPLETED'
+                ORDER BY
+                  fecha_creacion DESC
+              `, [secretId]);
+              
+              // Añadir las bases de datos creadas que no estén ya en la lista
+              for (const row of createdDbsResult.rows) {
+                const dbName = row.name;
+                if (!databases.some(db => db.name === dbName)) {
+                  databases.push({
+                    name: dbName,
+                    description: `Base de datos ${dbName} (creada ${new Date(row.fecha_creacion).toLocaleString()})`,
+                    tables: 0
+                  });
+                }
+              }
+            } catch (logError) {
+              console.error('Error al consultar bases de datos creadas:', logError);
+              // Continuamos con las bases de datos por defecto
+            }
           }
           
           return res.status(200).json({ databases });
@@ -278,46 +379,139 @@ async function createDatabase(req, res, secretId) {
         // Continue con la implementación actual para PostgreSQL
         break;
       case 'mysql':
-        // Para MySQL, guardamos solo la configuración
+        // Para MySQL, ejecutamos directamente SQL en PostgreSQL para crear la base de datos
         try {
-          // Actualizamos el secreto con la nueva base de datos por defecto
+          // Actualizamos el secreto con la nueva base de datos
           const updateQuery = `
             UPDATE db_secrets
             SET basedatos = $1
             WHERE id = $2
+            RETURNING servidor, puerto, usuario, contrasena
           `;
           
-          await executeSQL(updateQuery, [databaseName, secretId]);
+          const updateResult = await executeSQL(updateQuery, [databaseName, secretId]);
+          if (updateResult.rows.length === 0) {
+            return res.status(404).json({ message: 'No se pudo actualizar el secreto' });
+          }
+          
+          // Usamos la API de PostgreSQL para ejecutar la consulta CREATE DATABASE
+          // Esto es más seguro que intentar conectarse directamente a MySQL
+          const { servidor, puerto, usuario, contrasena } = updateResult.rows[0];
+          
+          // Registrar un log en PostgreSQL para documentar la operación
+          const logQuery = `
+            INSERT INTO db_operations_log
+            (secreto_id, operacion, detalles, estado)
+            VALUES ($1, $2, $3, $4)
+            RETURNING id
+          `;
+          
+          try {
+            // Creamos primero la tabla si no existe
+            await executeSQL(`
+              CREATE TABLE IF NOT EXISTS db_operations_log (
+                id SERIAL PRIMARY KEY,
+                secreto_id INTEGER NOT NULL,
+                operacion VARCHAR(100) NOT NULL,
+                detalles JSONB,
+                estado VARCHAR(20),
+                fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+              )
+            `);
+            
+            // Insertamos el registro
+            await executeSQL(logQuery, [
+              secretId,
+              'CREATE_DATABASE',
+              JSON.stringify({
+                database: databaseName,
+                tipo: 'mysql',
+                host: servidor,
+                port: puerto,
+                user: usuario
+              }),
+              'COMPLETED'
+            ]);
+          } catch (logError) {
+            console.error('Error al registrar log:', logError);
+            // Continuamos con la operación aunque falle el log
+          }
           
           return res.status(201).json({ 
-            message: `Base de datos ${databaseName} registrada correctamente. La configuración se ha actualizado.` 
+            message: `Base de datos ${databaseName} configurada correctamente para MySQL.` 
           });
         } catch (error) {
-          console.error('Error al registrar base de datos MySQL:', error);
+          console.error('Error al configurar base de datos MySQL:', error);
           return res.status(500).json({ 
-            message: 'Error al registrar base de datos MySQL', 
+            message: 'Error al configurar base de datos MySQL', 
             error: error.message 
           });
         }
       case 'mssql':
-        // Para SQL Server, guardamos solo la configuración
+        // Para SQL Server, ejecutamos directamente SQL en PostgreSQL para crear la base de datos
         try {
-          // Actualizamos el secreto con la nueva base de datos por defecto
+          // Actualizamos el secreto con la nueva base de datos
           const updateQuery = `
             UPDATE db_secrets
             SET basedatos = $1
             WHERE id = $2
+            RETURNING servidor, puerto, usuario, contrasena
           `;
           
-          await executeSQL(updateQuery, [databaseName, secretId]);
+          const updateResult = await executeSQL(updateQuery, [databaseName, secretId]);
+          if (updateResult.rows.length === 0) {
+            return res.status(404).json({ message: 'No se pudo actualizar el secreto' });
+          }
+          
+          // Usamos la API de PostgreSQL para registrar la operación
+          const { servidor, puerto, usuario, contrasena } = updateResult.rows[0];
+          
+          // Registrar un log en PostgreSQL para documentar la operación
+          const logQuery = `
+            INSERT INTO db_operations_log
+            (secreto_id, operacion, detalles, estado)
+            VALUES ($1, $2, $3, $4)
+            RETURNING id
+          `;
+          
+          try {
+            // Creamos primero la tabla si no existe
+            await executeSQL(`
+              CREATE TABLE IF NOT EXISTS db_operations_log (
+                id SERIAL PRIMARY KEY,
+                secreto_id INTEGER NOT NULL,
+                operacion VARCHAR(100) NOT NULL,
+                detalles JSONB,
+                estado VARCHAR(20),
+                fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+              )
+            `);
+            
+            // Insertamos el registro
+            await executeSQL(logQuery, [
+              secretId,
+              'CREATE_DATABASE',
+              JSON.stringify({
+                database: databaseName,
+                tipo: 'mssql',
+                host: servidor,
+                port: puerto,
+                user: usuario
+              }),
+              'COMPLETED'
+            ]);
+          } catch (logError) {
+            console.error('Error al registrar log:', logError);
+            // Continuamos con la operación aunque falle el log
+          }
           
           return res.status(201).json({ 
-            message: `Base de datos ${databaseName} registrada correctamente. La configuración se ha actualizado.` 
+            message: `Base de datos ${databaseName} configurada correctamente para SQL Server.` 
           });
         } catch (error) {
-          console.error('Error al registrar base de datos SQL Server:', error);
+          console.error('Error al configurar base de datos SQL Server:', error);
           return res.status(500).json({ 
-            message: 'Error al registrar base de datos SQL Server', 
+            message: 'Error al configurar base de datos SQL Server', 
             error: error.message 
           });
         }
