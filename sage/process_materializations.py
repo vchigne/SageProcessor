@@ -448,7 +448,22 @@ class MaterializationProcessor:
             self.logger.message(f"Creando engine SQLAlchemy con connection string: {conn_string.replace(db_connection_info.get('contrasena', ''), '***')}")
             
             # Configuraciones específicas para diferentes tipos de base de datos
-            if db_connection_info['tipo'] == 'duckdb':
+            if db_connection_info['tipo'] == 'mssql':
+                # Verificar que tenemos el driver ODBC para SQL Server
+                try:
+                    import pyodbc
+                    self.logger.message("Módulo pyodbc disponible para SQL Server")
+                    
+                    # Listar drivers disponibles (debug)
+                    available_drivers = pyodbc.drivers()
+                    if available_drivers:
+                        self.logger.message(f"Drivers ODBC disponibles: {available_drivers}")
+                    else:
+                        self.logger.warning("No se encontraron drivers ODBC instalados")
+                except ImportError:
+                    self.logger.error("Módulo pyodbc no está disponible. Instalelo con: pip install pyodbc")
+                    raise ImportError("Se requiere pyodbc para conexiones a SQL Server")
+            elif db_connection_info['tipo'] == 'duckdb':
                 # Instalar el módulo duckdb-engine si es necesario (opcional)
                 try:
                     import duckdb_engine
@@ -493,6 +508,8 @@ class MaterializationProcessor:
                     self._postgres_upsert(engine, df, table_name, schema_name, pk_columns)
                 elif db_connection_info['tipo'] == 'duckdb':
                     self._duckdb_upsert(engine, df, table_name, schema_name, pk_columns)
+                elif db_connection_info['tipo'] == 'mssql':
+                    self._mssql_upsert(engine, df, table_name, schema_name, pk_columns)
                 else:
                     raise ValueError(f"Operación upsert no soportada para {db_connection_info['tipo']}")
                 
@@ -572,6 +589,120 @@ class MaterializationProcessor:
         with engine.begin() as conn:
             conn.execute(text(sql))
             conn.execute(text(f"DROP TABLE {temp_table}"))
+            
+    def _mssql_upsert(self, engine, df: pd.DataFrame, table_name: str, 
+                     schema_name: str, pk_columns: List[str]) -> None:
+        """
+        Implementa la operación UPSERT para SQL Server usando MERGE.
+        
+        Args:
+            engine: Conexión SQLAlchemy
+            df: DataFrame a materializar
+            table_name: Nombre de la tabla
+            schema_name: Nombre del esquema
+            pk_columns: Lista de columnas que forman la clave primaria
+        """
+        import sqlalchemy
+        from sqlalchemy import text
+        
+        self.logger.message(f"Ejecutando upsert en SQL Server para tabla {schema_name}.{table_name}")
+        
+        # Nombre cualificado de la tabla
+        qualified_table_name = f"{schema_name}.{table_name}" if schema_name else table_name
+        
+        # Crear tabla temporal para los datos
+        temp_table = f"#temp_{table_name}_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
+        
+        try:
+            # Crear tabla si no existe
+            self.logger.message(f"Verificando si existe la tabla {qualified_table_name}")
+            df.head(0).to_sql(
+                name=table_name,
+                schema=schema_name,
+                con=engine,
+                if_exists='append',
+                index=False
+            )
+            
+            # Crear tabla temporal para los nuevos datos
+            self.logger.message(f"Creando tabla temporal {temp_table}")
+            
+            # Obtener la lista de columnas (necesaria para SQL Server)
+            columns = ", ".join([f"[{col}]" for col in df.columns])
+            
+            # Primero crear tabla temporal con la estructura correcta
+            create_temp_table = f"""
+            SELECT TOP 0 {columns} 
+            INTO {temp_table} 
+            FROM {qualified_table_name}
+            """
+            
+            with engine.begin() as conn:
+                conn.execute(text(create_temp_table))
+            
+            # Insertar datos en la tabla temporal
+            self.logger.message(f"Insertando {len(df)} filas en tabla temporal")
+            
+            # Usar pandas para cargar datos en la tabla temporal
+            # Usamos una conexión directa a través de SQLAlchemy con fast_executemany
+            from sqlalchemy.dialects.mssql import insert
+            
+            # Crear dataframe de Pandas a lista de diccionarios
+            rows = df.to_dict('records')
+            
+            # Insertar datos usando SQLAlchemy
+            with engine.begin() as conn:
+                # Ejecutar el insert con fast_executemany para mejor rendimiento
+                conn.execute(text(f"INSERT INTO {temp_table} ({columns}) VALUES ({', '.join(['?' for _ in df.columns])})"), 
+                              parameters=rows, execution_options={"fast_executemany": True})
+            
+            # Construir la cláusula MERGE (equivalente al UPSERT)
+            # Identificar columnas PK
+            join_conditions = []
+            for col in pk_columns:
+                join_conditions.append(f"Target.[{col}] = Source.[{col}]")
+            join_condition = " AND ".join(join_conditions)
+            
+            # Columnas a actualizar (todas menos las PK)
+            update_columns = [col for col in df.columns if col not in pk_columns]
+            update_stmt = ", ".join([f"Target.[{col}] = Source.[{col}]" for col in update_columns])
+            
+            # Construir la lista de columnas para INSERT
+            insert_columns = ", ".join([f"[{col}]" for col in df.columns])
+            insert_values = ", ".join([f"Source.[{col}]" for col in df.columns])
+            
+            # Crear sentencia MERGE
+            merge_sql = f"""
+            MERGE {qualified_table_name} AS Target
+            USING {temp_table} AS Source
+            ON {join_condition}
+            WHEN MATCHED THEN
+                UPDATE SET {update_stmt}
+            WHEN NOT MATCHED THEN
+                INSERT ({insert_columns})
+                VALUES ({insert_values});
+            """
+            
+            # Ejecutar MERGE
+            self.logger.message(f"Ejecutando MERGE para upsert en {qualified_table_name}")
+            with engine.begin() as conn:
+                conn.execute(text(merge_sql))
+                
+                # Eliminar tabla temporal
+                self.logger.message("Eliminando tabla temporal")
+                conn.execute(text(f"DROP TABLE {temp_table}"))
+            
+            self.logger.message(f"Upsert en SQL Server completado exitosamente para tabla {qualified_table_name}")
+            
+        except Exception as e:
+            self.logger.error(f"Error en upsert de SQL Server: {str(e)}")
+            with engine.begin() as conn:
+                try:
+                    # Intentar eliminar la tabla temporal si existe
+                    conn.execute(text(f"IF OBJECT_ID('{temp_table}', 'U') IS NOT NULL DROP TABLE {temp_table}"))
+                except:
+                    pass
+            raise
             
     def _duckdb_upsert(self, engine, df: pd.DataFrame, table_name: str, 
                      schema_name: str, pk_columns: List[str]) -> None:
@@ -1896,7 +2027,44 @@ class MaterializationProcessor:
         elif db_info['tipo'] == 'mysql':
             return f"mysql+pymysql://{db_info['usuario']}:{db_info['contrasena']}@{db_info['servidor']}:{db_info['puerto']}/{db_info['basedatos']}"
         elif db_info['tipo'] == 'mssql':
-            return f"mssql+pyodbc://{db_info['usuario']}:{db_info['contrasena']}@{db_info['servidor']}:{db_info['puerto']}/{db_info['basedatos']}?driver=ODBC+Driver+17+for+SQL+Server"
+            # Para SQL Server, construir un connection string más robusto con parámetros de conexión
+            # que funcionan mejor con diferentes versiones del controlador ODBC
+            server = db_info['servidor']
+            port = db_info['puerto']
+            database = db_info['basedatos']
+            user = db_info['usuario']
+            password = db_info['contrasena']
+            
+            # Determinar el driver de ODBC a utilizar
+            # Intentamos con varios drivers comunes para SQL Server
+            driver = "ODBC+Driver+17+for+SQL+Server"  # Conductor más reciente
+            
+            # Construir el connection string para SQLAlchemy con pyodbc
+            # Formato más compatible para ambientes de producción
+            conn_string = f"mssql+pyodbc://{user}:{password}@{server}"
+            
+            # Agregamos opciones específicas para mejorar la compatibilidad
+            query_params = [
+                f"driver={driver}",
+                "TrustServerCertificate=yes",
+                "encrypt=false",
+                "MARS_Connection=yes"  # Permite múltiples resultados activos
+            ]
+            
+            # Agregamos puerto si está definido
+            if port and port != "1433":  # 1433 es el puerto por defecto
+                conn_string = f"{conn_string}:{port}"
+                
+            # Agregamos base de datos si está definida
+            if database:
+                conn_string = f"{conn_string}/{database}"
+                
+            # Agregamos todos los parámetros de conexión
+            conn_string = f"{conn_string}?{'&'.join(query_params)}"
+            
+            self.logger.message(f"Connection string para SQL Server (credenciales ocultas): {conn_string.replace(password, '***')}")
+            
+            return conn_string
         elif db_info['tipo'] == 'duckdb':
             # Para DuckDB el campo servidor contiene la ruta al archivo
             base_conn_string = ""
