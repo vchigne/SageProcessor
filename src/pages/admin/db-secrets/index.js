@@ -316,18 +316,37 @@ export default function DatabaseSecrets() {
         body: JSON.stringify({ databaseName: newDatabaseName })
       });
       
+      // Siempre intentamos obtener los datos JSON, incluso si hay error
+      const responseData = await response.json().catch(e => ({ 
+        message: 'Error de formato en respuesta del servidor' 
+      }));
+      
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Error al crear base de datos');
+        // Construir un mensaje de error más detallado
+        let errorMessage = responseData.message || 'Error al crear base de datos';
+        
+        // Si hay detalles adicionales del error, mostrarlos
+        if (responseData.details && responseData.details.sqlMessage) {
+          errorMessage += `: ${responseData.details.sqlMessage}`;
+        }
+        
+        if (responseData.error) {
+          console.error('Error detallado:', responseData.error);
+        }
+        
+        throw new Error(errorMessage);
       }
       
-      toast.success(`Base de datos ${newDatabaseName} creada correctamente`);
+      toast.success(responseData.message || `Base de datos ${newDatabaseName} creada correctamente`);
       setNewDatabaseName('');
       
-      // Actualizar la lista de bases de datos
-      handleListDatabases(selectedSecretId);
+      // Actualizar la lista de bases de datos después de un breve retraso
+      // para dar tiempo a la base de datos para actualizarse
+      setTimeout(() => {
+        handleListDatabases(selectedSecretId);
+      }, 1000);
     } catch (error) {
-      console.error('Error:', error);
+      console.error('Error al crear base de datos:', error);
       toast.error('Error al crear base de datos: ' + error.message);
     } finally {
       setLoadingDatabases(false);

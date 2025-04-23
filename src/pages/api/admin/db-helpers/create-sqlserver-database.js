@@ -51,11 +51,15 @@ async function createSQLServerDatabase(host, port, user, password, database) {
     // Crear un proceso Python para crear la base de datos
     const scriptResult = await new Promise((resolve, reject) => {
       const pythonProcess = spawn('python', ['-c', `
+# Script simplificado que utiliza Try/Except para mayor robustez
 import sys
 import json
-import pymssql
+import traceback
 
+# Intentar ejecutar el comando
 try:
+    import pymssql
+    
     # Conectar a la base de datos master
     conn = pymssql.connect(
         server='${host}',
@@ -64,17 +68,16 @@ try:
         password='${password}',
         database='master',
         charset='utf8',
-        timeout=10  # Timeout en segundos
+        autocommit=True
     )
     
-    # Verificar si la base de datos ya existe
     cursor = conn.cursor()
-    cursor.execute("SELECT name FROM sys.databases WHERE name = %s", ('${database}',))
     
+    # Verificar si la base de datos ya existe
+    cursor.execute("SELECT name FROM sys.databases WHERE name = %s", ('${database}',))
     database_exists = cursor.fetchone() is not None
     
     if database_exists:
-        conn.close()
         result = {
             'success': True,
             'message': 'La base de datos ya existe',
@@ -84,50 +87,55 @@ try:
                 'existed': True
             }
         }
-        print(json.dumps(result))
-        sys.exit(0)
-    
-    # Crear la base de datos si no existe
-    cursor.execute("CREATE DATABASE [${database}]")
-    conn.commit()
-    
-    # Verificar que se haya creado correctamente
-    cursor.execute("SELECT name FROM sys.databases WHERE name = %s", ('${database}',))
-    database_created = cursor.fetchone() is not None
+    else:
+        # Crear la base de datos
+        cursor.execute("CREATE DATABASE [${database}]")
+        
+        # Verificar que se haya creado correctamente
+        cursor.execute("SELECT name FROM sys.databases WHERE name = %s", ('${database}',))
+        database_created = cursor.fetchone() is not None
+        
+        if database_created:
+            result = {
+                'success': True,
+                'message': 'Base de datos creada exitosamente',
+                'details': {
+                    'database': '${database}',
+                    'created': True,
+                    'existed': False
+                }
+            }
+        else:
+            result = {
+                'success': False,
+                'message': 'No se pudo crear la base de datos',
+                'details': {
+                    'database': '${database}',
+                    'created': False,
+                    'existed': False
+                }
+            }
     
     # Cerrar la conexión
     conn.close()
     
-    if database_created:
-        result = {
-            'success': True,
-            'message': 'Base de datos creada exitosamente',
-            'details': {
-                'database': '${database}',
-                'created': True,
-                'existed': False
-            }
-        }
-    else:
-        result = {
-            'success': False,
-            'message': 'No se pudo crear la base de datos',
-            'details': {
-                'database': '${database}',
-                'created': False,
-                'existed': False
-            }
-        }
-    
+    # Imprimir el resultado para que lo recoja Node.js
     print(json.dumps(result))
-    sys.exit(0)
+    
 except Exception as e:
-    # En caso de error, retornar el mensaje
+    # Capturar cualquier excepción
+    error_trace = traceback.format_exc()
+    error_message = str(e)
+    
     result = {
         'success': False,
-        'error': str(e),
-        'errorCode': type(e).__name__
+        'message': f'Error: {error_message}',
+        'details': {
+            'error': error_message,
+            'traceback': error_trace
+        }
     }
+    
     print(json.dumps(result))
     sys.exit(1)
 `]);
@@ -153,11 +161,28 @@ except Exception as e:
             resolve(result);
           } catch (e) {
             console.error('Error parsing Python output:', e, resultData);
-            reject(new Error('Error al procesar la salida del script Python'));
+            reject(new Error(`Error al procesar la salida del script Python: ${resultData}`));
           }
         } else {
-          console.error('Python process error:', errorData || 'No error output');
-          reject(new Error(errorData || 'Error al ejecutar el script Python'));
+          console.error('Python process error (code ' + code + '):', errorData || 'No error output', 'Result data:', resultData);
+          
+          // Verificar si pymssql está instalado
+          const checkPymssql = spawn('python', ['-c', 'import pymssql; print("pymssql installed, version:", pymssql.__version__)']);
+          
+          let pymssqlCheck = '';
+          checkPymssql.stdout.on('data', (data) => {
+            pymssqlCheck += data.toString();
+          });
+          
+          let pymssqlError = '';
+          checkPymssql.stderr.on('data', (data) => {
+            pymssqlError += data.toString();
+          });
+          
+          checkPymssql.on('close', (checkCode) => {
+            console.log('PyMSSQL check:', pymssqlCheck || 'No output', 'Error:', pymssqlError || 'No error');
+            reject(new Error(`Error al ejecutar el script Python (código ${code}): ${errorData || 'Error desconocido'}`));
+          });
         }
       });
 
@@ -175,13 +200,25 @@ except Exception as e:
         details: scriptResult.details || { database }
       };
     } else {
+      // Construir mensaje de error detallado
+      let errorMessage = 'Error al crear la base de datos';
+      let errorDetails = {};
+      
+      if (scriptResult.message) {
+        errorMessage = scriptResult.message;
+      }
+      
+      if (scriptResult.details) {
+        errorDetails = scriptResult.details;
+      } else if (scriptResult.error) {
+        errorDetails.sqlMessage = scriptResult.error;
+        errorDetails.code = scriptResult.errorCode || 'UNKNOWN_ERROR';
+      }
+      
       return {
         success: false,
-        message: `Error al crear la base de datos: ${scriptResult.error || 'Error desconocido'}`,
-        details: {
-          code: scriptResult.errorCode || 'UNKNOWN_ERROR',
-          sqlMessage: scriptResult.error || 'Error al crear la base de datos'
-        }
+        message: errorMessage,
+        details: errorDetails
       };
     }
   } catch (error) {
