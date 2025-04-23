@@ -215,17 +215,29 @@ class MaterializationProcessor:
                 # Obtener el ID del proveedor
                 destination_id = config.get('proveedorId')
                 
-            # Formato 3: destino "archivo" (para materializaciones a nube)
-            elif 'destino' in config and config.get('destino') == 'archivo':
-                # Cuando el destino es "archivo", asumimos que es un destino de tipo cloud
-                destination_type = 'cloud'
+            # Formato 3: destino "archivo" o "base_datos" 
+            elif 'destino' in config:
+                if config.get('destino') == 'archivo':
+                    # Cuando el destino es "archivo", asumimos que es un destino de tipo cloud
+                    destination_type = 'cloud'
+                    
+                    # Buscar el destino_id en los diferentes campos posibles
+                    destination_id = config.get('destino_id') or config.get('destino_cloud_id') or config.get('cloud_provider_id')
+                    
+                    # Si no encontramos un ID explícito, verificamos si hay un error en los logs
+                    if not destination_id:
+                        self.logger.warning(f"Configuración con destino='archivo' pero sin especificar el ID del proveedor cloud. Recomendamos agregar 'destino_id' a la configuración.")
                 
-                # Buscar el destino_id en los diferentes campos posibles
-                destination_id = config.get('destino_id') or config.get('destino_cloud_id') or config.get('cloud_provider_id')
-                
-                # Si no encontramos un ID explícito, verificamos si hay un error en los logs
-                if not destination_id:
-                    self.logger.warning(f"Configuración con destino='archivo' pero sin especificar el ID del proveedor cloud. Recomendamos agregar 'destino_id' a la configuración.")
+                elif config.get('destino') == 'base_datos':
+                    # Cuando el destino es "base_datos", asumimos que es un destino de tipo db
+                    destination_type = 'db'
+                    
+                    # Buscar el ID de la conexión de base de datos
+                    destination_id = config.get('proveedorId')
+                    
+                    # Si no encontramos un ID explícito, verificamos si hay un error en los logs
+                    if not destination_id:
+                        self.logger.warning(f"Configuración con destino='base_datos' pero sin especificar el ID del proveedor. Recomendamos agregar 'proveedorId' a la configuración.")
             
             # Verificar que se haya podido determinar el destino
             if not destination_type:
@@ -398,12 +410,22 @@ class MaterializationProcessor:
             raise ValueError(f"No se encontró la conexión a base de datos con ID {db_conn_id}")
         
         # Obtener parámetros de configuración
-        table_name = config.get('table_name')
+        table_name = config.get('table_name') or config.get('tablaDestino')
         if not table_name:
             raise ValueError("No se ha especificado el nombre de la tabla")
             
         schema_name = config.get('schema_name', 'public')
-        operation = config.get('operation', 'append')
+        
+        # Determinar la operación (estrategia de actualización)
+        operation = config.get('operation') or config.get('estrategiaActualizacion')
+        if operation == 'reemplazar':
+            operation = 'overwrite'
+        elif operation == 'agregar':
+            operation = 'append'
+        elif operation == 'actualizar':
+            operation = 'upsert'
+        else:
+            operation = 'append'  # valor por defecto
         
         # Conectar a la base de datos de destino
         target_conn = None
@@ -462,9 +484,9 @@ class MaterializationProcessor:
                 
             elif operation == 'upsert':
                 # Para upsert, necesitamos la clave primaria
-                pk_columns = config.get('primary_key', [])
+                pk_columns = config.get('primary_key') or config.get('primaryKey', [])
                 if not pk_columns:
-                    raise ValueError("Para operación upsert se requiere especificar primary_key")
+                    raise ValueError("Para operación upsert se requiere especificar clave primaria (primaryKey)")
                 
                 # Implementación de upsert dependiente del tipo de base de datos
                 if db_connection_info['tipo'] == 'postgresql':

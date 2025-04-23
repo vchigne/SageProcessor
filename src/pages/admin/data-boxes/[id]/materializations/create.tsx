@@ -609,24 +609,26 @@ export default function CreateMaterializationPage() {
               </select>
             </div>
             
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Formato *
-              </label>
-              <select
-                name="formato"
-                value={formData.formato}
-                onChange={handleInputChange}
-                className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md"
-                required
-              >
-                {getFormatosDisponibles().map(formato => (
-                  <option key={formato.id} value={formato.id}>
-                    {formato.nombre}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {formData.destino === 'archivo' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Formato *
+                </label>
+                <select
+                  name="formato"
+                  value={formData.formato}
+                  onChange={handleInputChange}
+                  className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md"
+                  required
+                >
+                  {getFormatosDisponibles().map(formato => (
+                    <option key={formato.id} value={formato.id}>
+                      {formato.nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
