@@ -134,8 +134,19 @@ export async function testSQLServerConnection(
   const useDatabase = database || 'master';
   
   try {
+    // Determinar si estamos ejecutando en el servidor o en el cliente
+    let apiUrl;
+    if (typeof window === 'undefined') {
+      // Estamos en el servidor, necesitamos una URL absoluta
+      const baseUrl = process.env.NEXTAUTH_URL || process.env.VERCEL_URL || 'http://localhost:5000';
+      apiUrl = `${baseUrl}/api/admin/db-helpers/test-sqlserver-connection`;
+    } else {
+      // Estamos en el cliente, podemos usar una URL relativa
+      apiUrl = '/api/admin/db-helpers/test-sqlserver-connection';
+    }
+    
     // Conectar a SQL Server utilizando pymssql a través del servidor Python
-    const response = await fetch('/api/admin/db-helpers/test-sqlserver-connection', {
+    const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
