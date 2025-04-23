@@ -452,66 +452,53 @@ async function createDatabase(req, res, secretId) {
           });
         }
       case 'mssql':
-        // Para SQL Server, ejecutamos directamente SQL en PostgreSQL para crear la base de datos
+        // Para SQL Server, creamos una base de datos real usando la API de creación
         try {
-          // Actualizamos el secreto con la nueva base de datos
-          const updateQuery = `
-            UPDATE db_secrets
-            SET basedatos = $1
-            WHERE id = $2
-            RETURNING servidor, puerto, usuario, contrasena
-          `;
+          // Obtenemos la información del servidor antes de crear la base de datos
+          const { servidor, puerto, usuario, contrasena } = secret;
           
-          const updateResult = await executeSQL(updateQuery, [databaseName, secretId]);
-          if (updateResult.rows.length === 0) {
-            return res.status(404).json({ message: 'No se pudo actualizar el secreto' });
-          }
-          
-          // Usamos la API de PostgreSQL para registrar la operación
-          const { servidor, puerto, usuario, contrasena } = updateResult.rows[0];
-          
-          // Registrar un log en PostgreSQL para documentar la operación
-          const logQuery = `
-            INSERT INTO db_operations_log
-            (secreto_id, operacion, detalles, estado)
-            VALUES ($1, $2, $3, $4)
-            RETURNING id
-          `;
-          
+          // Llamamos a la API de creación de bases de datos SQL Server
           try {
-            // Creamos primero la tabla si no existe
-            await executeSQL(`
-              CREATE TABLE IF NOT EXISTS db_operations_log (
-                id SERIAL PRIMARY KEY,
-                secreto_id INTEGER NOT NULL,
-                operacion VARCHAR(100) NOT NULL,
-                detalles JSONB,
-                estado VARCHAR(20),
-                fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-              )
-            `);
+            // Determinar la URL base para la API
+            const apiBaseUrl = process.env.NEXTAUTH_URL || process.env.VERCEL_URL || 'http://localhost:5000';
             
-            // Insertamos el registro
-            await executeSQL(logQuery, [
-              secretId,
-              'CREATE_DATABASE',
-              JSON.stringify({
-                database: databaseName,
-                tipo: 'mssql',
-                host: servidor,
+            // Usar URL absoluta porque esto se ejecuta en el servidor
+            const response = await fetch(`${apiBaseUrl}/api/admin/db-helpers/create-sqlserver-database`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                server: servidor,
                 port: puerto,
-                user: usuario
+                user: usuario,
+                password: contrasena,
+                databaseName,
+                secretId
               }),
-              'COMPLETED'
-            ]);
-          } catch (logError) {
-            console.error('Error al registrar log:', logError);
-            // Continuamos con la operación aunque falle el log
+            });
+            
+            const result = await response.json();
+            
+            if (!response.ok) {
+              return res.status(response.status).json({ 
+                message: result.message || 'Error al crear base de datos en SQL Server',
+                details: result.details || {},
+                error: result.error
+              });
+            }
+            
+            return res.status(201).json({ 
+              message: result.message || `Base de datos ${databaseName} creada correctamente en SQL Server.`,
+              details: result.details || {}
+            });
+          } catch (apiError) {
+            console.error('Error al llamar API de creación SQL Server:', apiError);
+            return res.status(500).json({ 
+              message: 'Error al comunicarse con el servicio de creación de bases de datos SQL Server', 
+              error: apiError.message 
+            });
           }
-          
-          return res.status(201).json({ 
-            message: `Base de datos ${databaseName} configurada correctamente para SQL Server.` 
-          });
         } catch (error) {
           console.error('Error al configurar base de datos SQL Server:', error);
           return res.status(500).json({ 

@@ -97,9 +97,9 @@ export async function testPostgresConnection(
 }
 
 /**
- * Probar conexión a SQL Server (simulada)
+ * Probar conexión a SQL Server (real)
  */
-export function testSQLServerConnection(
+export async function testSQLServerConnection(
   host, 
   port, 
   user, 
@@ -130,20 +130,56 @@ export function testSQLServerConnection(
     };
   }
   
-  // Si los parámetros son válidos, consideramos exitosa la prueba.
-  // En un entorno de producción, aquí se usaría mssql para la conexión real.
-  return {
-    success: true,
-    message: 'Verificación de SQL Server simulada - Se requiere instalar el paquete mssql',
-    details: {
-      version: 'No disponible - Paquete mssql no instalado',
-      server: host,
-      port: port,
-      database: database,
-      user: user ? '****' : 'No configurado',
-      notes: 'Esta es una verificación simulada ya que el paquete mssql no está instalado. La conexión real no se ha probado.'
+  // Si no hay base de datos especificada, usar master por defecto
+  const useDatabase = database || 'master';
+  
+  try {
+    // Conectar a SQL Server utilizando pymssql a través del servidor Python
+    const response = await fetch('/api/admin/db-helpers/test-sqlserver-connection', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        server: host,
+        port: parseInt(port),
+        user,
+        password,
+        database: useDatabase
+      }),
+    });
+    
+    const result = await response.json();
+    
+    if (!response.ok) {
+      return {
+        success: false,
+        message: `Error al conectar a SQL Server: ${result.message || 'Error de conexión'}`,
+        details: result.details || { error: 'Error de conexión desconocido' }
+      };
     }
-  };
+    
+    return {
+      success: true,
+      message: result.message || 'Conexión exitosa a SQL Server',
+      details: result.details || {
+        server: host,
+        port,
+        database: useDatabase,
+        user: user ? '****' : 'No configurado'
+      }
+    };
+  } catch (error) {
+    console.error('Error testing SQL Server connection:', error);
+    return {
+      success: false,
+      message: `Error al conectar a SQL Server: ${error.message}`,
+      details: {
+        code: 'CONNECTION_ERROR',
+        sqlMessage: error.message
+      }
+    };
+  }
 }
 
 /**

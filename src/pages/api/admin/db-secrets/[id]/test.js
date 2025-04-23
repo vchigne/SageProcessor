@@ -104,7 +104,7 @@ export default async function handler(req, res) {
         );
         break;
       case 'mssql':
-        testResult = testSQLServerConnection(
+        testResult = await testSQLServerConnection(
           secret.servidor, 
           secret.puerto, 
           secret.usuario, 
