@@ -1008,11 +1008,33 @@ class MaterializationProcessor:
         
         # Crear cliente GCP
         if isinstance(credentials, dict):
-            # Si las credenciales son un diccionario de service account
-            credentials_obj = service_account.Credentials.from_service_account_info(credentials)
+            # Las credenciales para GCP tienen que tener un key_file, que es el JSON del service account
+            if 'key_file' in credentials:
+                key_info = credentials['key_file']
+                # Si key_file es un diccionario, usarlo directamente
+                if isinstance(key_info, dict):
+                    self.logger.message(f"Usando key_file en formato diccionario para GCP")
+                    credentials_obj = service_account.Credentials.from_service_account_info(key_info)
+                # Si key_file es un string, puede ser un JSON o una ruta
+                elif isinstance(key_info, str):
+                    try:
+                        # Intentar leer como JSON
+                        key_dict = json.loads(key_info)
+                        self.logger.message(f"Convertido key_file desde string JSON para GCP")
+                        credentials_obj = service_account.Credentials.from_service_account_info(key_dict)
+                    except json.JSONDecodeError:
+                        # Si no es JSON, asumir que es una ruta a un archivo
+                        self.logger.message(f"Usando key_file como ruta a archivo de credenciales para GCP")
+                        credentials_obj = service_account.Credentials.from_service_account_file(key_info)
+                else:
+                    raise ValueError(f"Formato de key_file no soportado para GCP: {type(key_info)}")
+            else:
+                raise ValueError("No se encontró 'key_file' en las credenciales para GCP")
+                
             storage_client = GCPStorageClient(credentials=credentials_obj)
         else:
             # Si es un string, asumimos que es un path a un archivo de credenciales
+            self.logger.message(f"Usando credenciales como ruta a archivo para GCP")
             storage_client = GCPStorageClient.from_service_account_json(credentials)
         
         bucket = storage_client.bucket(bucket_name)
