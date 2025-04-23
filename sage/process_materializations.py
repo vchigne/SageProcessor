@@ -448,21 +448,21 @@ class MaterializationProcessor:
             self.logger.message(f"Creando engine SQLAlchemy con connection string: {conn_string.replace(db_connection_info.get('contrasena', ''), '***')}")
             
             # Configuraciones específicas para diferentes tipos de base de datos
+            engine_kwargs = {}
+            
             if db_connection_info['tipo'] == 'mssql':
-                # Verificar que tenemos el driver ODBC para SQL Server
+                # Para SQL Server, vamos a usar pymssql
                 try:
-                    import pyodbc
-                    self.logger.message("Módulo pyodbc disponible para SQL Server")
+                    import pymssql
+                    self.logger.message("Módulo pymssql disponible para SQL Server")
                     
-                    # Listar drivers disponibles (debug)
-                    available_drivers = pyodbc.drivers()
-                    if available_drivers:
-                        self.logger.message(f"Drivers ODBC disponibles: {available_drivers}")
-                    else:
-                        self.logger.warning("No se encontraron drivers ODBC instalados")
+                    # Si hay argumentos de conexión adicionales, usarlos
+                    if 'connect_args' in db_connection_info:
+                        engine_kwargs['connect_args'] = db_connection_info['connect_args']
+                        self.logger.message(f"Usando argumentos de conexión adicionales para SQL Server: {db_connection_info['connect_args']}")
                 except ImportError:
-                    self.logger.error("Módulo pyodbc no está disponible. Instalelo con: pip install pyodbc")
-                    raise ImportError("Se requiere pyodbc para conexiones a SQL Server")
+                    self.logger.error("Módulo pymssql no está disponible. Instalelo con: pip install pymssql")
+                    raise ImportError("Se requiere pymssql para conexiones a SQL Server")
             elif db_connection_info['tipo'] == 'duckdb':
                 # Instalar el módulo duckdb-engine si es necesario (opcional)
                 try:
@@ -471,8 +471,13 @@ class MaterializationProcessor:
                 except ImportError:
                     self.logger.warning("Módulo duckdb_engine no disponible, usando driver genérico")
             
-            # Crear engine SQLAlchemy
-            engine = sqlalchemy.create_engine(conn_string)
+            # Crear engine SQLAlchemy con las opciones específicas
+            if engine_kwargs:
+                self.logger.message(f"Creando engine SQLAlchemy con opciones adicionales: {engine_kwargs}")
+                engine = sqlalchemy.create_engine(conn_string, **engine_kwargs)
+            else:
+                # Sin opciones adicionales
+                engine = sqlalchemy.create_engine(conn_string)
             
             # Materializar según la operación
             if operation == 'append':
@@ -610,8 +615,10 @@ class MaterializationProcessor:
         # Nombre cualificado de la tabla
         qualified_table_name = f"{schema_name}.{table_name}" if schema_name else table_name
         
-        # Crear tabla temporal para los datos
-        temp_table = f"#temp_{table_name}_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
+        # Para SQL Server, usaremos un nombre de tabla normal en lugar de una tabla temporal
+        # Las tablas temporales con # pueden dar problemas con pandas/SQLAlchemy
+        timestamp = datetime.datetime.now().strftime('%Y%m%d%H%M%S')
+        temp_table = f"{table_name}_temp_{timestamp}"
         
         try:
             # Crear tabla si no existe
@@ -624,37 +631,22 @@ class MaterializationProcessor:
                 index=False
             )
             
-            # Crear tabla temporal para los nuevos datos
+            # Crear tabla temporal para los nuevos datos (sin # para mejor compatibilidad)
             self.logger.message(f"Creando tabla temporal {temp_table}")
-            
-            # Obtener la lista de columnas (necesaria para SQL Server)
-            columns = ", ".join([f"[{col}]" for col in df.columns])
-            
-            # Primero crear tabla temporal con la estructura correcta
-            create_temp_table = f"""
-            SELECT TOP 0 {columns} 
-            INTO {temp_table} 
-            FROM {qualified_table_name}
-            """
-            
-            with engine.begin() as conn:
-                conn.execute(text(create_temp_table))
             
             # Insertar datos en la tabla temporal
             self.logger.message(f"Insertando {len(df)} filas en tabla temporal")
             
-            # Usar pandas para cargar datos en la tabla temporal
-            # Usamos una conexión directa a través de SQLAlchemy con fast_executemany
-            from sqlalchemy.dialects.mssql import insert
-            
-            # Crear dataframe de Pandas a lista de diccionarios
-            rows = df.to_dict('records')
-            
-            # Insertar datos usando SQLAlchemy
-            with engine.begin() as conn:
-                # Ejecutar el insert con fast_executemany para mejor rendimiento
-                conn.execute(text(f"INSERT INTO {temp_table} ({columns}) VALUES ({', '.join(['?' for _ in df.columns])})"), 
-                              parameters=rows, execution_options={"fast_executemany": True})
+            # Usar pandas directamente para crear la tabla temporal e insertar datos
+            # Esto evita problemas de compatibilidad con pymssql
+            df.to_sql(
+                name=temp_table,
+                schema=schema_name,  # Usar el mismo schema que la tabla principal
+                con=engine,
+                if_exists='replace',  # Crear o reemplazar la tabla temporal
+                index=False,
+                method='multi'  # Usar método multi para mejor rendimiento
+            )
             
             # Construir la cláusula MERGE (equivalente al UPSERT)
             # Identificar columnas PK
@@ -671,10 +663,12 @@ class MaterializationProcessor:
             insert_columns = ", ".join([f"[{col}]" for col in df.columns])
             insert_values = ", ".join([f"Source.[{col}]" for col in df.columns])
             
-            # Crear sentencia MERGE
+            # Crear sentencia MERGE (usando el nombre cualificado de la tabla temporal)
+            temp_table_qualified = f"{schema_name}.{temp_table}" if schema_name else temp_table
+            
             merge_sql = f"""
             MERGE {qualified_table_name} AS Target
-            USING {temp_table} AS Source
+            USING {temp_table_qualified} AS Source
             ON {join_condition}
             WHEN MATCHED THEN
                 UPDATE SET {update_stmt}
@@ -690,7 +684,7 @@ class MaterializationProcessor:
                 
                 # Eliminar tabla temporal
                 self.logger.message("Eliminando tabla temporal")
-                conn.execute(text(f"DROP TABLE {temp_table}"))
+                conn.execute(text(f"DROP TABLE {temp_table_qualified}"))
             
             self.logger.message(f"Upsert en SQL Server completado exitosamente para tabla {qualified_table_name}")
             
@@ -698,8 +692,8 @@ class MaterializationProcessor:
             self.logger.error(f"Error en upsert de SQL Server: {str(e)}")
             with engine.begin() as conn:
                 try:
-                    # Intentar eliminar la tabla temporal si existe
-                    conn.execute(text(f"IF OBJECT_ID('{temp_table}', 'U') IS NOT NULL DROP TABLE {temp_table}"))
+                    # Intentar eliminar la tabla temporal si existe usando nombre calificado
+                    conn.execute(text(f"IF OBJECT_ID('{temp_table_qualified}', 'U') IS NOT NULL DROP TABLE {temp_table_qualified}"))
                 except:
                     pass
             raise
@@ -2027,42 +2021,30 @@ class MaterializationProcessor:
         elif db_info['tipo'] == 'mysql':
             return f"mysql+pymysql://{db_info['usuario']}:{db_info['contrasena']}@{db_info['servidor']}:{db_info['puerto']}/{db_info['basedatos']}"
         elif db_info['tipo'] == 'mssql':
-            # Para SQL Server, construir un connection string más robusto con parámetros de conexión
-            # que funcionan mejor con diferentes versiones del controlador ODBC
+            # Para SQL Server vamos a usar pymssql en lugar de pyodbc ya que no requiere drivers ODBC externos
+            # Esto es más compatible con entornos restringidos como Replit
             server = db_info['servidor']
-            port = db_info['puerto']
+            port = db_info['puerto'] or "1433"  # Puerto por defecto para SQL Server
             database = db_info['basedatos']
             user = db_info['usuario']
             password = db_info['contrasena']
             
-            # Determinar el driver de ODBC a utilizar
-            # Intentamos con varios drivers comunes para SQL Server
-            driver = "ODBC+Driver+17+for+SQL+Server"  # Conductor más reciente
+            # Construir connection string para SQLAlchemy con pymssql
+            conn_string = f"mssql+pymssql://{user}:{password}@{server}:{port}/{database}"
             
-            # Construir el connection string para SQLAlchemy con pyodbc
-            # Formato más compatible para ambientes de producción
-            conn_string = f"mssql+pyodbc://{user}:{password}@{server}"
+            # Opciones adicionales para conectar como dict
+            connect_args = {
+                "charset": "utf8",
+                "autocommit": True,  # Para compatibilidad con algunas operaciones
+                "tds_version": "7.3"  # Para SQL Server 2016+
+            }
             
-            # Agregamos opciones específicas para mejorar la compatibilidad
-            query_params = [
-                f"driver={driver}",
-                "TrustServerCertificate=yes",
-                "encrypt=false",
-                "MARS_Connection=yes"  # Permite múltiples resultados activos
-            ]
-            
-            # Agregamos puerto si está definido
-            if port and port != "1433":  # 1433 es el puerto por defecto
-                conn_string = f"{conn_string}:{port}"
-                
-            # Agregamos base de datos si está definida
-            if database:
-                conn_string = f"{conn_string}/{database}"
-                
-            # Agregamos todos los parámetros de conexión
-            conn_string = f"{conn_string}?{'&'.join(query_params)}"
-            
+            self.logger.message(f"Usando pymssql para conexión a SQL Server")
             self.logger.message(f"Connection string para SQL Server (credenciales ocultas): {conn_string.replace(password, '***')}")
+            
+            # Si la conexión tiene opciones adicionales, guardarlas para uso posterior
+            # Las usaremos al crear el motor de SQLAlchemy
+            db_info['connect_args'] = connect_args
             
             return conn_string
         elif db_info['tipo'] == 'duckdb':
