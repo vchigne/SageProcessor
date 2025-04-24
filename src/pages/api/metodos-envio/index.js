@@ -85,13 +85,16 @@ export default async function handler(req, res) {
           emisor_bucket_prefijo
         });
 
-        // Validar datos requeridos para los métodos
-        if (!casillaId || !emisorId || !metodos || !Array.isArray(metodos)) {
-          console.error('Faltan campos requeridos', { casillaId, emisorId, metodos });
+        // Validar datos requeridos básicos
+        if (!casillaId || !emisorId) {
+          console.error('Faltan campos requeridos', { casillaId, emisorId });
           return res.status(400).json({ 
-            error: 'Faltan campos requeridos o formato inválido' 
+            error: 'Faltan campos requeridos: casilla_id y emisor_id son obligatorios' 
           })
         }
+        
+        // Asegurar que metodos sea un array
+        const metodosArray = Array.isArray(metodos) ? metodos : [];
 
         // Comenzar transacción
         const client = await pool.connect()
@@ -117,7 +120,42 @@ export default async function handler(req, res) {
 
           // Insertar nuevos métodos con datos adicionales
           const insertedRows = [];
-          for (const { metodo, parametros } of metodos) {
+          
+          // Si no hay métodos seleccionados pero hay datos de subdirectorio o prefijo,
+          // crear un registro genérico para guardar esos datos
+          if (metodosArray.length === 0 && (emisor_sftp_subdirectorio || emisor_bucket_prefijo)) {
+            console.log(`No hay métodos seleccionados, pero hay datos de configuración. Creando registro genérico.`);
+            const result = await client.query(
+              `INSERT INTO emisores_por_casilla (
+                casilla_id,
+                emisor_id,
+                metodo_envio,
+                parametros,
+                responsable_nombre,
+                responsable_email,
+                responsable_telefono,
+                configuracion_frecuencia,
+                emisor_sftp_subdirectorio,
+                emisor_bucket_prefijo
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+              [
+                casillaId, 
+                emisorId, 
+                'config', // Usamos un tipo de método especial para configuración general
+                {}, // Sin parámetros específicos
+                responsable_nombre || null,
+                responsable_email || null,
+                responsable_telefono || null,
+                configuracion_frecuencia || null,
+                emisor_sftp_subdirectorio || null,
+                emisor_bucket_prefijo || null
+              ]
+            )
+            insertedRows.push(result.rows[0]);
+          }
+          
+          // Insertar los métodos seleccionados normalmente
+          for (const { metodo, parametros } of metodosArray) {
             console.log(`Insertando método ${metodo} con subdirectorio=${emisor_sftp_subdirectorio}, prefijo=${emisor_bucket_prefijo}`);
             const result = await client.query(
               `INSERT INTO emisores_por_casilla (

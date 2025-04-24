@@ -231,11 +231,21 @@ export const ConfigurarMetodosModal: React.FC<ConfigurarMetodosModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Verificar si hay al menos un método seleccionado
+    if (selectedMetodos.length === 0 && !(emisorSftpSubdirectorio || emisorBucketPrefijo)) {
+      alert('Debe seleccionar al menos un método de envío o configurar un subdirectorio/prefijo');
+      return;
+    }
+    
     try {
-      const metodosConParametros = selectedMetodos.map(metodo => ({
-        metodo,
-        parametros: parametros[metodo] || {}
-      }));
+      // Preparar métodos con parámetros (puede ser array vacío)
+      const metodosConParametros = selectedMetodos.length > 0 
+        ? selectedMetodos.map(metodo => ({
+            metodo,
+            parametros: parametros[metodo] || {}
+          }))
+        : [];
       
       // Preparar datos de configuración de frecuencia
       const configuracionFrecuencia = frecuenciaTipo ? {
@@ -245,6 +255,14 @@ export const ConfigurarMetodosModal: React.FC<ConfigurarMetodosModalProps> = ({
         dias_mes: frecuenciaTipo === 'mensual' ? diasMes : undefined,
         dia_limite: frecuenciaTipo === 'hasta_dia_n' ? diaLimite : undefined
       } : null;
+
+      console.log('Enviando datos al servidor:', {
+        casilla_id: casilla.id,
+        emisor_id: selectedEmisor,
+        metodos: metodosConParametros,
+        emisor_sftp_subdirectorio: emisorSftpSubdirectorio,
+        emisor_bucket_prefijo: emisorBucketPrefijo
+      });
 
       const response = await fetch('/api/metodos-envio', {
         method: 'POST',
@@ -267,6 +285,9 @@ export const ConfigurarMetodosModal: React.FC<ConfigurarMetodosModalProps> = ({
       if (!response.ok) {
         throw new Error('Error al guardar los métodos de envío');
       }
+
+      const result = await response.json();
+      console.log('Respuesta del servidor:', result);
 
       onClose();
     } catch (error) {
