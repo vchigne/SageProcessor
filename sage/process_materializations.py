@@ -62,6 +62,7 @@ class MaterializationProcessor:
         self.logger = logger
         self.db_connection = None
         self.cloud_clients = {}  # Caché de clientes para proveedores cloud
+        self.casilla_id = None  # ID de la casilla actual que se está procesando
         
     def _clean_server_string(self, server: str) -> str:
         """
@@ -139,6 +140,10 @@ class MaterializationProcessor:
             return
             
         try:
+            # Almacenar la casilla_id actual para su uso en la búsqueda de prefijos de bucket
+            self.casilla_id = casilla_id
+            self.logger.message(f"Procesando materializaciones para casilla_id: {casilla_id}")
+            
             # Obtener las materializaciones configuradas para esta casilla
             materializations = self._get_materializations_for_casilla(casilla_id)
             
@@ -2114,6 +2119,14 @@ class MaterializationProcessor:
         bucket_name = credentials.get('bucket') or config.get('bucket')
         if not bucket_name:
             raise ValueError(f"No se ha configurado un bucket para el proveedor {provider_info['nombre']}")
+            
+        # Verificar si hay un prefijo específico para el bucket
+        bucket_prefix = provider_info.get('emisor_bucket_prefijo', '')
+        if bucket_prefix:
+            self.logger.message(f"Usando prefijo específico para bucket: {bucket_prefix}")
+            # Asegurar que el prefijo termine con una barra si no está vacío
+            if bucket_prefix and not bucket_prefix.endswith('/'):
+                bucket_prefix += '/'
         
         # Crear cliente S3
         s3_client = self._get_s3_client(provider_info)
@@ -2472,10 +2485,16 @@ class MaterializationProcessor:
         # Mover el cursor al inicio del buffer
         buffer.seek(0)
         
-        # Subir a S3
+        # Preparar clave de destino con el prefijo si existe
         destination_key = destination_path.lstrip('/')
         if not destination_key.endswith(file_ext):
             destination_key += file_ext
+            
+        # Aplicar prefijo de bucket si existe
+        if bucket_prefix:
+            # Combinar prefijo y ruta de destino, asegurando que no haya barras duplicadas
+            destination_key = f"{bucket_prefix}{destination_key}"
+            self.logger.message(f"Usando clave de destino con prefijo: {destination_key}")
             
         s3_client.upload_fileobj(
             buffer, 
@@ -3051,12 +3070,29 @@ class MaterializationProcessor:
             provider_id: ID del proveedor
             
         Returns:
-            Información del proveedor
+            Información del proveedor incluyendo prefijo de bucket si existe
         """
         conn = self._get_database_connection()
         cursor = conn.cursor()
         
         try:
+            # Primero buscar si este provider es parte de una relación emisor-casilla
+            # para obtener el posible prefijo de bucket
+            cursor.execute("""
+                SELECT epc.emisor_bucket_prefijo
+                FROM emisores_por_casilla epc
+                JOIN emisores e ON epc.emisor_id = e.id
+                WHERE e.bucket_secret_id = %s
+                  AND epc.casilla_id = %s
+            """, (provider_id, self.casilla_id))
+            
+            emisor_bucket_prefijo = None
+            result = cursor.fetchone()
+            if result and result[0]:
+                emisor_bucket_prefijo = result[0]
+                self.logger.message(f"Encontrado prefijo de bucket específico para este emisor-casilla: {emisor_bucket_prefijo}")
+            
+            # Luego obtenemos la información completa del proveedor
             cursor.execute("""
                 SELECT id, nombre, tipo, credenciales, configuracion, activo, estado, secreto_id
                 FROM cloud_providers
@@ -3203,6 +3239,10 @@ class MaterializationProcessor:
             else:
                 # El proveedor NO usa secreto, continúa con el flujo normal
                 self.logger.message(f"El proveedor {provider_id} - {provider_name} usa credenciales directas")
+            
+            # Añadir el prefijo de bucket a la información del proveedor si existe
+            if emisor_bucket_prefijo:
+                provider_dict['emisor_bucket_prefijo'] = emisor_bucket_prefijo
                 
             return provider_dict
         finally:

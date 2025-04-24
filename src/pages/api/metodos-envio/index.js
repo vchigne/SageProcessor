@@ -68,7 +68,9 @@ export default async function handler(req, res) {
           responsable_nombre,
           responsable_email,
           responsable_telefono,
-          configuracion_frecuencia
+          configuracion_frecuencia,
+          emisor_sftp_subdirectorio,
+          emisor_bucket_prefijo
         } = req.body
 
         // Validar datos requeridos para los métodos
@@ -109,8 +111,10 @@ export default async function handler(req, res) {
                 responsable_nombre,
                 responsable_email,
                 responsable_telefono,
-                configuracion_frecuencia
-              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                configuracion_frecuencia,
+                emisor_sftp_subdirectorio,
+                emisor_bucket_prefijo
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
               [
                 casillaId, 
                 emisorId, 
@@ -119,7 +123,9 @@ export default async function handler(req, res) {
                 responsable_nombre || null,
                 responsable_email || null,
                 responsable_telefono || null,
-                configuracion_frecuencia || null
+                configuracion_frecuencia || null,
+                emisor_sftp_subdirectorio || null,
+                emisor_bucket_prefijo || null
               ]
             )
           }

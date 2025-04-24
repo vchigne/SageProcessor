@@ -79,6 +79,8 @@ export const ConfigurarMetodosModal: React.FC<ConfigurarMetodosModalProps> = ({
   const [diasSemana, setDiasSemana] = useState<string[]>([]);
   const [diasMes, setDiasMes] = useState<string[]>([]);
   const [diaLimite, setDiaLimite] = useState<string>('5');
+  const [emisorSftpSubdirectorio, setEmisorSftpSubdirectorio] = useState<string>('');
+  const [emisorBucketPrefijo, setEmisorBucketPrefijo] = useState<string>('');
 
   useEffect(() => {
     if (isOpen) {
@@ -96,6 +98,8 @@ export const ConfigurarMetodosModal: React.FC<ConfigurarMetodosModalProps> = ({
         setHoraEnvio('09:00');
         setDiasSemana([]);
         setDiasMes([]);
+        setEmisorSftpSubdirectorio('');
+        setEmisorBucketPrefijo('');
       }
     }
   }, [isOpen, emisorId]);
@@ -149,6 +153,10 @@ export const ConfigurarMetodosModal: React.FC<ConfigurarMetodosModalProps> = ({
             // Compatibilidad con versión anterior
             setResponsableNombre(data[0].responsable || '');
           }
+          
+          // Cargar datos de subdirectorio SFTP y prefijo bucket
+          setEmisorSftpSubdirectorio(data[0].emisor_sftp_subdirectorio || '');
+          setEmisorBucketPrefijo(data[0].emisor_bucket_prefijo || '');
           
           // Cargar configuración de frecuencia
           if (data[0].configuracion_frecuencia) {
@@ -218,7 +226,9 @@ export const ConfigurarMetodosModal: React.FC<ConfigurarMetodosModalProps> = ({
           responsable_nombre: responsableNombre,
           responsable_email: responsableEmail,
           responsable_telefono: responsableTelefono,
-          configuracion_frecuencia: configuracionFrecuencia
+          configuracion_frecuencia: configuracionFrecuencia,
+          emisor_sftp_subdirectorio: emisorSftpSubdirectorio,
+          emisor_bucket_prefijo: emisorBucketPrefijo
         }),
       });
 
@@ -453,6 +463,39 @@ export const ConfigurarMetodosModal: React.FC<ConfigurarMetodosModalProps> = ({
                     value={responsableTelefono}
                     onChange={(e) => setResponsableTelefono(e.target.value)}
                   />
+                </div>
+              </div>
+              
+              {/* Configuración de Directorios / Prefijos */}
+              <div className="space-y-4 border p-4 rounded-md bg-gray-50">
+                <h3 className="font-medium text-gray-900">Configuración de Directorios y Prefijos (opcional)</h3>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Subdirectorio SFTP específico
+                  </label>
+                  <TextInput
+                    placeholder="Subdirectorio en el servidor SFTP del emisor (ej: /clientes/sage)"
+                    value={emisorSftpSubdirectorio}
+                    onChange={(e) => setEmisorSftpSubdirectorio(e.target.value)}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Si se deja en blanco, se utilizará el directorio principal configurado en el emisor
+                  </p>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Prefijo para bucket
+                  </label>
+                  <TextInput
+                    placeholder="Prefijo para el bucket del emisor (ej: casilla45/)"
+                    value={emisorBucketPrefijo}
+                    onChange={(e) => setEmisorBucketPrefijo(e.target.value)}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Si se deja en blanco, los archivos se colocarán en la raíz del bucket
+                  </p>
                 </div>
               </div>
               

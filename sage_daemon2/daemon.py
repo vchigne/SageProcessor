@@ -204,9 +204,11 @@ class DatabaseManager:
         self.logger.info("Obteniendo configuraciones SFTP")
         query = """
         SELECT epc.emisor_id as emisor_id, epc.parametros, epc.metodo_envio, c.id as casilla_id, 
-               c.yaml_contenido, c.nombre_yaml, c.nombre
+               c.yaml_contenido, c.nombre_yaml, c.nombre, epc.emisor_sftp_subdirectorio,
+               e.directorio as emisor_directorio
         FROM emisores_por_casilla epc
         JOIN casillas c ON epc.casilla_id = c.id
+        JOIN emisores e ON epc.emisor_id = e.id
         WHERE epc.metodo_envio = 'sftp' 
           AND epc.parametros IS NOT NULL 
         """
@@ -233,6 +235,20 @@ class DatabaseManager:
                 self.logger.warning(f"Configuración SFTP incompleta para emisor ID {row.get('emisor_id')}: falta servidor o usuario")
                 continue
             
+            # Determinar el directorio a usar en SFTP
+            # Si hay un subdirectorio específico configurado para esta relación emisor-casilla, usarlo
+            # Si no, usar el directorio principal del emisor, o un directorio por defecto basado en la casilla
+            sftp_directory = None
+            if row.get('emisor_sftp_subdirectorio'):
+                sftp_directory = row.get('emisor_sftp_subdirectorio')
+                self.logger.info(f"Usando subdirectorio SFTP específico: {sftp_directory}")
+            elif row.get('emisor_directorio'):
+                sftp_directory = row.get('emisor_directorio')
+                self.logger.info(f"Usando directorio principal del emisor: {sftp_directory}")
+            else:
+                sftp_directory = f"data/{row.get('casilla_id')}"
+                self.logger.info(f"Usando directorio predeterminado: {sftp_directory}")
+                
             # Construir configuración completa - solo para SFTP real
             config = {
                 'emisor_id': row.get('emisor_id'),
@@ -247,8 +263,8 @@ class DatabaseManager:
                     'usuario': params.get('usuario', ''),
                     'password': params.get('clave', ''),
                     'key_path': params.get('ruta_clave', None),
-                    'data_dir': f"data/{row.get('casilla_id')}",
-                    'processed_dir': f"data/{row.get('casilla_id')}/procesado"
+                    'data_dir': sftp_directory,
+                    'processed_dir': f"{sftp_directory}/procesado"
                 }
             }
             
