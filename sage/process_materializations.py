@@ -7,6 +7,7 @@ después de que un archivo ha sido validado y procesado por SAGE.
 import os
 import json
 import datetime
+import math
 import pandas as pd
 import psycopg2
 import boto3
@@ -650,10 +651,56 @@ class MaterializationProcessor:
                             batch_size = 1000  # Tamaño del lote
                             for i in range(0, len(tuples), batch_size):
                                 batch = tuples[i:i+batch_size]
-                                cursor.executemany(insert_sql, batch)
-                                conn.commit()
-                                self.logger.message(f"Insertado lote {i//batch_size + 1} de {(len(tuples) + batch_size - 1) // batch_size}")
-                            
+                                try:
+                                    # Vamos a limpiar los datos para asegurar compatibilidad con pymssql
+                                    cleaned_batch = []
+                                    for row in batch:
+                                        cleaned_row = []
+                                        for val in row:
+                                            # None pasa directamente
+                                            if val is None:
+                                                cleaned_row.append(None)
+                                            # float('nan') debe convertirse a NULL
+                                            elif isinstance(val, float) and math.isnan(val):
+                                                cleaned_row.append(None)
+                                            # Para otros tipos, usar str() si no es un tipo básico
+                                            elif not isinstance(val, (int, float, str, bool, datetime.datetime, datetime.date)):
+                                                cleaned_row.append(str(val))
+                                            else:
+                                                cleaned_row.append(val)
+                                        cleaned_batch.append(tuple(cleaned_row))
+                                    
+                                    # Log para el primer registro (para debug)
+                                    if i == 0:
+                                        self.logger.message(f"Ejemplo primer registro limpiado: {cleaned_batch[0]}")
+                                    
+                                    cursor.executemany(insert_sql, cleaned_batch)
+                                    conn.commit()
+                                    self.logger.message(f"Insertado lote {i//batch_size + 1} de {(len(tuples) + batch_size - 1) // batch_size}")
+                                except Exception as batch_error:
+                                    self.logger.error(f"Error procesando lote {i//batch_size + 1}: {str(batch_error)}")
+                                    # Intentar inserción registro por registro como último recurso
+                                    for j, row in enumerate(batch):
+                                        try:
+                                            # Limpiar cada fila individualmente
+                                            cleaned_row = []
+                                            for val in row:
+                                                if val is None:
+                                                    cleaned_row.append(None)
+                                                elif isinstance(val, float) and math.isnan(val):
+                                                    cleaned_row.append(None)
+                                                elif not isinstance(val, (int, float, str, bool, datetime.datetime, datetime.date)):
+                                                    cleaned_row.append(str(val))
+                                                else:
+                                                    cleaned_row.append(val)
+                                            
+                                            cursor.execute(insert_sql, tuple(cleaned_row))
+                                            conn.commit()
+                                        except Exception as row_error:
+                                            self.logger.error(f"Error insertando fila {i+j} (valores: {row}): {str(row_error)}")
+                                            # Continuar con la siguiente fila
+                                            continue
+                                    
                             rows_affected = len(df)
                             self.logger.message(f"Se {'agregaron' if operation == 'append' else 'sobrescribieron'} {rows_affected} filas a la tabla {schema_name}.{table_name}")
                         finally:
