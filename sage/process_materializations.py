@@ -3194,9 +3194,13 @@ class MaterializationProcessor:
             # Log para depuración
             self.logger.message(f"Parámetros de conexión PostgreSQL: servidor={servidor}, puerto={puerto}, base de datos={basedatos}")
             
-            # Verificar si hay caracteres especiales en las credenciales
+            # Verificar si hay caracteres especiales en las credenciales - solo advertir si realmente está en las credenciales
+            # Nota: El @ en el servidor ya fue limpiado, así que nos centramos en usuario y contraseña
             if '@' in usuario or '@' in contrasena:
                 self.logger.warning(f"Se detectaron caracteres especiales (@) en las credenciales de PostgreSQL, esto puede causar problemas")
+            
+            # Verificar nuevamente el servidor por seguridad
+            servidor = self._clean_server_string(servidor)
                 
             # Crear connection string con formato seguro
             conn_string = f"postgresql://{usuario}"
@@ -3225,9 +3229,13 @@ class MaterializationProcessor:
             # Log para depuración
             self.logger.message(f"Parámetros de conexión MySQL: servidor={servidor}, puerto={puerto}, base de datos={basedatos}")
             
-            # Verificar si hay caracteres especiales en las credenciales
+            # Verificar si hay caracteres especiales en las credenciales - solo advertir si realmente está en las credenciales
+            # Nota: El @ en el servidor ya fue limpiado, así que nos centramos en usuario y contraseña
             if '@' in usuario or '@' in contrasena:
                 self.logger.warning(f"Se detectaron caracteres especiales (@) en las credenciales de MySQL, esto puede causar problemas")
+            
+            # Verificar nuevamente el servidor por seguridad
+            servidor = self._clean_server_string(servidor)
             
             # Crear connection string con formato seguro
             conn_string = f"mysql+pymysql://{usuario}"
