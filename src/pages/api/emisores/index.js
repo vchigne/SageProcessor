@@ -16,6 +16,9 @@ const TIPOS_EMISOR_PERMITIDOS = [
   'otros'
 ];
 
+// Tipos de origen de datos permitidos
+const TIPOS_ORIGEN_PERMITIDOS = ['sftp', 'bucket', null];
+
 export default async function handler(req, res) {
   const { method } = req
 
@@ -31,7 +34,16 @@ export default async function handler(req, res) {
             telefono,
             organizacion_id,
             creado_en,
-            COALESCE(activo, true) as activo
+            COALESCE(activo, true) as activo,
+            codigo_interno,
+            codigo_agente_merlin,
+            tipo_origen,
+            sftp_servidor,
+            sftp_puerto,
+            sftp_usuario,
+            sftp_directorio,
+            cloud_secret_id,
+            bucket_nombre
           FROM emisores 
           ORDER BY nombre
         `)
