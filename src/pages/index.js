@@ -353,7 +353,7 @@ export default function Dashboard() {
             </Select>
             <Select value={selectedPais} onValueChange={setSelectedPais}>
               <SelectItem value="todos">Todos los países</SelectItem>
-              {paises.map((pais) => (
+              {Array.isArray(paises) && paises.map((pais) => (
                 <SelectItem key={pais.id} value={pais.id}>
                   {pais.nombre}
                 </SelectItem>
@@ -361,7 +361,7 @@ export default function Dashboard() {
             </Select>
             <Select value={selectedProducto} onValueChange={setSelectedProducto}>
               <SelectItem value="todos">Todos los productos</SelectItem>
-              {productos.map((prod) => (
+              {Array.isArray(productos) && productos.map((prod) => (
                 <SelectItem key={prod.id} value={prod.id}>
                   {prod.nombre}
                 </SelectItem>
