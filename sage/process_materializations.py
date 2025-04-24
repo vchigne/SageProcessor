@@ -409,12 +409,20 @@ class MaterializationProcessor:
         if not db_connection_info:
             raise ValueError(f"No se encontró la conexión a base de datos con ID {db_conn_id}")
         
+        # Verificar si hay una base de datos específica en la configuración de la materialización
+        # Esto tiene prioridad sobre la configuración de la conexión
+        if config.get('database') or config.get('basedatos'):
+            # Si hay base de datos específica en la configuración, sobreescribir la de la conexión
+            especific_db = config.get('database') or config.get('basedatos')
+            self.logger.message(f"Usando base de datos '{especific_db}' especificada en la configuración de materialización")
+            db_connection_info['basedatos'] = especific_db
+        
         # Obtener parámetros de configuración
         table_name = config.get('table_name') or config.get('tablaDestino')
         if not table_name:
             raise ValueError("No se ha especificado el nombre de la tabla")
             
-        schema_name = config.get('schema_name', 'public')
+        schema_name = config.get('schema_name') or config.get('esquema', 'public')
         
         # Determinar la operación (estrategia de actualización)
         operation = config.get('operation') or config.get('estrategiaActualizacion')
@@ -1843,11 +1851,15 @@ class MaterializationProcessor:
         cursor = conn.cursor()
         
         try:
-            # Consultar los secretos de la base de datos
+            # Consultar tanto los secretos de la base de datos como la información específica de la conexión
+            # IMPORTANTE: Obtenemos también la base de datos configurada en database_connections (dc.basedatos)
             cursor.execute("""
                 SELECT ds.id, ds.nombre, ds.descripcion, ds.tipo, ds.servidor, 
-                       ds.puerto, ds.usuario, ds.contrasena, ds.basedatos, ds.estado,
-                       ds.opciones_conexion
+                       ds.puerto, ds.usuario, ds.contrasena, 
+                       COALESCE(dc.basedatos, ds.basedatos) as basedatos, 
+                       ds.estado, ds.opciones_conexion,
+                       dc.id as connection_id, dc.nombre as connection_nombre,
+                       dc.descripcion as connection_descripcion
                 FROM db_secrets ds
                 JOIN database_connections dc ON ds.id = dc.secret_id
                 WHERE dc.id = %s
@@ -1860,6 +1872,11 @@ class MaterializationProcessor:
                 
             columns = [desc[0] for desc in cursor.description]
             result = dict(zip(columns, row))
+            
+            # Utilizar la base de datos específica configurada en database_connections, en lugar de la del secreto
+            # Esto es crucial para SQL Server que debe usar la base de datos específica configurada, no master
+            if 'basedatos' in result:
+                self.logger.message(f"Base de datos configurada: '{result['basedatos']}' para conexión {db_conn_id}")
             
             # Si hay opciones de conexión en formato JSON, convertirlas a diccionario
             if 'opciones_conexion' in result and result['opciones_conexion']:
