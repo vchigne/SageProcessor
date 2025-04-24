@@ -826,15 +826,26 @@ class MaterializationProcessor:
                 except Exception as e:
                     self.logger.error(f"Error en conexión directa a MySQL: {str(e)}, intentando con SQLAlchemy")
                     # Si falla la conexión directa, intentar con SQLAlchemy como fallback
+                    
+                    # En MySQL, ignorar el esquema 'public' ya que no es válido
+                    adjusted_schema = None if schema_name and schema_name.lower() == 'public' else schema_name
+                    
+                    if adjusted_schema != schema_name:
+                        self.logger.message(f"Ignorando esquema 'public' para MySQL en SQLAlchemy")
+                    
+                    # Configurar connection string para MySQL con SQLAlchemy
                     df.to_sql(
                         name=table_name,
-                        schema=schema_name,
+                        schema=adjusted_schema,
                         con=engine,
                         if_exists='append' if operation == 'append' else 'replace',
                         index=False
                     )
                     rows_affected = len(df)
-                    self.logger.message(f"Se {'agregaron' if operation == 'append' else 'sobrescribieron'} {rows_affected} filas a la tabla {schema_name}.{table_name} (usando SQLAlchemy)")
+                    
+                    # Mostrar mensaje de log con o sin esquema según corresponda
+                    table_identifier = f"{schema_name}.{table_name}" if schema_name else table_name
+                    self.logger.message(f"Se {'agregaron' if operation == 'append' else 'sobrescribieron'} {rows_affected} filas a la tabla {table_identifier} (usando SQLAlchemy)")
             
             elif db_connection_info['tipo'] == 'mssql':
                 self.logger.message(f"Usando conexión directa pymssql para SQL Server en operación {operation}")
@@ -1487,10 +1498,15 @@ class MaterializationProcessor:
         # Combinar definiciones de columnas
         column_defs = ", ".join(columns)
         
-        # Agregar schema si está especificado
-        if schema_name:
+        # En MySQL, 'public' no es un esquema válido y debe ignorarse
+        # Solo usar un esquema específico cuando no sea 'public'
+        if schema_name and schema_name.lower() != 'public':
+            self.logger.message(f"Usando esquema específico para MySQL: {schema_name}")
             create_table_sql = f"CREATE TABLE IF NOT EXISTS `{schema_name}`.`{table_name}` ({column_defs})"
         else:
+            # Si es 'public' o no hay esquema, usar solo el nombre de la tabla
+            if schema_name and schema_name.lower() == 'public':
+                self.logger.message(f"Ignorando esquema 'public' para MySQL, no es necesario")
             create_table_sql = f"CREATE TABLE IF NOT EXISTS `{table_name}` ({column_defs})"
             
         return create_table_sql
