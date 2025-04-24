@@ -18,7 +18,9 @@ import {
   CpuChipIcon, // Ícono para el logo de SAGE
   EnvelopeIcon, // Ícono para configuraciones de correo
   Cog8ToothIcon, // Ícono para maestros
-  PencilSquareIcon, // Ícono para YAML Editor
+  PencilSquareIcon, // Ícono para YAML Editor,
+  ServerIcon, // Ícono para DuckDB Swarm
+  DatabaseIcon, // Ícono para bases de datos
 } from '@heroicons/react/24/outline'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
@@ -34,6 +36,7 @@ const navigation = [
   { name: 'Casillas de Datos', href: '/admin/data-boxes', icon: InboxStackIcon },
   { name: 'Portales', href: '/admin/portales', icon: WindowIcon },
   { name: 'Control de Acceso', href: '/access', icon: ShieldCheckIcon },
+  { name: 'DuckDB Swarm', href: '/admin/duckdb-swarm', icon: ServerIcon },
   { 
     name: 'Maestros', 
     href: '#',
