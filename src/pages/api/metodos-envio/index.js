@@ -124,7 +124,7 @@ export default async function handler(req, res) {
           // Si no hay métodos seleccionados pero hay datos de subdirectorio o prefijo,
           // crear un registro genérico para guardar esos datos
           if (metodosArray.length === 0 && (emisor_sftp_subdirectorio || emisor_bucket_prefijo)) {
-            console.log(`No hay métodos seleccionados, pero hay datos de configuración. Creando registro genérico.`);
+            console.log(`No hay métodos seleccionados, pero hay datos de configuración. Creando registro con método 'local' para almacenar configuración.`);
             const result = await client.query(
               `INSERT INTO emisores_por_casilla (
                 casilla_id,
@@ -141,7 +141,7 @@ export default async function handler(req, res) {
               [
                 casillaId, 
                 emisorId, 
-                'config', // Usamos un tipo de método especial para configuración general
+                'local', // Usamos un método permitido por la restricción CHECK
                 {}, // Sin parámetros específicos
                 responsable_nombre || null,
                 responsable_email || null,
