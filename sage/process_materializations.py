@@ -533,8 +533,132 @@ class MaterializationProcessor:
                 # Sin opciones adicionales
                 engine = sqlalchemy.create_engine(conn_string)
             
-            # Materializar según la operación
-            if operation == 'append':
+            # Materializar según la operación y tipo de base de datos
+            # Para SQL Server, usar conexión directa en lugar de SQLAlchemy
+            if db_connection_info['tipo'] == 'mssql':
+                self.logger.message(f"Usando conexión directa pymssql para SQL Server en operación {operation}")
+                try:
+                    # Implementar método inline para evitar atributos faltantes
+                    if operation == 'append' or operation == 'overwrite':
+                        self.logger.message(f"Implementando método write directo para SQL Server ({operation})")
+                        # Datos de conexión
+                        server = db_connection_info['servidor']
+                        port = int(db_connection_info['puerto'] or 1433)
+                        database = db_connection_info['basedatos']
+                        user = db_connection_info['usuario']
+                        password = db_connection_info['contrasena']
+                        
+                        # Configuración de opciones avanzadas
+                        connect_options = {
+                            "charset": "utf8",
+                            "autocommit": True,
+                            "timeout": 10,
+                            "tds_version": "7.3"
+                        }
+                        
+                        # Crear conexión directa
+                        import pymssql
+                        conn = pymssql.connect(
+                            server=server,
+                            port=port,
+                            user=user,
+                            password=password,
+                            database=database,
+                            charset=connect_options["charset"],
+                            timeout=connect_options["timeout"],
+                            tds_version=connect_options["tds_version"],
+                            autocommit=connect_options["autocommit"]
+                        )
+                        
+                        try:
+                            # Si es overwrite, eliminar la tabla primero
+                            if operation == 'overwrite':
+                                cursor = conn.cursor()
+                                qualified_table_name = f"{schema_name}.{table_name}" if schema_name else table_name
+                                self.logger.message(f"Eliminando tabla existente {qualified_table_name}")
+                                cursor.execute(f"IF OBJECT_ID('{qualified_table_name}', 'U') IS NOT NULL DROP TABLE {qualified_table_name}")
+                                conn.commit()
+                            
+                            # Crear tabla si no existe
+                            cursor = conn.cursor()
+                            
+                            # Verificar si la tabla existe (implementado inline en lugar de método externo)
+                            qualified_table_name = f"{schema_name}.{table_name}" if schema_name else table_name
+                            check_sql = f"SELECT OBJECT_ID('{qualified_table_name}', 'U') as obj_id"
+                            cursor.execute(check_sql)
+                            result = cursor.fetchone()
+                            table_exists = result[0] is not None
+                            
+                            if not table_exists:
+                                self.logger.message(f"Creando nueva tabla {schema_name}.{table_name}")
+                                
+                                # Mapeo de tipos de datos de pandas a SQL Server
+                                type_map = {
+                                    'int64': 'INT',
+                                    'int32': 'INT',
+                                    'float64': 'FLOAT',
+                                    'float32': 'FLOAT',
+                                    'object': 'NVARCHAR(MAX)',
+                                    'bool': 'BIT',
+                                    'datetime64[ns]': 'DATETIME2',
+                                    'category': 'NVARCHAR(MAX)',
+                                    'string': 'NVARCHAR(MAX)'
+                                }
+                                
+                                # Generar SQL para crear tabla
+                                columns = []
+                                for col in df.columns:
+                                    col_type = df[col].dtype.name
+                                    sql_type = type_map.get(col_type, 'NVARCHAR(MAX)')
+                                    columns.append(f"[{col}] {sql_type}")
+                                
+                                column_defs = ", ".join(columns)
+                                create_table_sql = f"CREATE TABLE {qualified_table_name} ({column_defs})"
+                                cursor.execute(create_table_sql)
+                                conn.commit()
+                            
+                            # Insertar datos
+                            self.logger.message(f"Insertando {len(df)} filas en {schema_name}.{table_name}")
+                            
+                            # Convertir DataFrame a lista de tuplas
+                            records = df.to_records(index=False)
+                            tuples = [tuple(x) for x in records]
+                            
+                            # Construir SQL de inserción
+                            columns = ", ".join([f"[{col}]" for col in df.columns])
+                            placeholders = ", ".join(["%s"] * len(df.columns))
+                            insert_sql = f"INSERT INTO {schema_name}.{table_name} ({columns}) VALUES ({placeholders})"
+                            
+                            # Ejecutar inserción por lotes (batch)
+                            batch_size = 1000  # Tamaño del lote
+                            for i in range(0, len(tuples), batch_size):
+                                batch = tuples[i:i+batch_size]
+                                cursor.executemany(insert_sql, batch)
+                                conn.commit()
+                                self.logger.message(f"Insertado lote {i//batch_size + 1} de {(len(tuples) + batch_size - 1) // batch_size}")
+                            
+                            rows_affected = len(df)
+                            self.logger.message(f"Se {'agregaron' if operation == 'append' else 'sobrescribieron'} {rows_affected} filas a la tabla {schema_name}.{table_name}")
+                        finally:
+                            conn.close()
+                    else:
+                        # Si no es append ni overwrite, usar SQLAlchemy
+                        raise ValueError(f"Operación {operation} no implementada para conexión directa SQL Server")
+                    
+                except Exception as e:
+                    self.logger.error(f"Error en conexión directa a SQL Server: {str(e)}, intentando con SQLAlchemy")
+                    # Si falla la conexión directa, intentar con SQLAlchemy como fallback
+                    df.to_sql(
+                        name=table_name,
+                        schema=schema_name,
+                        con=engine,
+                        if_exists='append' if operation == 'append' else 'replace',
+                        index=False
+                    )
+                    rows_affected = len(df)
+                    self.logger.message(f"Se {'agregaron' if operation == 'append' else 'sobrescribieron'} {rows_affected} filas a la tabla {schema_name}.{table_name} (usando SQLAlchemy)")
+            # Para otras bases de datos, usar SQLAlchemy normalmente
+            elif operation == 'append':
                 df.to_sql(
                     name=table_name,
                     schema=schema_name,
@@ -568,7 +692,159 @@ class MaterializationProcessor:
                 elif db_connection_info['tipo'] == 'duckdb':
                     self._duckdb_upsert(engine, df, table_name, schema_name, pk_columns)
                 elif db_connection_info['tipo'] == 'mssql':
-                    self._mssql_upsert(engine, df, table_name, schema_name, pk_columns)
+                    # Implementar el método upsert_direct inline para evitar problemas de atributos
+                    self.logger.message(f"Implementando método upsert directo para SQL Server")
+                    
+                    # Datos de conexión
+                    server = db_connection_info['servidor']
+                    port = int(db_connection_info['puerto'] or 1433)
+                    database = db_connection_info['basedatos']
+                    user = db_connection_info['usuario']
+                    password = db_connection_info['contrasena']
+                    
+                    # Configuración de opciones avanzadas
+                    connect_options = {
+                        "charset": "utf8",
+                        "autocommit": True,
+                        "timeout": 10,
+                        "tds_version": "7.3"
+                    }
+                    
+                    # Crear conexión directa
+                    import pymssql
+                    conn = pymssql.connect(
+                        server=server,
+                        port=port,
+                        user=user,
+                        password=password,
+                        database=database,
+                        charset=connect_options["charset"],
+                        timeout=connect_options["timeout"],
+                        tds_version=connect_options["tds_version"],
+                        autocommit=connect_options["autocommit"]
+                    )
+                    
+                    try:
+                        cursor = conn.cursor()
+                        qualified_table_name = f"{schema_name}.{table_name}" if schema_name else table_name
+                        
+                        # Verificar si la tabla existe
+                        check_sql = f"SELECT OBJECT_ID('{qualified_table_name}', 'U') as obj_id"
+                        cursor.execute(check_sql)
+                        result = cursor.fetchone()
+                        table_exists = result[0] is not None
+                        
+                        if not table_exists:
+                            # Crear tabla si no existe
+                            self.logger.message(f"Creando nueva tabla {qualified_table_name} para upsert")
+                            
+                            # Mapeo de tipos de datos de pandas a SQL Server
+                            type_map = {
+                                'int64': 'INT',
+                                'int32': 'INT',
+                                'float64': 'FLOAT',
+                                'float32': 'FLOAT',
+                                'object': 'NVARCHAR(MAX)',
+                                'bool': 'BIT',
+                                'datetime64[ns]': 'DATETIME2',
+                                'category': 'NVARCHAR(MAX)',
+                                'string': 'NVARCHAR(MAX)'
+                            }
+                            
+                            # Generar SQL para crear tabla
+                            columns = []
+                            for col in df.columns:
+                                col_type = df[col].dtype.name
+                                sql_type = type_map.get(col_type, 'NVARCHAR(MAX)')
+                                columns.append(f"[{col}] {sql_type}")
+                            
+                            column_defs = ", ".join(columns)
+                            create_table_sql = f"CREATE TABLE {qualified_table_name} ({column_defs})"
+                            cursor.execute(create_table_sql)
+                            conn.commit()
+                        
+                        # Crear tabla temporal para el MERGE
+                        timestamp = datetime.datetime.now().strftime('%Y%m%d%H%M%S')
+                        temp_table = f"{table_name}_temp_{timestamp}"
+                        temp_table_qualified = f"{schema_name}.{temp_table}" if schema_name else temp_table
+                        
+                        self.logger.message(f"Creando tabla temporal {temp_table_qualified}")
+                        
+                        # Copiar estructura de tabla original para tabla temporal
+                        cursor.execute(f"SELECT TOP 0 * INTO {temp_table_qualified} FROM {qualified_table_name}")
+                        conn.commit()
+                        
+                        # Insertar datos en tabla temporal
+                        self.logger.message(f"Insertando {len(df)} filas en tabla temporal")
+                        
+                        # Convertir DataFrame a lista de tuplas
+                        records = df.to_records(index=False)
+                        tuples = [tuple(x) for x in records]
+                        
+                        # Construir SQL de inserción
+                        columns = ", ".join([f"[{col}]" for col in df.columns])
+                        placeholders = ", ".join(["%s"] * len(df.columns))
+                        insert_sql = f"INSERT INTO {temp_table_qualified} ({columns}) VALUES ({placeholders})"
+                        
+                        # Ejecutar inserción por lotes (batch)
+                        batch_size = 1000  # Tamaño del lote
+                        for i in range(0, len(tuples), batch_size):
+                            batch = tuples[i:i+batch_size]
+                            cursor.executemany(insert_sql, batch)
+                            conn.commit()
+                            self.logger.message(f"Insertado lote {i//batch_size + 1} de {(len(tuples) + batch_size - 1) // batch_size}")
+                        
+                        # Construir la cláusula MERGE (equivalente al UPSERT)
+                        # Identificar columnas PK
+                        join_conditions = []
+                        for col in pk_columns:
+                            join_conditions.append(f"Target.[{col}] = Source.[{col}]")
+                        join_condition = " AND ".join(join_conditions)
+                        
+                        # Columnas a actualizar (todas menos las PK)
+                        update_columns = [col for col in df.columns if col not in pk_columns]
+                        update_stmt = ", ".join([f"Target.[{col}] = Source.[{col}]" for col in update_columns])
+                        
+                        # Construir la lista de columnas para INSERT
+                        insert_columns = ", ".join([f"[{col}]" for col in df.columns])
+                        insert_values = ", ".join([f"Source.[{col}]" for col in df.columns])
+                        
+                        merge_sql = f"""
+                        MERGE {qualified_table_name} AS Target
+                        USING {temp_table_qualified} AS Source
+                        ON {join_condition}
+                        WHEN MATCHED THEN
+                            UPDATE SET {update_stmt}
+                        WHEN NOT MATCHED THEN
+                            INSERT ({insert_columns})
+                            VALUES ({insert_values});
+                        """
+                        
+                        # Ejecutar MERGE
+                        self.logger.message(f"Ejecutando MERGE para upsert en {qualified_table_name}")
+                        cursor.execute(merge_sql)
+                        conn.commit()
+                        
+                        # Eliminar tabla temporal
+                        self.logger.message("Eliminando tabla temporal")
+                        cursor.execute(f"IF OBJECT_ID('{temp_table_qualified}', 'U') IS NOT NULL DROP TABLE {temp_table_qualified}")
+                        conn.commit()
+                        
+                        self.logger.message(f"Upsert directo en SQL Server completado exitosamente para tabla {qualified_table_name}")
+                    except Exception as e:
+                        self.logger.error(f"Error en upsert directo de SQL Server: {str(e)}")
+                        try:
+                            # Intentar eliminar la tabla temporal si existe
+                            cursor.execute(f"IF OBJECT_ID('{temp_table_qualified}', 'U') IS NOT NULL DROP TABLE {temp_table_qualified}")
+                            conn.commit()
+                        except:
+                            pass
+                        
+                        # Si falla el método directo, intentar con SQLAlchemy como fallback
+                        self.logger.warning("Fallback a método SQLAlchemy para upsert")
+                        self._mssql_upsert(engine, df, table_name, schema_name, pk_columns)
+                    finally:
+                        conn.close()
                 else:
                     raise ValueError(f"Operación upsert no soportada para {db_connection_info['tipo']}")
                 
