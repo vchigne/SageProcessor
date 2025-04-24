@@ -574,7 +574,14 @@ class MaterializationProcessor:
                             # Si es overwrite, eliminar la tabla primero
                             if operation == 'overwrite':
                                 cursor = conn.cursor()
-                                qualified_table_name = f"{schema_name}.{table_name}" if schema_name else table_name
+                                
+                                # Adaptar el esquema: SQL Server no usa 'public' como esquema por defecto
+                                schema_name_adjusted = 'dbo' if schema_name == 'public' else schema_name
+                                
+                                if schema_name == 'public':
+                                    self.logger.message(f"Adaptando esquema 'public' a 'dbo' para SQL Server")
+                                
+                                qualified_table_name = f"{schema_name_adjusted}.{table_name}" if schema_name_adjusted else table_name
                                 self.logger.message(f"Eliminando tabla existente {qualified_table_name}")
                                 cursor.execute(f"IF OBJECT_ID('{qualified_table_name}', 'U') IS NOT NULL DROP TABLE {qualified_table_name}")
                                 conn.commit()
@@ -583,7 +590,13 @@ class MaterializationProcessor:
                             cursor = conn.cursor()
                             
                             # Verificar si la tabla existe (implementado inline en lugar de método externo)
-                            qualified_table_name = f"{schema_name}.{table_name}" if schema_name else table_name
+                            # Adaptar el esquema: SQL Server no usa 'public' como esquema por defecto
+                            schema_name_adjusted = 'dbo' if schema_name == 'public' else schema_name
+                            
+                            if schema_name == 'public':
+                                self.logger.message(f"Adaptando esquema 'public' a 'dbo' para SQL Server en verificación")
+                                
+                            qualified_table_name = f"{schema_name_adjusted}.{table_name}" if schema_name_adjusted else table_name
                             check_sql = f"SELECT OBJECT_ID('{qualified_table_name}', 'U') as obj_id"
                             cursor.execute(check_sql)
                             result = cursor.fetchone()
@@ -627,7 +640,11 @@ class MaterializationProcessor:
                             # Construir SQL de inserción
                             columns = ", ".join([f"[{col}]" for col in df.columns])
                             placeholders = ", ".join(["%s"] * len(df.columns))
-                            insert_sql = f"INSERT INTO {schema_name}.{table_name} ({columns}) VALUES ({placeholders})"
+                            
+                            # Adaptar el esquema nuevamente para la inserción
+                            schema_name_insert = 'dbo' if schema_name == 'public' else schema_name
+                            insert_sql = f"INSERT INTO {schema_name_insert}.{table_name} ({columns}) VALUES ({placeholders})"
+                            self.logger.message(f"SQL Inserción: {insert_sql} (primeros valores)")
                             
                             # Ejecutar inserción por lotes (batch)
                             batch_size = 1000  # Tamaño del lote
@@ -726,7 +743,14 @@ class MaterializationProcessor:
                     
                     try:
                         cursor = conn.cursor()
-                        qualified_table_name = f"{schema_name}.{table_name}" if schema_name else table_name
+                        
+                        # Adaptar el esquema: SQL Server no usa 'public' como esquema por defecto
+                        schema_name_adjusted = 'dbo' if schema_name == 'public' else schema_name
+                        
+                        if schema_name == 'public':
+                            self.logger.message(f"Adaptando esquema 'public' a 'dbo' para SQL Server en upsert")
+                            
+                        qualified_table_name = f"{schema_name_adjusted}.{table_name}" if schema_name_adjusted else table_name
                         
                         # Verificar si la tabla existe
                         check_sql = f"SELECT OBJECT_ID('{qualified_table_name}', 'U') as obj_id"
@@ -766,7 +790,10 @@ class MaterializationProcessor:
                         # Crear tabla temporal para el MERGE
                         timestamp = datetime.datetime.now().strftime('%Y%m%d%H%M%S')
                         temp_table = f"{table_name}_temp_{timestamp}"
-                        temp_table_qualified = f"{schema_name}.{temp_table}" if schema_name else temp_table
+                        
+                        # Usar el schema ajustado también para la tabla temporal
+                        temp_table_qualified = f"{schema_name_adjusted}.{temp_table}" if schema_name_adjusted else temp_table
+                        self.logger.message(f"Usando esquema ajustado para tabla temporal: {temp_table_qualified}")
                         
                         self.logger.message(f"Creando tabla temporal {temp_table_qualified}")
                         
@@ -942,8 +969,14 @@ class MaterializationProcessor:
         
         self.logger.message(f"Ejecutando upsert en SQL Server para tabla {schema_name}.{table_name}")
         
+        # Adaptar esquema para SQL Server (public -> dbo)
+        schema_name_adjusted = 'dbo' if schema_name == 'public' else schema_name
+        
+        if schema_name == 'public':
+            self.logger.message(f"Adaptando esquema 'public' a 'dbo' para SQL Server en método SQLAlchemy")
+            
         # Nombre cualificado de la tabla
-        qualified_table_name = f"{schema_name}.{table_name}" if schema_name else table_name
+        qualified_table_name = f"{schema_name_adjusted}.{table_name}" if schema_name_adjusted else table_name
         
         # Para SQL Server, usaremos un nombre de tabla normal en lugar de una tabla temporal
         # Las tablas temporales con # pueden dar problemas con pandas/SQLAlchemy
@@ -955,7 +988,7 @@ class MaterializationProcessor:
             self.logger.message(f"Verificando si existe la tabla {qualified_table_name}")
             df.head(0).to_sql(
                 name=table_name,
-                schema=schema_name,
+                schema=schema_name_adjusted,  # Usar el schema ajustado para SQL Server
                 con=engine,
                 if_exists='append',
                 index=False
@@ -971,7 +1004,7 @@ class MaterializationProcessor:
             # Esto evita problemas de compatibilidad con pymssql
             df.to_sql(
                 name=temp_table,
-                schema=schema_name,  # Usar el mismo schema que la tabla principal
+                schema=schema_name_adjusted,  # Usar el schema ajustado para SQL Server
                 con=engine,
                 if_exists='replace',  # Crear o reemplazar la tabla temporal
                 index=False,
@@ -994,7 +1027,9 @@ class MaterializationProcessor:
             insert_values = ", ".join([f"Source.[{col}]" for col in df.columns])
             
             # Crear sentencia MERGE (usando el nombre cualificado de la tabla temporal)
-            temp_table_qualified = f"{schema_name}.{temp_table}" if schema_name else temp_table
+            # También adaptamos el esquema para la tabla temporal
+            temp_table_qualified = f"{schema_name_adjusted}.{temp_table}" if schema_name_adjusted else temp_table
+            self.logger.message(f"Usando esquema ajustado para tabla temporal SQLAlchemy: {temp_table_qualified}")
             
             merge_sql = f"""
             MERGE {qualified_table_name} AS Target
