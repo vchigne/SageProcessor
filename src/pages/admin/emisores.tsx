@@ -11,6 +11,16 @@ interface Emisor {
   organizacion_id: number;
   creado_en: string;
   activo: boolean;
+  codigo_interno?: string;
+  codigo_agente_merlin?: string;
+  tipo_origen?: 'sftp' | 'bucket' | null;
+  sftp_servidor?: string;
+  sftp_puerto?: number;
+  sftp_usuario?: string;
+  sftp_clave?: string;
+  sftp_directorio?: string;
+  cloud_secret_id?: number;
+  bucket_nombre?: string;
 }
 
 export default function EmisoresPage() {
