@@ -498,7 +498,9 @@ class MaterializationProcessor:
             
             # Conectar usando el driver adecuado según el tipo de base de datos
             if db_connection_info['tipo'] == 'postgresql':
-                target_conn = psycopg2.connect(conn_string)
+                # Usar el módulo importado globalmente
+                import psycopg2 as pg2  # Importación local con alias para evitar conflictos
+                target_conn = pg2.connect(conn_string)
             elif db_connection_info['tipo'] == 'duckdb':
                 self.logger.message(f"Usando DuckDB como base de datos: {db_connection_info['servidor']}")
                 # Para DuckDB no es necesario crear una conexión directa aquí, 
@@ -617,9 +619,25 @@ class MaterializationProcessor:
                     except Exception as e:
                         self.logger.warning(f"Prueba de conexión directa con pymysql falló: {str(e)}")
                     
+                    # Verificar que el servidor esté correctamente limpiado
+                    server_original = server
+                    server = self._clean_server_string(server)
+                    if server != server_original:
+                        self.logger.warning(f"Se detectó un servidor MySQL con formato incorrecto: '{server_original}' → '{server}'")
+                    
                     # Configurar opciones avanzadas de conexión para SQLAlchemy
                     engine_kwargs['connect_args'] = connect_options
                     self.logger.message(f"Usando argumentos de conexión para MySQL: {engine_kwargs['connect_args']}")
+                    
+                    # Actualizar el connection string para asegurar que usa el servidor limpio
+                    clean_conn_string = f"mysql+pymysql://{user}"
+                    if password:
+                        clean_conn_string += f":{password}"
+                    clean_conn_string += f"@{server}:{port}/{database}"
+                    
+                    # Actualizar el connection string para SQLAlchemy
+                    conn_string = clean_conn_string
+                    self.logger.message(f"Connection string para MySQL actualizado: {conn_string.replace(password or '', '***')}")
                 except ImportError:
                     self.logger.warning("Módulo pymysql no está completamente disponible. Usando SQLAlchemy directamente.")
             
@@ -634,6 +652,8 @@ class MaterializationProcessor:
             # Crear engine SQLAlchemy con las opciones específicas
             if engine_kwargs:
                 self.logger.message(f"Creando engine SQLAlchemy con opciones adicionales: {engine_kwargs}")
+                # Verificar el connection string antes de crear el engine
+                self.logger.message(f"Verificando formato de connection string: {conn_string.replace(db_connection_info.get('contrasena', ''), '***')}")
                 engine = sqlalchemy.create_engine(conn_string, **engine_kwargs)
             else:
                 # Sin opciones adicionales
@@ -647,8 +667,12 @@ class MaterializationProcessor:
                     # Implementar método inline para evitar atributos faltantes
                     if operation == 'append' or operation == 'overwrite':
                         self.logger.message(f"Implementando método write directo para MySQL ({operation})")
-                        # Usamos el servidor ya limpiado desde db_connection_info
-                        server = db_connection_info['servidor']
+                        # Obtenemos los parámetros de conexión y nos aseguramos de que el servidor esté limpio
+                        server_original = db_connection_info['servidor']
+                        server = self._clean_server_string(server_original)
+                        if server != server_original:
+                            self.logger.warning(f"Se detectó un servidor MySQL con formato incorrecto: '{server_original}' → '{server}'")
+                        
                         port = int(db_connection_info['puerto'] or 3306)
                         database = db_connection_info['basedatos']
                         user = db_connection_info['usuario']
@@ -795,8 +819,12 @@ class MaterializationProcessor:
                     # Implementar método inline para evitar atributos faltantes
                     if operation == 'append' or operation == 'overwrite':
                         self.logger.message(f"Implementando método write directo para SQL Server ({operation})")
-                        # Datos de conexión (servidor ya limpiado)
-                        server = db_connection_info['servidor']
+                        # Obtenemos los parámetros de conexión y nos aseguramos de que el servidor esté limpio
+                        server_original = db_connection_info['servidor']
+                        server = self._clean_server_string(server_original)
+                        if server != server_original:
+                            self.logger.warning(f"Se detectó un servidor SQL Server con formato incorrecto: '{server_original}' → '{server}'")
+                        
                         port = int(db_connection_info['puerto'] or 1433)
                         database = db_connection_info['basedatos']
                         user = db_connection_info['usuario']
@@ -981,8 +1009,12 @@ class MaterializationProcessor:
                     # Implementar método inline para evitar atributos faltantes
                     if operation == 'append' or operation == 'overwrite':
                         self.logger.message(f"Implementando método write directo para PostgreSQL ({operation})")
-                        # Datos de conexión (servidor ya limpiado)
-                        server = db_connection_info['servidor']
+                        # Obtenemos los parámetros de conexión y nos aseguramos de que el servidor esté limpio
+                        server_original = db_connection_info['servidor']
+                        server = self._clean_server_string(server_original)
+                        if server != server_original:
+                            self.logger.warning(f"Se detectó un servidor PostgreSQL con formato incorrecto: '{server_original}' → '{server}'")
+                            
                         port = db_connection_info['puerto'] or "5432"
                         database = db_connection_info['basedatos']
                         user = db_connection_info['usuario']
@@ -997,10 +1029,9 @@ class MaterializationProcessor:
                         self.logger.message(f"Conectando a PostgreSQL: {server}:{port}/{database}")
                         
                         # Usar conexión directa con psycopg2
+                        # Importar psycopg2 de manera segura
                         try:
-                            # Verificar si psycopg2 ya está importado como módulo global
-                            if 'psycopg2' not in sys.modules:
-                                import psycopg2
+                            import psycopg2 as pg2  # Importación local con alias para evitar conflictos
                             self.logger.message(f"Módulo psycopg2 importado correctamente")
                         except ImportError:
                             self.logger.error(f"No se pudo importar el módulo psycopg2. Asegúrese de que esté instalado.")
@@ -1022,8 +1053,8 @@ class MaterializationProcessor:
                         dsn = " ".join(dsn_parts)
                         self.logger.message(f"Conectando a PostgreSQL con DSN (credenciales ocultas)")
                         
-                        # Intentar conexión con formato DSN
-                        conn = psycopg2.connect(dsn)
+                        # Intentar conexión con formato DSN usando el alias pg2
+                        conn = pg2.connect(dsn)
                         conn.autocommit = False  # Controlamos explícitamente las transacciones
                         
                         try:
