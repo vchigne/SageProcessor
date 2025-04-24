@@ -407,36 +407,38 @@ export const EditEmisorModal: React.FC<EditEmisorModalProps> = ({
                       <label className="block text-sm font-medium text-gray-700">
                         Tipo de Emisor
                       </label>
-                      <Select
-                        className="mt-1"
+                      <select
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
                         value={formData.tipo_emisor}
-                        onValueChange={(value) => setFormData({ ...formData, tipo_emisor: value })}
-                        placeholder="Seleccionar tipo de emisor"
+                        onChange={(e) => setFormData({ ...formData, tipo_emisor: e.target.value })}
+                        required
                       >
+                        <option value="" disabled>Seleccionar tipo de emisor</option>
                         {TIPOS_EMISOR.map((tipo) => (
-                          <SelectItem key={tipo} value={tipo}>
+                          <option key={tipo} value={tipo}>
                             {tipo.charAt(0).toUpperCase() + tipo.slice(1)}
-                          </SelectItem>
+                          </option>
                         ))}
-                      </Select>
+                      </select>
                     </div>
 
                     <div>
                       <label className="block text-sm font-medium text-gray-700">
                         Organización
                       </label>
-                      <Select
-                        className="mt-1"
+                      <select
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
                         value={formData.organizacion_id}
-                        onValueChange={(value) => setFormData({ ...formData, organizacion_id: value })}
-                        placeholder="Seleccionar organización"
+                        onChange={(e) => setFormData({ ...formData, organizacion_id: e.target.value })}
+                        required
                       >
+                        <option value="" disabled>Seleccionar organización</option>
                         {organizaciones.map((org) => (
-                          <SelectItem key={org.id} value={org.id.toString()}>
+                          <option key={org.id} value={org.id.toString()}>
                             {org.nombre}
-                          </SelectItem>
+                          </option>
                         ))}
-                      </Select>
+                      </select>
                     </div>
 
                     <div>
@@ -523,10 +525,11 @@ export const EditEmisorModal: React.FC<EditEmisorModalProps> = ({
                       <label className="block text-sm font-medium text-gray-700">
                         Tipo de Origen de Datos
                       </label>
-                      <Select
-                        className="mt-1"
+                      <select
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
                         value={formData.tipo_origen}
-                        onValueChange={(value) => {
+                        onChange={(e) => {
+                          const value = e.target.value;
                           setFormData({ 
                             ...formData, 
                             tipo_origen: value,
@@ -548,15 +551,16 @@ export const EditEmisorModal: React.FC<EditEmisorModalProps> = ({
                               bucket_nombre: ''
                             })
                           });
+                          setSftpValidationMessage('');
                         }}
-                        placeholder="Seleccionar tipo de origen"
                       >
+                        <option value="" disabled>Seleccionar tipo de origen</option>
                         {TIPOS_ORIGEN.map((tipo) => (
-                          <SelectItem key={tipo.value} value={tipo.value}>
+                          <option key={tipo.value} value={tipo.value}>
                             {tipo.label}
-                          </SelectItem>
+                          </option>
                         ))}
-                      </Select>
+                      </select>
                     </div>
 
                     {/* Configuración SFTP */}
@@ -660,44 +664,45 @@ export const EditEmisorModal: React.FC<EditEmisorModalProps> = ({
                           <label className="block text-sm font-medium text-gray-700">
                             Secreto Cloud
                           </label>
-                          <Select
-                            className="mt-1"
+                          <select
+                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
                             value={formData.cloud_secret_id}
-                            onValueChange={(value) => {
+                            onChange={(e) => {
+                              const value = e.target.value;
                               setFormData({ ...formData, cloud_secret_id: value, bucket_nombre: '' });
                               if (value) {
                                 fetchBuckets(value);
                               }
                             }}
-                            placeholder="Seleccionar secreto cloud"
                             required={formData.tipo_origen === 'bucket'}
                           >
+                            <option value="" disabled>Seleccionar secreto cloud</option>
                             {cloudSecrets.map((secret) => (
-                              <SelectItem key={secret.id} value={secret.id.toString()}>
+                              <option key={secret.id} value={secret.id.toString()}>
                                 {secret.nombre} ({secret.tipo})
-                              </SelectItem>
+                              </option>
                             ))}
-                          </Select>
+                          </select>
                         </div>
                         
                         <div>
                           <label className="block text-sm font-medium text-gray-700">
                             Bucket
                           </label>
-                          <Select
-                            className="mt-1"
+                          <select
+                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
                             value={formData.bucket_nombre}
-                            onValueChange={(value) => setFormData({ ...formData, bucket_nombre: value })}
-                            placeholder="Seleccionar bucket"
+                            onChange={(e) => setFormData({ ...formData, bucket_nombre: e.target.value })}
                             required={formData.tipo_origen === 'bucket'}
                             disabled={isLoadingBuckets || !formData.cloud_secret_id || buckets.length === 0}
                           >
+                            <option value="" disabled>Seleccionar bucket</option>
                             {buckets.map((bucket) => (
-                              <SelectItem key={bucket.name} value={bucket.name}>
+                              <option key={bucket.name} value={bucket.name}>
                                 {bucket.name} {bucket.region ? `(${bucket.region})` : ''}
-                              </SelectItem>
+                              </option>
                             ))}
-                          </Select>
+                          </select>
                           {isLoadingBuckets && <p className="mt-1 text-xs text-gray-500">Cargando buckets...</p>}
                           {!isLoadingBuckets && formData.cloud_secret_id && buckets.length === 0 && (
                             <p className="mt-1 text-xs text-red-500">No se encontraron buckets para este secreto</p>
