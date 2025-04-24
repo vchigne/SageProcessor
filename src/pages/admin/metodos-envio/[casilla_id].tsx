@@ -250,22 +250,68 @@ export default function CasillaMetodosEnvio() {
                     </div>
                   )}
                   <div className="mt-2 space-y-2">
-                    {metodos.map((metodo) => (
-                      <div key={metodo.id} className="text-sm">
-                        <span className="font-medium">{metodo.metodo_envio}:</span>
-                        <div className="ml-4 text-gray-500">
-                          {metodo.metodo_envio === 'local' ? (
-                            <div>Directorio: inputs_{casilla.id}_{emisorId}</div>
-                          ) : (
-                            Object.entries(metodo.parametros || {}).map(([key, value]) => (
-                              <div key={key}>
-                                {key}: {value}
+                    {/* Agrupar métodos por tipo para evitar duplicaciones */}
+                    {(() => {
+                      // Crear un objeto para agrupar métodos por tipo
+                      const metodosPorTipo = metodos.reduce((acc, metodo) => {
+                        if (!acc[metodo.metodo_envio]) {
+                          acc[metodo.metodo_envio] = [];
+                        }
+                        acc[metodo.metodo_envio].push(metodo);
+                        return acc;
+                      }, {});
+                      
+                      // Renderizar cada tipo de método una sola vez
+                      return Object.entries(metodosPorTipo).map(([tipo, metodosList]) => {
+                        // Obtener primer método de este tipo (para configuración general)
+                        const metodo = metodosList[0];
+                        
+                        return (
+                          <div key={tipo} className="text-sm">
+                            {/* Renderizar tipos con información específica */}
+                            {tipo === 'SFTP tipo 2' ? (
+                              <div>
+                                <span className="font-medium">SFTP propio:</span>
+                                <div className="ml-4 text-gray-500">
+                                  <div>Subdirectorio: {metodo.emisor_sftp_subdirectorio || '/'}</div>
+                                </div>
                               </div>
-                            ))
-                          )}
-                        </div>
-                      </div>
-                    ))}
+                            ) : tipo === 'cloud' ? (
+                              <div>
+                                <span className="font-medium">Bucket en nube:</span>
+                                <div className="ml-4 text-gray-500">
+                                  <div>Prefijo: {metodo.emisor_bucket_prefijo || '/'}</div>
+                                </div>
+                              </div>
+                            ) : tipo === 'local' ? (
+                              <div>
+                                <span className="font-medium">Local:</span>
+                                <div className="ml-4 text-gray-500">
+                                  <div>Directorio: inputs_{casilla.id}_{emisorId}</div>
+                                  {metodo.emisor_sftp_subdirectorio && (
+                                    <div>Subdirectorio SFTP: {metodo.emisor_sftp_subdirectorio}</div>
+                                  )}
+                                  {metodo.emisor_bucket_prefijo && (
+                                    <div>Prefijo bucket: {metodo.emisor_bucket_prefijo}</div>
+                                  )}
+                                </div>
+                              </div>
+                            ) : (
+                              <div>
+                                <span className="font-medium">{tipo}:</span>
+                                <div className="ml-4 text-gray-500">
+                                  {Object.entries(metodo.parametros || {}).map(([key, value]) => (
+                                    <div key={key}>
+                                      {key}: {value}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      });
+                    })()}
                   </div>
                 </div>
                 <Button
