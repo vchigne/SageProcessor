@@ -5,6 +5,7 @@ Este módulo implementa la funcionalidad para procesar materializaciones
 después de que un archivo ha sido validado y procesado por SAGE.
 """
 import os
+import sys
 import json
 import datetime
 import math
@@ -81,9 +82,11 @@ class MaterializationProcessor:
                 # Intentar extraer la parte después del último @
                 parts = server.split('@')
                 cleaned = parts[-1]
+                self.logger.message(f"Servidor limpiado de formato incorrecto: '{server}' → '{cleaned}'")
                 return cleaned
             except Exception:
                 # Si hay algún error, devolver el original
+                self.logger.warning(f"No se pudo limpiar el formato de servidor: '{server}'")
                 return server
                 
         return server
@@ -100,6 +103,27 @@ class MaterializationProcessor:
                 os.environ.get('DATABASE_URL')
             )
         return self.db_connection
+        
+    def _get_clean_connection_params(self, connection_info: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Obtiene los parámetros de conexión con el servidor limpiado.
+        
+        Args:
+            connection_info: Información de conexión a base de datos
+            
+        Returns:
+            Diccionario con los parámetros limpios
+        """
+        params = dict(connection_info)
+        if 'servidor' in params:
+            servidor_original = params['servidor']
+            server_limpio = self._clean_server_string(servidor_original)
+            params['servidor'] = server_limpio
+            
+            if servidor_original != server_limpio:
+                self.logger.warning(f"Se ha limpiado el formato del servidor: '{servidor_original}' → '{server_limpio}'")
+                
+        return params
         
     def process(self, casilla_id: int, execution_id: str, dataframe: pd.DataFrame) -> None:
         """
@@ -432,8 +456,8 @@ class MaterializationProcessor:
             return
         
         # Obtener información de la conexión a la base de datos
-        db_connection_info = self._get_db_connection_info(db_conn_id)
-        if not db_connection_info:
+        db_connection_info_original = self._get_db_connection_info(db_conn_id)
+        if not db_connection_info_original:
             raise ValueError(f"No se encontró la conexión a base de datos con ID {db_conn_id}")
         
         # Verificar si hay una base de datos específica en la configuración de la materialización
@@ -442,7 +466,11 @@ class MaterializationProcessor:
             # Si hay base de datos específica en la configuración, sobreescribir la de la conexión
             especific_db = config.get('database') or config.get('basedatos')
             self.logger.message(f"Usando base de datos '{especific_db}' especificada en la configuración de materialización")
-            db_connection_info['basedatos'] = especific_db
+            db_connection_info_original['basedatos'] = especific_db
+            
+        # Limpiar el formato del servidor
+        db_connection_info = self._get_clean_connection_params(db_connection_info_original)
+        self.logger.message(f"Conexión con servidor limpio: {db_connection_info['tipo']}://{db_connection_info['usuario']}:***@{db_connection_info['servidor']}:{db_connection_info['puerto']}/{db_connection_info['basedatos']}")
         
         # Obtener parámetros de configuración
         table_name = config.get('table_name') or config.get('tablaDestino')
@@ -493,6 +521,7 @@ class MaterializationProcessor:
                     
                     # Intentar primero con conexión directa para verificar si podemos conectar
                     try:
+                        # Usamos el servidor limpiado a través de _get_clean_connection_params
                         server = db_connection_info['servidor']
                         port = int(db_connection_info['puerto'] or 1433)
                         database = db_connection_info['basedatos']
@@ -552,6 +581,7 @@ class MaterializationProcessor:
                     
                     # Intentar primero con conexión directa para verificar si podemos conectar
                     try:
+                        # Usamos el servidor ya limpiado
                         server = db_connection_info['servidor']
                         port = int(db_connection_info['puerto'] or 3306)
                         database = db_connection_info['basedatos']
@@ -617,10 +647,8 @@ class MaterializationProcessor:
                     # Implementar método inline para evitar atributos faltantes
                     if operation == 'append' or operation == 'overwrite':
                         self.logger.message(f"Implementando método write directo para MySQL ({operation})")
-                        # Datos de conexión
+                        # Usamos el servidor ya limpiado desde db_connection_info
                         server = db_connection_info['servidor']
-                        # Limpiamos la cadena del servidor por si tiene formato incorrecto (QJ@51.79.79.6)
-                        server = self._clean_server_string(server)
                         port = int(db_connection_info['puerto'] or 3306)
                         database = db_connection_info['basedatos']
                         user = db_connection_info['usuario']
@@ -767,7 +795,7 @@ class MaterializationProcessor:
                     # Implementar método inline para evitar atributos faltantes
                     if operation == 'append' or operation == 'overwrite':
                         self.logger.message(f"Implementando método write directo para SQL Server ({operation})")
-                        # Datos de conexión
+                        # Datos de conexión (servidor ya limpiado)
                         server = db_connection_info['servidor']
                         port = int(db_connection_info['puerto'] or 1433)
                         database = db_connection_info['basedatos']
@@ -953,10 +981,8 @@ class MaterializationProcessor:
                     # Implementar método inline para evitar atributos faltantes
                     if operation == 'append' or operation == 'overwrite':
                         self.logger.message(f"Implementando método write directo para PostgreSQL ({operation})")
-                        # Datos de conexión
+                        # Datos de conexión (servidor ya limpiado)
                         server = db_connection_info['servidor']
-                        # Limpiamos la cadena del servidor por si tiene formato incorrecto (QJ@51.79.79.6)
-                        server = self._clean_server_string(server)
                         port = db_connection_info['puerto'] or "5432"
                         database = db_connection_info['basedatos']
                         user = db_connection_info['usuario']
@@ -971,8 +997,33 @@ class MaterializationProcessor:
                         self.logger.message(f"Conectando a PostgreSQL: {server}:{port}/{database}")
                         
                         # Usar conexión directa con psycopg2
-                        import psycopg2
-                        conn = psycopg2.connect(conn_string)
+                        try:
+                            # Verificar si psycopg2 ya está importado como módulo global
+                            if 'psycopg2' not in sys.modules:
+                                import psycopg2
+                            self.logger.message(f"Módulo psycopg2 importado correctamente")
+                        except ImportError:
+                            self.logger.error(f"No se pudo importar el módulo psycopg2. Asegúrese de que esté instalado.")
+                            raise
+                        
+                        # Crear un connection string en formato DSN (más confiable)
+                        dsn_parts = []
+                        if server:
+                            dsn_parts.append(f"host={server}")
+                        if port:
+                            dsn_parts.append(f"port={port}")
+                        if database:
+                            dsn_parts.append(f"dbname={database}")
+                        if user:
+                            dsn_parts.append(f"user={user}")
+                        if password:
+                            dsn_parts.append(f"password={password}")
+                            
+                        dsn = " ".join(dsn_parts)
+                        self.logger.message(f"Conectando a PostgreSQL con DSN (credenciales ocultas)")
+                        
+                        # Intentar conexión con formato DSN
+                        conn = psycopg2.connect(dsn)
                         conn.autocommit = False  # Controlamos explícitamente las transacciones
                         
                         try:
