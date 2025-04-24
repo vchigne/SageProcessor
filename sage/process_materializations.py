@@ -20,7 +20,7 @@ import zipfile
 import paramiko
 from paramiko import SSHClient, SFTPClient
 from typing import Optional, Dict, List, Any, Tuple, Union
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote_plus
 from azure.storage.blob import BlobServiceClient, ContentSettings, ContainerClient
 import re
 from google.cloud.storage import Client as GCPStorageClient
@@ -3202,8 +3202,7 @@ class MaterializationProcessor:
         Returns:
             Connection string
         """
-        # Importar urllib para escapar caracteres especiales en credenciales
-        from urllib.parse import quote_plus
+        # La función quote_plus está importada al inicio del archivo
         if db_info['tipo'] == 'postgresql':
             # Sanitizar valores para evitar problemas en el formato de la URL
             usuario = db_info['usuario']
