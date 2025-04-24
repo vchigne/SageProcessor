@@ -3179,6 +3179,8 @@ class MaterializationProcessor:
         Returns:
             Connection string
         """
+        # Importar urllib para escapar caracteres especiales en credenciales
+        from urllib.parse import quote_plus
         if db_info['tipo'] == 'postgresql':
             # Sanitizar valores para evitar problemas en el formato de la URL
             usuario = db_info['usuario']
@@ -3203,13 +3205,20 @@ class MaterializationProcessor:
             servidor = self._clean_server_string(servidor)
                 
             # Crear connection string con formato seguro
+            # Escapar los caracteres especiales en la contraseña (codificación URL)
+            if contrasena and '@' in contrasena:
+                self.logger.message(f"Aplicando URL-encoding a contraseña PostgreSQL que contiene caracteres especiales")
+                contrasena_escapada = quote_plus(contrasena)
+            else:
+                contrasena_escapada = contrasena
+                
             conn_string = f"postgresql://{usuario}"
             if contrasena:
-                conn_string += f":{contrasena}"
+                conn_string += f":{contrasena_escapada}"
             conn_string += f"@{servidor}:{puerto}/{basedatos}"
             
-            # Ocultar contraseña en el log
-            log_string = conn_string.replace(contrasena, "***") if contrasena else conn_string
+            # Ocultar contraseña en el log (usar la versión escapada de la contraseña)
+            log_string = conn_string.replace(contrasena_escapada, "***") if contrasena else conn_string
             self.logger.message(f"Connection string para PostgreSQL (credenciales ocultas): {log_string}")
             
             return conn_string
@@ -3238,13 +3247,20 @@ class MaterializationProcessor:
             servidor = self._clean_server_string(servidor)
             
             # Crear connection string con formato seguro
+            # Escapar los caracteres especiales en la contraseña (codificación URL)
+            if contrasena and '@' in contrasena:
+                self.logger.message(f"Aplicando URL-encoding a contraseña MySQL que contiene caracteres especiales")
+                contrasena_escapada = quote_plus(contrasena)
+            else:
+                contrasena_escapada = contrasena
+                
             conn_string = f"mysql+pymysql://{usuario}"
             if contrasena:
-                conn_string += f":{contrasena}"
+                conn_string += f":{contrasena_escapada}"
             conn_string += f"@{servidor}:{puerto}/{basedatos}"
             
-            # Ocultar contraseña en el log
-            log_string = conn_string.replace(contrasena, "***") if contrasena else conn_string
+            # Ocultar contraseña en el log (usar la versión escapada de la contraseña)
+            log_string = conn_string.replace(contrasena_escapada, "***") if contrasena else conn_string
             self.logger.message(f"Connection string para MySQL (credenciales ocultas): {log_string}")
             
             return conn_string
@@ -3268,10 +3284,18 @@ class MaterializationProcessor:
             # Crear un connection string con un formato más seguro para SQL Server
             # Formato: mssql+pymssql://username:password@hostname:port/database_name
             # Para reducir problemas con caracteres especiales en credenciales
+            
+            # Escapar los caracteres especiales en la contraseña (codificación URL)
+            if password and '@' in password:
+                self.logger.message(f"Aplicando URL-encoding a contraseña SQL Server que contiene caracteres especiales")
+                password_escaped = quote_plus(password)
+            else:
+                password_escaped = password
+                
             conn_string = f"mssql+pymssql://{user}"
             if password:
                 # Escapar los caracteres especiales en la contraseña
-                conn_string += f":{password}"
+                conn_string += f":{password_escaped}"
             conn_string += f"@{server}"
             if port:
                 conn_string += f":{port}"
@@ -3291,7 +3315,7 @@ class MaterializationProcessor:
             }
             
             self.logger.message(f"Usando pymssql para conexión a SQL Server con opciones avanzadas")
-            self.logger.message(f"Connection string para SQL Server (credenciales ocultas): {conn_string.replace(password, '***')}")
+            self.logger.message(f"Connection string para SQL Server (credenciales ocultas): {conn_string.replace(password_escaped, '***')}")
             
             # Si la conexión tiene opciones adicionales de la base de datos, incorporarlas
             if 'opciones_conexion' in db_info and isinstance(db_info['opciones_conexion'], dict):
