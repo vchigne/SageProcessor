@@ -61,6 +61,32 @@ class MaterializationProcessor:
         self.logger = logger
         self.db_connection = None
         self.cloud_clients = {}  # Caché de clientes para proveedores cloud
+        
+    def _clean_server_string(self, server: str) -> str:
+        """
+        Limpia una cadena de servidor para eliminar caracteres no deseados o formatos incorrectos.
+        
+        Args:
+            server: String con la dirección del servidor
+            
+        Returns:
+            String limpio con la dirección del servidor
+        """
+        if not server:
+            return server
+            
+        # Eliminar cualquier prefijo con @ (formato incorrecto como 'QJ@51.79.79.6')
+        if '@' in server:
+            try:
+                # Intentar extraer la parte después del último @
+                parts = server.split('@')
+                cleaned = parts[-1]
+                return cleaned
+            except Exception:
+                # Si hay algún error, devolver el original
+                return server
+                
+        return server
     
     def _get_database_connection(self):
         """
@@ -518,6 +544,55 @@ class MaterializationProcessor:
                 except ImportError:
                     self.logger.error("Módulo pymssql no está disponible. Instalelo con: pip install pymssql")
                     raise ImportError("Se requiere pymssql para conexiones a SQL Server")
+            elif db_connection_info['tipo'] == 'mysql':
+                # Para MySQL, verificar si está disponible pymysql
+                try:
+                    import pymysql
+                    self.logger.message("Módulo pymysql disponible para MySQL")
+                    
+                    # Intentar primero con conexión directa para verificar si podemos conectar
+                    try:
+                        server = db_connection_info['servidor']
+                        port = int(db_connection_info['puerto'] or 3306)
+                        database = db_connection_info['basedatos']
+                        user = db_connection_info['usuario']
+                        password = db_connection_info['contrasena']
+                        
+                        # Definir opciones avanzadas de conexión
+                        connect_options = {
+                            "charset": "utf8mb4",
+                            "autocommit": False,
+                            "connect_timeout": 10,
+                        }
+                        
+                        # Si hay opciones de conexión adicionales, incorporarlas
+                        if 'opciones_conexion' in db_connection_info and isinstance(db_connection_info['opciones_conexion'], dict):
+                            for key, value in db_connection_info['opciones_conexion'].items():
+                                connect_options[key] = value
+                            self.logger.message(f"Añadidas opciones personalizadas para MySQL: {list(db_connection_info['opciones_conexion'].keys())}")
+                        
+                        self.logger.message(f"Intentando conexión directa con pymysql a {server}:{port}/{database}")
+                        test_conn = pymysql.connect(
+                            host=server,
+                            port=port,
+                            user=user,
+                            password=password,
+                            database=database,
+                            charset=connect_options["charset"],
+                            connect_timeout=connect_options["connect_timeout"],
+                            autocommit=connect_options["autocommit"]
+                        )
+                        test_conn.close()
+                        self.logger.message("Prueba de conexión directa con pymysql exitosa")
+                    except Exception as e:
+                        self.logger.warning(f"Prueba de conexión directa con pymysql falló: {str(e)}")
+                    
+                    # Configurar opciones avanzadas de conexión para SQLAlchemy
+                    engine_kwargs['connect_args'] = connect_options
+                    self.logger.message(f"Usando argumentos de conexión para MySQL: {engine_kwargs['connect_args']}")
+                except ImportError:
+                    self.logger.warning("Módulo pymysql no está completamente disponible. Usando SQLAlchemy directamente.")
+            
             elif db_connection_info['tipo'] == 'duckdb':
                 # Instalar el módulo duckdb-engine si es necesario (opcional)
                 try:
@@ -535,8 +610,158 @@ class MaterializationProcessor:
                 engine = sqlalchemy.create_engine(conn_string)
             
             # Materializar según la operación y tipo de base de datos
-            # Para SQL Server, usar conexión directa en lugar de SQLAlchemy
-            if db_connection_info['tipo'] == 'mssql':
+            # Para SQL Server y MySQL, usar conexión directa en lugar de SQLAlchemy
+            if db_connection_info['tipo'] == 'mysql':
+                self.logger.message(f"Usando conexión directa pymysql para MySQL en operación {operation}")
+                try:
+                    # Implementar método inline para evitar atributos faltantes
+                    if operation == 'append' or operation == 'overwrite':
+                        self.logger.message(f"Implementando método write directo para MySQL ({operation})")
+                        # Datos de conexión
+                        server = db_connection_info['servidor']
+                        # Limpiamos la cadena del servidor por si tiene formato incorrecto (QJ@51.79.79.6)
+                        server = self._clean_server_string(server)
+                        port = int(db_connection_info['puerto'] or 3306)
+                        database = db_connection_info['basedatos']
+                        user = db_connection_info['usuario']
+                        password = db_connection_info['contrasena']
+                        
+                        # Configuración de opciones avanzadas
+                        connect_options = {
+                            "charset": "utf8mb4",
+                            "autocommit": False, # Controlamos explícitamente las transacciones
+                            "connect_timeout": 10
+                        }
+                        
+                        # Crear conexión directa
+                        import pymysql
+                        
+                        # Log para depuración
+                        self.logger.message(f"Conectando a MySQL: {server}:{port}/{database}")
+                        
+                        conn = pymysql.connect(
+                            host=server,
+                            port=port,
+                            user=user,
+                            password=password,
+                            database=database,
+                            charset=connect_options["charset"],
+                            connect_timeout=connect_options["connect_timeout"],
+                            autocommit=connect_options["autocommit"]
+                        )
+                        
+                        try:
+                            # Si es overwrite, eliminar la tabla primero
+                            if operation == 'overwrite':
+                                cursor = conn.cursor()
+                                
+                                # Adaptamos el nombre de la tabla y esquema para MySQL
+                                qualified_table_name = f"`{schema_name}`.`{table_name}`" if schema_name else f"`{table_name}`"
+                                self.logger.message(f"Eliminando tabla existente {qualified_table_name}")
+                                cursor.execute(f"DROP TABLE IF EXISTS {qualified_table_name}")
+                                conn.commit()
+                            
+                            # Crear tabla si no existe
+                            cursor = conn.cursor()
+                            
+                            # Crear SQL para tabla
+                            create_table_sql = self._mysql_create_table_sql(df, table_name, schema_name)
+                            self.logger.message(f"Creando tabla: {create_table_sql}")
+                            cursor.execute(create_table_sql)
+                            conn.commit()
+                            
+                            # Insertar datos
+                            self.logger.message(f"Insertando {len(df)} filas en {schema_name}.{table_name}")
+                            
+                            # Obtener lista de columnas
+                            columns = ", ".join([f"`{col}`" for col in df.columns])
+                            placeholders = ", ".join(["%s"] * len(df.columns))
+                            
+                            # Crear SQL para inserción
+                            schema_prefix = f"`{schema_name}`." if schema_name else ""
+                            insert_sql = f"INSERT INTO {schema_prefix}`{table_name}` ({columns}) VALUES ({placeholders})"
+                            self.logger.message(f"SQL Inserción: {insert_sql}")
+                            
+                            # Convertir DataFrame a lista de tuplas
+                            records = df.to_records(index=False)
+                            tuples = [tuple(x) for x in records]
+                            
+                            # Ejecutar inserción por lotes (batch)
+                            batch_size = 1000  # Tamaño del lote
+                            for i in range(0, len(tuples), batch_size):
+                                batch = tuples[i:i+batch_size]
+                                try:
+                                    # Vamos a limpiar los datos para asegurar compatibilidad con pymysql
+                                    cleaned_batch = []
+                                    for row in batch:
+                                        cleaned_row = []
+                                        for val in row:
+                                            # None pasa directamente
+                                            if val is None:
+                                                cleaned_row.append(None)
+                                            # float('nan') debe convertirse a NULL
+                                            elif isinstance(val, float) and math.isnan(val):
+                                                cleaned_row.append(None)
+                                            # Para otros tipos, usar str() si no es un tipo básico
+                                            elif not isinstance(val, (int, float, str, bool, datetime.datetime, datetime.date)):
+                                                cleaned_row.append(str(val))
+                                            else:
+                                                cleaned_row.append(val)
+                                        cleaned_batch.append(tuple(cleaned_row))
+                                    
+                                    # Log para el primer registro (para debug)
+                                    if i == 0:
+                                        self.logger.message(f"Ejemplo primer registro limpiado: {cleaned_batch[0]}")
+                                    
+                                    cursor.executemany(insert_sql, cleaned_batch)
+                                    conn.commit()
+                                    self.logger.message(f"Insertado lote {i//batch_size + 1} de {(len(tuples) + batch_size - 1) // batch_size}")
+                                except Exception as batch_error:
+                                    self.logger.error(f"Error procesando lote {i//batch_size + 1}: {str(batch_error)}")
+                                    # Intentar inserción registro por registro como último recurso
+                                    for j, row in enumerate(batch):
+                                        try:
+                                            # Limpiar cada fila individualmente
+                                            cleaned_row = []
+                                            for val in row:
+                                                if val is None:
+                                                    cleaned_row.append(None)
+                                                elif isinstance(val, float) and math.isnan(val):
+                                                    cleaned_row.append(None)
+                                                elif not isinstance(val, (int, float, str, bool, datetime.datetime, datetime.date)):
+                                                    cleaned_row.append(str(val))
+                                                else:
+                                                    cleaned_row.append(val)
+                                            
+                                            cursor.execute(insert_sql, tuple(cleaned_row))
+                                            conn.commit()
+                                        except Exception as row_error:
+                                            self.logger.error(f"Error insertando fila {i+j} (valores: {row}): {str(row_error)}")
+                                            # Continuar con la siguiente fila
+                                            continue
+                            
+                            rows_affected = len(df)
+                            self.logger.message(f"Se {'agregaron' if operation == 'append' else 'sobrescribieron'} {rows_affected} filas a la tabla {schema_name}.{table_name}")
+                        finally:
+                            conn.close()
+                    else:
+                        # Si no es append ni overwrite, usar SQLAlchemy
+                        raise ValueError(f"Operación {operation} no implementada para conexión directa MySQL")
+                    
+                except Exception as e:
+                    self.logger.error(f"Error en conexión directa a MySQL: {str(e)}, intentando con SQLAlchemy")
+                    # Si falla la conexión directa, intentar con SQLAlchemy como fallback
+                    df.to_sql(
+                        name=table_name,
+                        schema=schema_name,
+                        con=engine,
+                        if_exists='append' if operation == 'append' else 'replace',
+                        index=False
+                    )
+                    rows_affected = len(df)
+                    self.logger.message(f"Se {'agregaron' if operation == 'append' else 'sobrescribieron'} {rows_affected} filas a la tabla {schema_name}.{table_name} (usando SQLAlchemy)")
+            
+            elif db_connection_info['tipo'] == 'mssql':
                 self.logger.message(f"Usando conexión directa pymssql para SQL Server en operación {operation}")
                 try:
                     # Implementar método inline para evitar atributos faltantes
@@ -721,6 +946,176 @@ class MaterializationProcessor:
                     )
                     rows_affected = len(df)
                     self.logger.message(f"Se {'agregaron' if operation == 'append' else 'sobrescribieron'} {rows_affected} filas a la tabla {schema_name}.{table_name} (usando SQLAlchemy)")
+            # Para PostgreSQL, usar una conexión directa para mejor manejo de errores
+            elif db_connection_info['tipo'] == 'postgresql':
+                self.logger.message(f"Usando conexión directa psycopg2 para PostgreSQL en operación {operation}")
+                try:
+                    # Implementar método inline para evitar atributos faltantes
+                    if operation == 'append' or operation == 'overwrite':
+                        self.logger.message(f"Implementando método write directo para PostgreSQL ({operation})")
+                        # Datos de conexión
+                        server = db_connection_info['servidor']
+                        # Limpiamos la cadena del servidor por si tiene formato incorrecto (QJ@51.79.79.6)
+                        server = self._clean_server_string(server)
+                        port = db_connection_info['puerto'] or "5432"
+                        database = db_connection_info['basedatos']
+                        user = db_connection_info['usuario']
+                        password = db_connection_info['contrasena']
+                        
+                        # Crear connection string con formato seguro
+                        conn_string = f"host={server} port={port} dbname={database} user={user}"
+                        if password:
+                            conn_string += f" password={password}"
+                        
+                        # Log para depuración
+                        self.logger.message(f"Conectando a PostgreSQL: {server}:{port}/{database}")
+                        
+                        # Usar conexión directa con psycopg2
+                        import psycopg2
+                        conn = psycopg2.connect(conn_string)
+                        conn.autocommit = False  # Controlamos explícitamente las transacciones
+                        
+                        try:
+                            cursor = conn.cursor()
+                            
+                            # Si es overwrite, eliminar la tabla primero
+                            if operation == 'overwrite':
+                                qualified_table_name = f'"{schema_name}"."{table_name}"' if schema_name else f'"{table_name}"'
+                                self.logger.message(f"Eliminando tabla existente {qualified_table_name}")
+                                cursor.execute(f'DROP TABLE IF EXISTS {qualified_table_name}')
+                                conn.commit()
+                            
+                            # Usar pandas para crear la tabla automáticamente
+                            # Primero comprobamos si la tabla existe
+                            table_exists = False
+                            try:
+                                if schema_name:
+                                    cursor.execute("""
+                                        SELECT 1 FROM information_schema.tables 
+                                        WHERE table_schema = %s AND table_name = %s
+                                    """, (schema_name, table_name))
+                                else:
+                                    cursor.execute("""
+                                        SELECT 1 FROM information_schema.tables 
+                                        WHERE table_schema = 'public' AND table_name = %s
+                                    """, (table_name,))
+                                table_exists = cursor.fetchone() is not None
+                            except Exception as e:
+                                self.logger.warning(f"Error al verificar si existe la tabla: {str(e)}")
+                            
+                            # Si la tabla no existe, la creamos
+                            if not table_exists:
+                                # Usar pandas para crear la estructura de la tabla
+                                # Primero enviar solo la estructura (sin datos)
+                                self.logger.message(f"Creando nueva tabla {schema_name}.{table_name}")
+                                try:
+                                    df.head(0).to_sql(
+                                        name=table_name,
+                                        schema=schema_name,
+                                        con=engine,
+                                        if_exists='append',
+                                        index=False
+                                    )
+                                    self.logger.message("Tabla creada exitosamente")
+                                except Exception as e:
+                                    self.logger.error(f"Error al crear la tabla: {str(e)}")
+                                    raise
+                            
+                            # Ahora insertamos los datos
+                            self.logger.message(f"Insertando {len(df)} filas en {schema_name}.{table_name}")
+                            
+                            # Obtener lista de columnas
+                            column_list = ", ".join([f'"{col}"' for col in df.columns])
+                            placeholders = ", ".join(["%s"] * len(df.columns))
+                            
+                            # Crear SQL para inserción
+                            schema_prefix = f'"{schema_name}".' if schema_name else ""
+                            insert_sql = f'INSERT INTO {schema_prefix}"{table_name}" ({column_list}) VALUES ({placeholders})'
+                            self.logger.message(f"SQL Inserción: {insert_sql}")
+                            
+                            # Convertir DataFrame a lista de tuplas
+                            records = df.to_records(index=False)
+                            tuples = [tuple(x) for x in records]
+                            
+                            # Ejecutar inserción por lotes (batch)
+                            batch_size = 1000  # Tamaño del lote
+                            for i in range(0, len(tuples), batch_size):
+                                batch = tuples[i:i+batch_size]
+                                try:
+                                    # Vamos a limpiar los datos para asegurar compatibilidad
+                                    cleaned_batch = []
+                                    for row in batch:
+                                        cleaned_row = []
+                                        for val in row:
+                                            # None pasa directamente
+                                            if val is None:
+                                                cleaned_row.append(None)
+                                            # float('nan') debe convertirse a NULL
+                                            elif isinstance(val, float) and math.isnan(val):
+                                                cleaned_row.append(None)
+                                            # Para otros tipos, usar str() si no es un tipo básico
+                                            elif not isinstance(val, (int, float, str, bool, datetime.datetime, datetime.date)):
+                                                cleaned_row.append(str(val))
+                                            else:
+                                                cleaned_row.append(val)
+                                        cleaned_batch.append(tuple(cleaned_row))
+                                    
+                                    # Log para el primer registro (para debug)
+                                    if i == 0:
+                                        self.logger.message(f"Ejemplo primer registro limpiado: {cleaned_batch[0]}")
+                                    
+                                    # Ejecutar la inserción en lote
+                                    cursor.executemany(insert_sql, cleaned_batch)
+                                    conn.commit()
+                                    self.logger.message(f"Insertado lote {i//batch_size + 1} de {(len(tuples) + batch_size - 1) // batch_size}")
+                                except Exception as batch_error:
+                                    self.logger.error(f"Error procesando lote {i//batch_size + 1}: {str(batch_error)}")
+                                    conn.rollback()
+                                    
+                                    # Intentar inserción registro por registro como último recurso
+                                    for j, row in enumerate(batch):
+                                        try:
+                                            # Limpiar cada fila individualmente
+                                            cleaned_row = []
+                                            for val in row:
+                                                if val is None:
+                                                    cleaned_row.append(None)
+                                                elif isinstance(val, float) and math.isnan(val):
+                                                    cleaned_row.append(None)
+                                                elif not isinstance(val, (int, float, str, bool, datetime.datetime, datetime.date)):
+                                                    cleaned_row.append(str(val))
+                                                else:
+                                                    cleaned_row.append(val)
+                                            
+                                            cursor.execute(insert_sql, tuple(cleaned_row))
+                                            conn.commit()
+                                        except Exception as row_error:
+                                            self.logger.error(f"Error insertando fila {i+j} (valores: {row}): {str(row_error)}")
+                                            conn.rollback()
+                                            # Continuar con la siguiente fila
+                                            continue
+                            
+                            rows_affected = len(df)
+                            self.logger.message(f"Se {'agregaron' if operation == 'append' else 'sobrescribieron'} {rows_affected} filas a la tabla {schema_name}.{table_name}")
+                        finally:
+                            conn.close()
+                    else:
+                        # Si no es append ni overwrite, usar SQLAlchemy
+                        raise ValueError(f"Operación {operation} no implementada para conexión directa PostgreSQL")
+                
+                except Exception as e:
+                    self.logger.error(f"Error en conexión directa a PostgreSQL: {str(e)}, intentando con SQLAlchemy")
+                    # Si falla la conexión directa, intentar con SQLAlchemy como fallback
+                    df.to_sql(
+                        name=table_name,
+                        schema=schema_name,
+                        con=engine,
+                        if_exists='append' if operation == 'append' else 'replace',
+                        index=False
+                    )
+                    rows_affected = len(df)
+                    self.logger.message(f"Se {'agregaron' if operation == 'append' else 'sobrescribieron'} {rows_affected} filas a la tabla {schema_name}.{table_name} (usando SQLAlchemy)")
+                    
             # Para otras bases de datos, usar SQLAlchemy normalmente
             elif operation == 'append':
                 df.to_sql(
@@ -753,6 +1148,8 @@ class MaterializationProcessor:
                 # Implementación de upsert dependiente del tipo de base de datos
                 if db_connection_info['tipo'] == 'postgresql':
                     self._postgres_upsert(engine, df, table_name, schema_name, pk_columns)
+                elif db_connection_info['tipo'] == 'mysql':
+                    self._mysql_upsert(engine, df, table_name, schema_name, pk_columns)
                 elif db_connection_info['tipo'] == 'duckdb':
                     self._duckdb_upsert(engine, df, table_name, schema_name, pk_columns)
                 elif db_connection_info['tipo'] == 'mssql':
@@ -950,6 +1347,49 @@ class MaterializationProcessor:
             if target_conn:
                 target_conn.close()
     
+    def _mysql_create_table_sql(self, df: pd.DataFrame, table_name: str, schema_name: str = None) -> str:
+        """
+        Genera SQL para crear una tabla en MySQL basada en el DataFrame.
+        
+        Args:
+            df: DataFrame con los datos
+            table_name: Nombre de la tabla a crear
+            schema_name: Nombre del esquema (opcional en MySQL)
+            
+        Returns:
+            SQL para crear la tabla
+        """
+        # Mapeo de tipos de datos de pandas a MySQL
+        type_map = {
+            'int64': 'BIGINT',
+            'int32': 'INT',
+            'float64': 'DOUBLE',
+            'float32': 'FLOAT',
+            'object': 'TEXT',
+            'bool': 'TINYINT(1)',
+            'datetime64[ns]': 'DATETIME',
+            'category': 'VARCHAR(255)',
+            'string': 'TEXT'
+        }
+        
+        # Generar definiciones de columnas
+        columns = []
+        for col in df.columns:
+            col_type = df[col].dtype.name
+            sql_type = type_map.get(col_type, 'TEXT')
+            columns.append(f"`{col}` {sql_type}")
+        
+        # Combinar definiciones de columnas
+        column_defs = ", ".join(columns)
+        
+        # Agregar schema si está especificado
+        if schema_name:
+            create_table_sql = f"CREATE TABLE IF NOT EXISTS `{schema_name}`.`{table_name}` ({column_defs})"
+        else:
+            create_table_sql = f"CREATE TABLE IF NOT EXISTS `{table_name}` ({column_defs})"
+            
+        return create_table_sql
+        
     def _postgres_upsert(self, engine, df: pd.DataFrame, table_name: str, 
                       schema_name: str, pk_columns: List[str]) -> None:
         """
@@ -998,6 +1438,226 @@ class MaterializationProcessor:
         with engine.begin() as conn:
             conn.execute(text(sql))
             conn.execute(text(f"DROP TABLE {temp_table}"))
+    
+    def _mysql_upsert(self, engine, df: pd.DataFrame, table_name: str, 
+                     schema_name: str, pk_columns: List[str]) -> None:
+        """
+        Implementa la operación UPSERT para MySQL.
+        
+        Args:
+            engine: Conexión SQLAlchemy
+            df: DataFrame a materializar
+            table_name: Nombre de la tabla
+            schema_name: Nombre del esquema (puede ser ignorado en MySQL si no es necesario)
+            pk_columns: Lista de columnas que forman la clave primaria
+        """
+        self.logger.message(f"Ejecutando upsert en MySQL para tabla {schema_name}.{table_name}")
+        
+        try:
+            # Conexión directa con pymysql para mejor control
+            server = engine.url.host
+            server = self._clean_server_string(server)
+            port = int(engine.url.port or 3306)
+            database = engine.url.database
+            user = engine.url.username
+            password = engine.url.password
+            
+            # Configuración de opciones avanzadas
+            connect_options = {
+                "charset": "utf8mb4",
+                "autocommit": False, # Controlamos explícitamente las transacciones
+                "connect_timeout": 10
+            }
+            
+            # Crear conexión directa
+            import pymysql
+            
+            # Log para depuración
+            self.logger.message(f"Conectando a MySQL: {server}:{port}/{database}")
+            
+            conn = pymysql.connect(
+                host=server,
+                port=port,
+                user=user,
+                password=password,
+                database=database,
+                charset=connect_options["charset"],
+                connect_timeout=connect_options["connect_timeout"],
+                autocommit=connect_options["autocommit"]
+            )
+            
+            try:
+                cursor = conn.cursor()
+                
+                # Verificar si la tabla existe
+                schema_prefix = f"{schema_name}." if schema_name else ""
+                full_table_name = f"{schema_prefix}`{table_name}`"
+                
+                # Crear tabla si no existe
+                create_table_sql = self._mysql_create_table_sql(df, table_name, schema_name)
+                self.logger.message(f"Verificando si existe la tabla y creándola si no: {create_table_sql}")
+                cursor.execute(create_table_sql)
+                conn.commit()
+                
+                # MySQL no tiene una sentencia UPSERT como tal, pero podemos usar INSERT ... ON DUPLICATE KEY UPDATE
+                # Para eso, necesitamos que las columnas PK estén definidas como PRIMARY KEY o UNIQUE
+                # Verificamos si las columnas PK están definidas como clave
+                try:
+                    # Obtener información sobre las claves de la tabla
+                    cursor.execute(f"SHOW KEYS FROM {full_table_name} WHERE Key_name = 'PRIMARY'")
+                    primary_keys = cursor.fetchall()
+                    
+                    # Si no hay clave primaria, intentamos crearla
+                    if not primary_keys:
+                        self.logger.message(f"No se encontró clave primaria en {full_table_name}, creando...")
+                        pk_cols_quoted = ", ".join([f"`{col}`" for col in pk_columns])
+                        alter_sql = f"ALTER TABLE {full_table_name} ADD PRIMARY KEY ({pk_cols_quoted})"
+                        try:
+                            cursor.execute(alter_sql)
+                            conn.commit()
+                            self.logger.message(f"Clave primaria creada exitosamente: {pk_cols_quoted}")
+                        except Exception as pk_error:
+                            self.logger.warning(f"No se pudo crear clave primaria: {str(pk_error)}. El upsert podría no funcionar correctamente.")
+                except Exception as keys_error:
+                    self.logger.warning(f"Error al verificar/crear clave primaria: {str(keys_error)}")
+                
+                # Generar SQL para INSERT ... ON DUPLICATE KEY UPDATE
+                # Crear la parte de INSERT
+                columns = ", ".join([f"`{col}`" for col in df.columns])
+                placeholders = ", ".join(["%s"] * len(df.columns))
+                
+                # Crear la parte de ON DUPLICATE KEY UPDATE
+                # Excluir las columnas PK de la actualización
+                update_stmts = []
+                for col in df.columns:
+                    if col not in pk_columns:
+                        update_stmts.append(f"`{col}` = VALUES(`{col}`)")
+                
+                update_clause = ", ".join(update_stmts)
+                
+                # SQL completo para upsert
+                upsert_sql = f"""
+                INSERT INTO {full_table_name} ({columns})
+                VALUES ({placeholders})
+                ON DUPLICATE KEY UPDATE {update_clause}
+                """
+                
+                self.logger.message(f"SQL para upsert: {upsert_sql}")
+                
+                # Convertir DataFrame a lista de tuplas
+                records = df.to_records(index=False)
+                tuples = [tuple(x) for x in records]
+                
+                # Ejecutar inserción por lotes (batch)
+                batch_size = 1000  # Tamaño del lote
+                for i in range(0, len(tuples), batch_size):
+                    batch = tuples[i:i+batch_size]
+                    try:
+                        # Vamos a limpiar los datos para asegurar compatibilidad con pymysql
+                        cleaned_batch = []
+                        for row in batch:
+                            cleaned_row = []
+                            for val in row:
+                                # None pasa directamente
+                                if val is None:
+                                    cleaned_row.append(None)
+                                # float('nan') debe convertirse a NULL
+                                elif isinstance(val, float) and math.isnan(val):
+                                    cleaned_row.append(None)
+                                # Para otros tipos, usar str() si no es un tipo básico
+                                elif not isinstance(val, (int, float, str, bool, datetime.datetime, datetime.date)):
+                                    cleaned_row.append(str(val))
+                                else:
+                                    cleaned_row.append(val)
+                            cleaned_batch.append(tuple(cleaned_row))
+                        
+                        # Log para el primer registro (para debug)
+                        if i == 0:
+                            self.logger.message(f"Ejemplo primer registro limpiado: {cleaned_batch[0]}")
+                        
+                        cursor.executemany(upsert_sql, cleaned_batch)
+                        conn.commit()
+                        self.logger.message(f"Procesado lote {i//batch_size + 1} de {(len(tuples) + batch_size - 1) // batch_size}")
+                    except Exception as batch_error:
+                        self.logger.error(f"Error procesando lote {i//batch_size + 1}: {str(batch_error)}")
+                        conn.rollback()
+                        
+                        # Intentar inserción registro por registro como último recurso
+                        for j, row in enumerate(batch):
+                            try:
+                                # Limpiar cada fila individualmente
+                                cleaned_row = []
+                                for val in row:
+                                    if val is None:
+                                        cleaned_row.append(None)
+                                    elif isinstance(val, float) and math.isnan(val):
+                                        cleaned_row.append(None)
+                                    elif not isinstance(val, (int, float, str, bool, datetime.datetime, datetime.date)):
+                                        cleaned_row.append(str(val))
+                                    else:
+                                        cleaned_row.append(val)
+                                
+                                cursor.execute(upsert_sql, tuple(cleaned_row))
+                                conn.commit()
+                            except Exception as row_error:
+                                self.logger.error(f"Error insertando fila {i+j} (valores: {row}): {str(row_error)}")
+                                conn.rollback()
+                                # Continuar con la siguiente fila
+                                continue
+                
+                self.logger.message(f"Upsert en MySQL completado exitosamente para tabla {full_table_name}")
+            finally:
+                conn.close()
+                
+        except Exception as e:
+            self.logger.error(f"Error en upsert directo de MySQL: {str(e)}")
+            # Fallar con el enfoque directo, intentar el enfoque de SQLAlchemy
+            self.logger.warning("Fallback a SQLAlchemy para MySQL upsert")
+            
+            # Usar un enfoque alternativo basado en SQLAlchemy
+            import sqlalchemy
+            from sqlalchemy import text
+            
+            # Crear tabla si no existe
+            df.head(0).to_sql(
+                name=table_name,
+                schema=schema_name,
+                con=engine,
+                if_exists='append',
+                index=False
+            )
+            
+            # Crear tabla temporal
+            temp_table = f"temp_{table_name}_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
+            
+            # Insertar datos en tabla temporal
+            df.to_sql(temp_table, engine, index=False, if_exists='replace')
+            
+            # Construir SQL para INSERT ... ON DUPLICATE KEY UPDATE
+            columns = ", ".join([f"`{col}`" for col in df.columns])
+            
+            # Excluir las columnas PK de la actualización
+            update_stmts = []
+            for col in df.columns:
+                if col not in pk_columns:
+                    update_stmts.append(f"`{col}` = t2.`{col}`")
+            
+            update_clause = ", ".join(update_stmts)
+            
+            # Construir SQL para upsert usando INSERT ... ON DUPLICATE KEY UPDATE
+            schema_prefix = f"`{schema_name}`." if schema_name else ""
+            sql = f"""
+            INSERT INTO {schema_prefix}`{table_name}` ({columns})
+            SELECT {columns} FROM `{temp_table}` AS t2
+            ON DUPLICATE KEY UPDATE {update_clause}
+            """
+            
+            # Ejecutar la sentencia
+            with engine.begin() as conn:
+                conn.execute(text(sql))
+                conn.execute(text(f"DROP TABLE `{temp_table}`"))
+            
+            self.logger.message(f"Upsert completado para MySQL usando SQLAlchemy")
             
     def _mssql_upsert(self, engine, df: pd.DataFrame, table_name: str, 
                      schema_name: str, pk_columns: List[str]) -> None:
@@ -2438,9 +3098,66 @@ class MaterializationProcessor:
             Connection string
         """
         if db_info['tipo'] == 'postgresql':
-            return f"postgresql://{db_info['usuario']}:{db_info['contrasena']}@{db_info['servidor']}:{db_info['puerto']}/{db_info['basedatos']}"
+            # Sanitizar valores para evitar problemas en el formato de la URL
+            usuario = db_info['usuario']
+            contrasena = db_info['contrasena'] if db_info['contrasena'] else ""
+            # Limpiamos el servidor por si tiene formato incorrecto (QJ@51.79.79.6)
+            servidor_original = db_info['servidor']
+            servidor = self._clean_server_string(servidor_original)
+            if servidor != servidor_original:
+                self.logger.warning(f"Se detectó un formato de servidor incorrecto: '{servidor_original}'. Limpiado a: '{servidor}'")
+            puerto = db_info['puerto'] or "5432"  # Puerto por defecto para PostgreSQL
+            basedatos = db_info['basedatos']
+            
+            # Log para depuración
+            self.logger.message(f"Parámetros de conexión PostgreSQL: servidor={servidor}, puerto={puerto}, base de datos={basedatos}")
+            
+            # Verificar si hay caracteres especiales en las credenciales
+            if '@' in usuario or '@' in contrasena:
+                self.logger.warning(f"Se detectaron caracteres especiales (@) en las credenciales de PostgreSQL, esto puede causar problemas")
+                
+            # Crear connection string con formato seguro
+            conn_string = f"postgresql://{usuario}"
+            if contrasena:
+                conn_string += f":{contrasena}"
+            conn_string += f"@{servidor}:{puerto}/{basedatos}"
+            
+            # Ocultar contraseña en el log
+            log_string = conn_string.replace(contrasena, "***") if contrasena else conn_string
+            self.logger.message(f"Connection string para PostgreSQL (credenciales ocultas): {log_string}")
+            
+            return conn_string
+            
         elif db_info['tipo'] == 'mysql':
-            return f"mysql+pymysql://{db_info['usuario']}:{db_info['contrasena']}@{db_info['servidor']}:{db_info['puerto']}/{db_info['basedatos']}"
+            # Sanitizar valores para evitar problemas en el formato de la URL
+            usuario = db_info['usuario']
+            contrasena = db_info['contrasena'] if db_info['contrasena'] else ""
+            # Limpiamos el servidor por si tiene formato incorrecto (QJ@51.79.79.6)
+            servidor_original = db_info['servidor']
+            servidor = self._clean_server_string(servidor_original)
+            if servidor != servidor_original:
+                self.logger.warning(f"Se detectó un formato de servidor incorrecto: '{servidor_original}'. Limpiado a: '{servidor}'")
+            puerto = db_info['puerto'] or "3306"  # Puerto por defecto para MySQL
+            basedatos = db_info['basedatos']
+            
+            # Log para depuración
+            self.logger.message(f"Parámetros de conexión MySQL: servidor={servidor}, puerto={puerto}, base de datos={basedatos}")
+            
+            # Verificar si hay caracteres especiales en las credenciales
+            if '@' in usuario or '@' in contrasena:
+                self.logger.warning(f"Se detectaron caracteres especiales (@) en las credenciales de MySQL, esto puede causar problemas")
+            
+            # Crear connection string con formato seguro
+            conn_string = f"mysql+pymysql://{usuario}"
+            if contrasena:
+                conn_string += f":{contrasena}"
+            conn_string += f"@{servidor}:{puerto}/{basedatos}"
+            
+            # Ocultar contraseña en el log
+            log_string = conn_string.replace(contrasena, "***") if contrasena else conn_string
+            self.logger.message(f"Connection string para MySQL (credenciales ocultas): {log_string}")
+            
+            return conn_string
         elif db_info['tipo'] == 'mssql':
             # Para SQL Server vamos a usar pymssql en lugar de pyodbc ya que no requiere drivers ODBC externos
             # Esto es más compatible con entornos restringidos como Replit
