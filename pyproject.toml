@@ -32,6 +32,7 @@ dependencies = [
     "sendgrid>=6.11.0",
     "sqlalchemy>=2.0.40",
     "trafilatura>=2.0.0",
+    "yato-lib>=0.0.17",
 ]
 
 [build-system]
