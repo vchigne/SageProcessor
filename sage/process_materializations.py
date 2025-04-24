@@ -604,11 +604,18 @@ class MaterializationProcessor:
                             self.logger.message(f"Añadidas opciones personalizadas para MySQL: {list(db_connection_info['opciones_conexion'].keys())}")
                         
                         self.logger.message(f"Intentando conexión directa con pymysql a {server}:{port}/{database}")
+                        # Escapar la contraseña si contiene caracteres especiales
+                        if password and '@' in password:
+                            self.logger.message(f"Aplicando URL-encoding a contraseña MySQL para prueba de conexión")
+                            password_escaped = quote_plus(password)
+                        else:
+                            password_escaped = password
+                            
                         test_conn = pymysql.connect(
                             host=server,
                             port=port,
                             user=user,
-                            password=password,
+                            password=password_escaped,
                             database=database,
                             charset=connect_options["charset"],
                             connect_timeout=connect_options["connect_timeout"],
@@ -630,14 +637,21 @@ class MaterializationProcessor:
                     self.logger.message(f"Usando argumentos de conexión para MySQL: {engine_kwargs['connect_args']}")
                     
                     # Actualizar el connection string para asegurar que usa el servidor limpio
+                    # Escapar la contraseña si contiene caracteres especiales
+                    if password and '@' in password:
+                        self.logger.message(f"Aplicando URL-encoding a contraseña MySQL que contiene caracteres especiales")
+                        password_escaped = quote_plus(password)
+                    else:
+                        password_escaped = password
+                        
                     clean_conn_string = f"mysql+pymysql://{user}"
                     if password:
-                        clean_conn_string += f":{password}"
+                        clean_conn_string += f":{password_escaped}"
                     clean_conn_string += f"@{server}:{port}/{database}"
                     
                     # Actualizar el connection string para SQLAlchemy
                     conn_string = clean_conn_string
-                    self.logger.message(f"Connection string para MySQL actualizado: {conn_string.replace(password or '', '***')}")
+                    self.logger.message(f"Connection string para MySQL actualizado: {conn_string.replace(password_escaped or '', '***')}")
                 except ImportError:
                     self.logger.warning("Módulo pymysql no está completamente disponible. Usando SQLAlchemy directamente.")
             
@@ -653,7 +667,9 @@ class MaterializationProcessor:
             if engine_kwargs:
                 self.logger.message(f"Creando engine SQLAlchemy con opciones adicionales: {engine_kwargs}")
                 # Verificar el connection string antes de crear el engine
-                self.logger.message(f"Verificando formato de connection string: {conn_string.replace(db_connection_info.get('contrasena', ''), '***')}")
+                # Usamos password_escaped en lugar de la contraseña original para el log
+                password_to_hide = password_escaped if 'password_escaped' in locals() else db_connection_info.get('contrasena', '')
+                self.logger.message(f"Verificando formato de connection string: {conn_string.replace(password_to_hide, '***')}")
                 engine = sqlalchemy.create_engine(conn_string, **engine_kwargs)
             else:
                 # Sin opciones adicionales
@@ -688,6 +704,13 @@ class MaterializationProcessor:
                         # Crear conexión directa
                         import pymysql
                         
+                        # Escapar la contraseña si contiene caracteres especiales
+                        if password and '@' in password:
+                            self.logger.message(f"Aplicando URL-encoding a contraseña MySQL para conexión directa")
+                            password_escaped = quote_plus(password)
+                        else:
+                            password_escaped = password
+                        
                         # Log para depuración
                         self.logger.message(f"Conectando a MySQL: {server}:{port}/{database}")
                         
@@ -695,7 +718,7 @@ class MaterializationProcessor:
                             host=server,
                             port=port,
                             user=user,
-                            password=password,
+                            password=password_escaped,
                             database=database,
                             charset=connect_options["charset"],
                             connect_timeout=connect_options["connect_timeout"],
