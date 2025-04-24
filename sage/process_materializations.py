@@ -1852,11 +1852,11 @@ class MaterializationProcessor:
         
         try:
             # Consultar tanto los secretos de la base de datos como la información específica de la conexión
-            # IMPORTANTE: Obtenemos también la base de datos configurada en database_connections (dc.basedatos)
+            # IMPORTANTE: Obtenemos también la base de datos configurada en database_connections (dc.base_datos)
             cursor.execute("""
                 SELECT ds.id, ds.nombre, ds.descripcion, ds.tipo, ds.servidor, 
                        ds.puerto, ds.usuario, ds.contrasena, 
-                       COALESCE(dc.basedatos, ds.basedatos) as basedatos, 
+                       COALESCE(dc.base_datos, ds.basedatos) as basedatos, 
                        ds.estado, ds.opciones_conexion,
                        dc.id as connection_id, dc.nombre as connection_nombre,
                        dc.descripcion as connection_descripcion
