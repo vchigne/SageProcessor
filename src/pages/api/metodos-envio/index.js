@@ -14,10 +14,12 @@ export default async function handler(req, res) {
 
         // Si se proporciona casilla_id y emisor_id, obtener métodos específicos
         if (casilla_id && emisor_id) {
+          console.log(`Consultando métodos para casilla_id=${casilla_id} y emisor_id=${emisor_id}`);
           const { rows } = await pool.query(`
             SELECT 
               me.*,
               e.nombre as emisor_nombre,
+              e.tipo_origen,
               cr.nombre_yaml,
               cr.email_casilla,
               cr.api_endpoint,
@@ -73,8 +75,19 @@ export default async function handler(req, res) {
           emisor_bucket_prefijo
         } = req.body
 
+        console.log('POST metodos-envio: recibiendo datos', { 
+          casillaId, 
+          emisorId,
+          metodos: metodos?.length || 0,
+          tiene_emisor_sftp_subdirectorio: !!emisor_sftp_subdirectorio,
+          tiene_emisor_bucket_prefijo: !!emisor_bucket_prefijo,
+          emisor_sftp_subdirectorio,
+          emisor_bucket_prefijo
+        });
+
         // Validar datos requeridos para los métodos
         if (!casillaId || !emisorId || !metodos || !Array.isArray(metodos)) {
+          console.error('Faltan campos requeridos', { casillaId, emisorId, metodos });
           return res.status(400).json({ 
             error: 'Faltan campos requeridos o formato inválido' 
           })
@@ -93,16 +106,20 @@ export default async function handler(req, res) {
 
           // Verificar si hay datos existentes
           const hasExistingData = existingMethods.length > 0;
+          console.log(`${hasExistingData ? 'Encontrados' : 'No encontrados'} registros existentes para casilla=${casillaId}, emisor=${emisorId}`);
 
           // Eliminar métodos existentes
-          await client.query(
+          const deleteResult = await client.query(
             'DELETE FROM emisores_por_casilla WHERE casilla_id = $1 AND emisor_id = $2',
             [casillaId, emisorId]
           )
+          console.log(`Eliminados ${deleteResult.rowCount} métodos existentes`);
 
           // Insertar nuevos métodos con datos adicionales
+          const insertedRows = [];
           for (const { metodo, parametros } of metodos) {
-            await client.query(
+            console.log(`Insertando método ${metodo} con subdirectorio=${emisor_sftp_subdirectorio}, prefijo=${emisor_bucket_prefijo}`);
+            const result = await client.query(
               `INSERT INTO emisores_por_casilla (
                 casilla_id,
                 emisor_id,
@@ -114,7 +131,7 @@ export default async function handler(req, res) {
                 configuracion_frecuencia,
                 emisor_sftp_subdirectorio,
                 emisor_bucket_prefijo
-              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
               [
                 casillaId, 
                 emisorId, 
@@ -128,12 +145,15 @@ export default async function handler(req, res) {
                 emisor_bucket_prefijo || null
               ]
             )
+            insertedRows.push(result.rows[0]);
           }
 
           await client.query('COMMIT')
-          return res.status(200).json({ message: 'Métodos de envío actualizados exitosamente' })
+          console.log(`Insertados ${insertedRows.length} métodos nuevos con IDs:`, insertedRows);
+          return res.status(200).json({ message: 'Métodos de envío actualizados exitosamente', insertedRows })
         } catch (error) {
           await client.query('ROLLBACK')
+          console.error('Error en transacción de métodos-envio:', error);
           throw error
         } finally {
           client.release()

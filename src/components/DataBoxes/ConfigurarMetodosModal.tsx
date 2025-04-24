@@ -26,6 +26,20 @@ interface MetodoEnvio {
   descripcion: string;
 }
 
+interface Emisor {
+  id: number;
+  nombre: string;
+  tipo_origen: string;
+  email_corporativo?: string;
+  telefono?: string;
+  sftp_servidor?: string;
+  sftp_puerto?: number;
+  sftp_usuario?: string;
+  sftp_directorio?: string;
+  cloud_secret_id?: number;
+  bucket_nombre?: string;
+}
+
 const METODOS_ENVIO: MetodoEnvio[] = [
   {
     id: 'email',
@@ -53,10 +67,7 @@ const METODOS_ENVIO: MetodoEnvio[] = [
   }
 ];
 
-interface Emisor {
-  id: number;
-  nombre: string;
-}
+
 
 export const ConfigurarMetodosModal: React.FC<ConfigurarMetodosModalProps> = ({
   isOpen,
@@ -81,6 +92,8 @@ export const ConfigurarMetodosModal: React.FC<ConfigurarMetodosModalProps> = ({
   const [diaLimite, setDiaLimite] = useState<string>('5');
   const [emisorSftpSubdirectorio, setEmisorSftpSubdirectorio] = useState<string>('');
   const [emisorBucketPrefijo, setEmisorBucketPrefijo] = useState<string>('');
+  const [emisorTipoOrigen, setEmisorTipoOrigen] = useState<string>('');
+  const [emisorInfo, setEmisorInfo] = useState<any>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -135,6 +148,19 @@ export const ConfigurarMetodosModal: React.FC<ConfigurarMetodosModalProps> = ({
       setEmisoresFiltrados(filtrados);
     }
   }, [query, emisores]);
+  
+  // Efecto para actualizar información del emisor seleccionado
+  useEffect(() => {
+    if (selectedEmisor && emisores.length > 0) {
+      // Buscar el emisor seleccionado y actualizar su información
+      const emisorSeleccionado = emisores.find(e => e.id.toString() === selectedEmisor);
+      if (emisorSeleccionado) {
+        setEmisorInfo(emisorSeleccionado);
+        setEmisorTipoOrigen(emisorSeleccionado.tipo_origen || '');
+        console.log('Emisor seleccionado:', emisorSeleccionado);
+      }
+    }
+  }, [selectedEmisor, emisores]);
 
   const fetchMetodosExistentes = async () => {
     try {
@@ -157,6 +183,12 @@ export const ConfigurarMetodosModal: React.FC<ConfigurarMetodosModalProps> = ({
           // Cargar datos de subdirectorio SFTP y prefijo bucket
           setEmisorSftpSubdirectorio(data[0].emisor_sftp_subdirectorio || '');
           setEmisorBucketPrefijo(data[0].emisor_bucket_prefijo || '');
+          
+          // Cargar información del emisor
+          if (data[0].tipo_origen) {
+            setEmisorTipoOrigen(data[0].tipo_origen || '');
+            console.log('Tipo de origen cargado:', data[0].tipo_origen);
+          }
           
           // Cargar configuración de frecuencia
           if (data[0].configuracion_frecuencia) {
@@ -470,33 +502,45 @@ export const ConfigurarMetodosModal: React.FC<ConfigurarMetodosModalProps> = ({
               <div className="space-y-4 border p-4 rounded-md bg-gray-50">
                 <h3 className="font-medium text-gray-900">Configuración de Directorios y Prefijos (opcional)</h3>
                 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Subdirectorio SFTP específico
-                  </label>
-                  <TextInput
-                    placeholder="Subdirectorio en el servidor SFTP del emisor (ej: /clientes/sage)"
-                    value={emisorSftpSubdirectorio}
-                    onChange={(e) => setEmisorSftpSubdirectorio(e.target.value)}
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Si se deja en blanco, se utilizará el directorio principal configurado en el emisor
-                  </p>
-                </div>
+                {(emisorTipoOrigen && emisorTipoOrigen.includes('sftp')) ? (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Subdirectorio SFTP específico
+                    </label>
+                    <TextInput
+                      placeholder="Subdirectorio en el servidor SFTP del emisor (ej: /clientes/sage)"
+                      value={emisorSftpSubdirectorio}
+                      onChange={(e) => setEmisorSftpSubdirectorio(e.target.value)}
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Si se deja en blanco, se utilizará el directorio principal configurado en el emisor
+                    </p>
+                  </div>
+                ) : (
+                  <div className="text-sm text-gray-500 italic">
+                    Este emisor no tiene configurado SFTP como origen de datos
+                  </div>
+                )}
                 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Prefijo para bucket
-                  </label>
-                  <TextInput
-                    placeholder="Prefijo para el bucket del emisor (ej: casilla45/)"
-                    value={emisorBucketPrefijo}
-                    onChange={(e) => setEmisorBucketPrefijo(e.target.value)}
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Si se deja en blanco, los archivos se colocarán en la raíz del bucket
-                  </p>
-                </div>
+                {(emisorTipoOrigen && emisorTipoOrigen.includes('bucket')) ? (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Prefijo para bucket
+                    </label>
+                    <TextInput
+                      placeholder="Prefijo para el bucket del emisor (ej: casilla45/)"
+                      value={emisorBucketPrefijo}
+                      onChange={(e) => setEmisorBucketPrefijo(e.target.value)}
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Si se deja en blanco, los archivos se colocarán en la raíz del bucket
+                    </p>
+                  </div>
+                ) : (
+                  <div className="text-sm text-gray-500 italic">
+                    Este emisor no tiene configurado Bucket como origen de datos
+                  </div>
+                )}
               </div>
               
               {/* Campos de frecuencia */}
