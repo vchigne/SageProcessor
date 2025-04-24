@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Dialog } from '@headlessui/react';
 import { Button, TextInput, Select, SelectItem, Card, Text, Title } from '@tremor/react';
+import { PlusCircleIcon } from '@heroicons/react/24/outline';
 
 interface EditEmisorModalProps {
   isOpen: boolean;
@@ -55,7 +56,6 @@ const TIPOS_EMISOR = [
 ];
 
 const TIPOS_ORIGEN = [
-  { value: '', label: 'Sin origen de datos' },
   { value: 'sftp', label: 'Servidor SFTP' },
   { value: 'bucket', label: 'Bucket Cloud' }
 ];
@@ -110,6 +110,8 @@ export const EditEmisorModal: React.FC<EditEmisorModalProps> = ({
   const [isLoadingBuckets, setIsLoadingBuckets] = useState(false);
   const [sftpValidationMessage, setSftpValidationMessage] = useState('');
   const [activeTab, setActiveTab] = useState('general');
+  const [newBucketName, setNewBucketName] = useState('');
+  const [isCreatingBucket, setIsCreatingBucket] = useState(false);
 
   useEffect(() => {
     const fetchOrganizaciones = async () => {
@@ -203,6 +205,57 @@ export const EditEmisorModal: React.FC<EditEmisorModalProps> = ({
       setSftpValidationMessage('Error al validar configuración SFTP');
     }
   };
+  
+  // Crear un nuevo bucket
+  const createBucket = async () => {
+    if (!newBucketName || !formData.cloud_secret_id) {
+      alert('Debe ingresar un nombre para el bucket y seleccionar un secreto cloud');
+      return;
+    }
+    
+    // Validar el nombre del bucket (solo letras minúsculas, números, puntos y guiones)
+    if (!/^[a-z0-9.-]+$/.test(newBucketName)) {
+      alert('Nombre de bucket inválido. Use solo letras minúsculas, números, puntos y guiones.');
+      return;
+    }
+    
+    setIsCreatingBucket(true);
+    try {
+      const response = await fetch('/api/emisores/crear-bucket', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          secreto_id: formData.cloud_secret_id,
+          bucketName: newBucketName
+        }),
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        alert(`Bucket "${newBucketName}" creado exitosamente`);
+        setNewBucketName(''); // Limpiar el campo
+        
+        // Recargar la lista de buckets
+        await fetchBuckets(formData.cloud_secret_id);
+        
+        // Seleccionar automáticamente el bucket recién creado
+        setFormData({
+          ...formData,
+          bucket_nombre: newBucketName
+        });
+      } else {
+        alert(`Error al crear bucket: ${data.message || 'Error desconocido'}`);
+      }
+    } catch (error) {
+      console.error('Error creating bucket:', error);
+      alert(`Error al crear bucket: ${error}`);
+    } finally {
+      setIsCreatingBucket(false);
+    }
+  };
 
   // Update form data when emisor prop changes
   useEffect(() => {
@@ -272,14 +325,16 @@ export const EditEmisorModal: React.FC<EditEmisorModalProps> = ({
         return;
       }
       
-      // Validar los campos según el tipo de origen
-      if (formData.tipo_origen === 'sftp') {
+      // Validar los campos según los tipos de origen seleccionados
+      if (formData.tipo_origen.includes('sftp')) {
         if (!formData.sftp_servidor || !formData.sftp_usuario) {
           setActiveTab('origen');
           alert('Para origen SFTP se requiere al menos el servidor y el usuario');
           return;
         }
-      } else if (formData.tipo_origen === 'bucket') {
+      }
+      
+      if (formData.tipo_origen.includes('bucket')) {
         if (!formData.cloud_secret_id || !formData.bucket_nombre) {
           setActiveTab('origen');
           alert('Para origen bucket se requiere seleccionar un secreto cloud y un bucket');
@@ -292,33 +347,21 @@ export const EditEmisorModal: React.FC<EditEmisorModalProps> = ({
         ...formData,
         organizacion_id: parseInt(formData.organizacion_id),
         tipo_emisor: formData.tipo_emisor.toLowerCase(),
-        // Convertir ID de secreto cloud a número si existe
-        cloud_secret_id: formData.cloud_secret_id ? parseInt(formData.cloud_secret_id) : null,
+        // Si no hay ningún tipo de origen seleccionado, establecer como null
+        tipo_origen: formData.tipo_origen || null,
+        // Convertir ID de secreto cloud a número si existe y si bucket está seleccionado
+        cloud_secret_id: formData.tipo_origen.includes('bucket') && formData.cloud_secret_id 
+          ? parseInt(formData.cloud_secret_id) 
+          : null,
         // Asegurarse de que los campos estén correctamente formateados
-        sftp_puerto: formData.sftp_puerto || 22,
-        // Limpiar campos no necesarios según el tipo de origen
-        ...(formData.tipo_origen !== 'sftp' ? {
-          sftp_servidor: null,
-          sftp_puerto: null,
-          sftp_usuario: null,
-          sftp_clave: null,
-          sftp_directorio: null
-        } : {}),
-        ...(formData.tipo_origen !== 'bucket' ? {
-          cloud_secret_id: null,
-          bucket_nombre: null
-        } : {}),
-        // Si no hay tipo de origen, limpiar todos los campos relacionados
-        ...(formData.tipo_origen === '' ? {
-          tipo_origen: null,
-          sftp_servidor: null,
-          sftp_puerto: null,
-          sftp_usuario: null,
-          sftp_clave: null,
-          sftp_directorio: null,
-          cloud_secret_id: null,
-          bucket_nombre: null
-        } : {})
+        // Solo mantener campos de SFTP si ese origen está seleccionado
+        sftp_servidor: formData.tipo_origen.includes('sftp') ? formData.sftp_servidor : null,
+        sftp_puerto: formData.tipo_origen.includes('sftp') ? (formData.sftp_puerto || 22) : null,
+        sftp_usuario: formData.tipo_origen.includes('sftp') ? formData.sftp_usuario : null,
+        sftp_clave: formData.tipo_origen.includes('sftp') ? formData.sftp_clave : null,
+        sftp_directorio: formData.tipo_origen.includes('sftp') ? formData.sftp_directorio : null,
+        // Solo mantener campos de bucket si ese origen está seleccionado
+        bucket_nombre: formData.tipo_origen.includes('bucket') ? formData.bucket_nombre : null,
       };
 
       await onSubmit(dataToSubmit);
@@ -522,49 +565,55 @@ export const EditEmisorModal: React.FC<EditEmisorModalProps> = ({
                 {activeTab === 'origen' && (
                   <div className="space-y-6">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700">
-                        Tipo de Origen de Datos
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Origen de Datos
                       </label>
-                      <select
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                        value={formData.tipo_origen}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setFormData({ 
-                            ...formData, 
-                            tipo_origen: value,
-                            // Resetear los campos del otro tipo de origen
-                            ...(value === 'sftp' ? {
-                              cloud_secret_id: '',
-                              bucket_nombre: ''
-                            } : value === 'bucket' ? {
-                              sftp_servidor: '',
-                              sftp_usuario: '',
-                              sftp_clave: '',
-                              sftp_directorio: '/'
-                            } : {
-                              sftp_servidor: '',
-                              sftp_usuario: '',
-                              sftp_clave: '',
-                              sftp_directorio: '/',
-                              cloud_secret_id: '',
-                              bucket_nombre: ''
-                            })
-                          });
-                          setSftpValidationMessage('');
-                        }}
-                      >
-                        <option value="" disabled>Seleccionar tipo de origen</option>
+                      <div className="space-y-2">
                         {TIPOS_ORIGEN.map((tipo) => (
-                          <option key={tipo.value} value={tipo.value}>
-                            {tipo.label}
-                          </option>
+                          <div key={tipo.value} className="flex items-center space-x-2">
+                            <input
+                              type="checkbox"
+                              id={`origen-${tipo.value}`}
+                              checked={formData.tipo_origen.includes(tipo.value)}
+                              onChange={(e) => {
+                                // Obtener el valor actual de tipo_origen como un array
+                                const tiposActuales = formData.tipo_origen 
+                                  ? formData.tipo_origen.split(',') 
+                                  : [];
+                                
+                                // Actualizar el array basado en la acción
+                                let nuevosValores: string[];
+                                if (e.target.checked) {
+                                  // Añadir el valor si no existe
+                                  nuevosValores = [...tiposActuales, tipo.value].filter(Boolean);
+                                } else {
+                                  // Quitar el valor si existe
+                                  nuevosValores = tiposActuales.filter(t => t !== tipo.value);
+                                }
+                                
+                                // Convertir de nuevo a string
+                                const nuevoTipoOrigen = nuevosValores.join(',');
+                                
+                                setFormData({ 
+                                  ...formData,
+                                  tipo_origen: nuevoTipoOrigen
+                                });
+                                
+                                // Resetear mensaje de validación
+                                setSftpValidationMessage('');
+                              }}
+                              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            <label htmlFor={`origen-${tipo.value}`} className="text-sm text-gray-700">
+                              {tipo.label}
+                            </label>
+                          </div>
                         ))}
-                      </select>
+                      </div>
                     </div>
 
                     {/* Configuración SFTP */}
-                    {formData.tipo_origen === 'sftp' && (
+                    {formData.tipo_origen.includes('sftp') && (
                       <Card className="p-4 space-y-4">
                         <Title>Configuración SFTP</Title>
                         
@@ -577,7 +626,7 @@ export const EditEmisorModal: React.FC<EditEmisorModalProps> = ({
                             value={formData.sftp_servidor}
                             onChange={(e) => setFormData({ ...formData, sftp_servidor: e.target.value })}
                             placeholder="Ejemplo: sftp.example.com"
-                            required={formData.tipo_origen === 'sftp'}
+                            required={formData.tipo_origen.includes('sftp')}
                           />
                         </div>
                         
@@ -606,7 +655,7 @@ export const EditEmisorModal: React.FC<EditEmisorModalProps> = ({
                             value={formData.sftp_usuario}
                             onChange={(e) => setFormData({ ...formData, sftp_usuario: e.target.value })}
                             placeholder="Nombre de usuario"
-                            required={formData.tipo_origen === 'sftp'}
+                            required={formData.tipo_origen.includes('sftp')}
                           />
                         </div>
                         
@@ -620,7 +669,7 @@ export const EditEmisorModal: React.FC<EditEmisorModalProps> = ({
                             value={formData.sftp_clave}
                             onChange={(e) => setFormData({ ...formData, sftp_clave: e.target.value })}
                             placeholder="Contraseña"
-                            required={formData.tipo_origen === 'sftp'}
+                            required={formData.tipo_origen.includes('sftp')}
                           />
                         </div>
                         
@@ -656,7 +705,7 @@ export const EditEmisorModal: React.FC<EditEmisorModalProps> = ({
                     )}
 
                     {/* Configuración Bucket */}
-                    {formData.tipo_origen === 'bucket' && (
+                    {formData.tipo_origen.includes('bucket') && (
                       <Card className="p-4 space-y-4">
                         <Title>Configuración Bucket</Title>
                         
@@ -674,7 +723,7 @@ export const EditEmisorModal: React.FC<EditEmisorModalProps> = ({
                                 fetchBuckets(value);
                               }
                             }}
-                            required={formData.tipo_origen === 'bucket'}
+                            required={formData.tipo_origen.includes('bucket')}
                           >
                             <option value="" disabled>Seleccionar secreto cloud</option>
                             {cloudSecrets.map((secret) => (
@@ -693,7 +742,7 @@ export const EditEmisorModal: React.FC<EditEmisorModalProps> = ({
                             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
                             value={formData.bucket_nombre}
                             onChange={(e) => setFormData({ ...formData, bucket_nombre: e.target.value })}
-                            required={formData.tipo_origen === 'bucket'}
+                            required={formData.tipo_origen.includes('bucket')}
                             disabled={isLoadingBuckets || !formData.cloud_secret_id || buckets.length === 0}
                           >
                             <option value="" disabled>Seleccionar bucket</option>
@@ -708,6 +757,38 @@ export const EditEmisorModal: React.FC<EditEmisorModalProps> = ({
                             <p className="mt-1 text-xs text-red-500">No se encontraron buckets para este secreto</p>
                           )}
                         </div>
+                        
+                        {/* Sección para crear nuevo bucket */}
+                        {formData.cloud_secret_id && (
+                          <div className="mt-4 border-t pt-4">
+                            <div className="flex items-center mb-2">
+                              <PlusCircleIcon className="h-5 w-5 text-indigo-500 mr-2" />
+                              <h3 className="text-sm font-medium text-gray-700">Crear nuevo bucket</h3>
+                            </div>
+                            <div className="flex space-x-2">
+                              <input
+                                type="text"
+                                className="flex-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                                placeholder="Nombre del bucket"
+                                value={newBucketName}
+                                onChange={(e) => setNewBucketName(e.target.value)}
+                              />
+                              <Button
+                                size="xs"
+                                color="indigo"
+                                onClick={createBucket}
+                                disabled={!newBucketName || isCreatingBucket}
+                                className="whitespace-nowrap"
+                                type="button"
+                              >
+                                {isCreatingBucket ? 'Creando...' : 'Crear'}
+                              </Button>
+                            </div>
+                            <p className="text-xs text-gray-500 mt-1">
+                              Solo letras minúsculas, números, puntos y guiones.
+                            </p>
+                          </div>
+                        )}
                       </Card>
                     )}
                   </div>

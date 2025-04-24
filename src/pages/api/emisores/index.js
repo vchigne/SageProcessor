@@ -85,24 +85,32 @@ export default async function handler(req, res) {
         }
         
         // Validar tipo de origen si está presente
-        if (tipo_origen && !TIPOS_ORIGEN_PERMITIDOS.includes(tipo_origen)) {
-          return res.status(400).json({
-            error: `Tipo de origen no válido. Debe ser uno de: ${TIPOS_ORIGEN_PERMITIDOS.filter(t => t !== null).join(', ')} o nulo`
-          });
-        }
-        
-        // Validar que si tipo_origen es 'sftp', se proporcionen los campos necesarios
-        if (tipo_origen === 'sftp' && (!sftp_servidor || !sftp_usuario)) {
-          return res.status(400).json({
-            error: 'Para origen SFTP se requiere al menos servidor y usuario'
-          });
-        }
-        
-        // Validar que si tipo_origen es 'bucket', se proporcionen los campos necesarios
-        if (tipo_origen === 'bucket' && (!cloud_secret_id || !bucket_nombre)) {
-          return res.status(400).json({
-            error: 'Para origen bucket se requiere ID de secreto cloud y nombre de bucket'
-          });
+        if (tipo_origen) {
+          // Dividir el tipo_origen si contiene varios valores separados por comas
+          const tiposOrigen = tipo_origen.split(',').filter(Boolean);
+          
+          // Verificar que todos los tipos sean válidos
+          for (const tipo of tiposOrigen) {
+            if (!TIPOS_ORIGEN_PERMITIDOS.includes(tipo)) {
+              return res.status(400).json({
+                error: `Tipo de origen no válido: ${tipo}. Debe ser uno de: ${TIPOS_ORIGEN_PERMITIDOS.filter(t => t !== null).join(', ')} o nulo`
+              });
+            }
+          }
+          
+          // Validar que si incluye 'sftp', se proporcionen los campos necesarios
+          if (tiposOrigen.includes('sftp') && (!sftp_servidor || !sftp_usuario)) {
+            return res.status(400).json({
+              error: 'Para origen SFTP se requiere al menos servidor y usuario'
+            });
+          }
+          
+          // Validar que si incluye 'bucket', se proporcionen los campos necesarios
+          if (tiposOrigen.includes('bucket') && (!cloud_secret_id || !bucket_nombre)) {
+            return res.status(400).json({
+              error: 'Para origen bucket se requiere ID de secreto cloud y nombre de bucket'
+            });
+          }
         }
 
         const { rows: [newEmisor] } = await pool.query(
@@ -167,26 +175,34 @@ export default async function handler(req, res) {
         }
         
         // Validar tipo de origen si está presente
-        if (updateData.tipo_origen && !TIPOS_ORIGEN_PERMITIDOS.includes(updateData.tipo_origen)) {
-          return res.status(400).json({
-            error: `Tipo de origen no válido. Debe ser uno de: ${TIPOS_ORIGEN_PERMITIDOS.filter(t => t !== null).join(', ')} o nulo`
-          });
-        }
-        
-        // Validar que si tipo_origen es 'sftp', se proporcionen los campos necesarios
-        if (updateData.tipo_origen === 'sftp' && 
-            (!updateData.sftp_servidor || !updateData.sftp_usuario)) {
-          return res.status(400).json({
-            error: 'Para origen SFTP se requiere al menos servidor y usuario'
-          });
-        }
-        
-        // Validar que si tipo_origen es 'bucket', se proporcionen los campos necesarios
-        if (updateData.tipo_origen === 'bucket' && 
-            (!updateData.cloud_secret_id || !updateData.bucket_nombre)) {
-          return res.status(400).json({
-            error: 'Para origen bucket se requiere ID de secreto cloud y nombre de bucket'
-          });
+        if (updateData.tipo_origen) {
+          // Dividir el tipo_origen si contiene varios valores separados por comas
+          const tiposOrigen = updateData.tipo_origen.split(',').filter(Boolean);
+          
+          // Verificar que todos los tipos sean válidos
+          for (const tipo of tiposOrigen) {
+            if (!TIPOS_ORIGEN_PERMITIDOS.includes(tipo)) {
+              return res.status(400).json({
+                error: `Tipo de origen no válido: ${tipo}. Debe ser uno de: ${TIPOS_ORIGEN_PERMITIDOS.filter(t => t !== null).join(', ')} o nulo`
+              });
+            }
+          }
+          
+          // Validar que si incluye 'sftp', se proporcionen los campos necesarios
+          if (tiposOrigen.includes('sftp') && 
+              (!updateData.sftp_servidor || !updateData.sftp_usuario)) {
+            return res.status(400).json({
+              error: 'Para origen SFTP se requiere al menos servidor y usuario'
+            });
+          }
+          
+          // Validar que si incluye 'bucket', se proporcionen los campos necesarios
+          if (tiposOrigen.includes('bucket') && 
+              (!updateData.cloud_secret_id || !updateData.bucket_nombre)) {
+            return res.status(400).json({
+              error: 'Para origen bucket se requiere ID de secreto cloud y nombre de bucket'
+            });
+          }
         }
 
         const { rows: [updatedEmisor] } = await pool.query(
