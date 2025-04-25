@@ -487,42 +487,44 @@ const DuckDBSwarmSimple = () => {
               <div className="h-10 bg-gray-200 dark:bg-gray-700 rounded"></div>
             </div>
           ) : (
-            <div className="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
-              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead className="bg-gray-50 dark:bg-gray-700">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">ID</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Hostname</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Puerto</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Tipo</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Estado</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                  {servers.length === 0 ? (
+            <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+              <div className="overflow-y-auto max-h-[400px]">
+                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                  <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0">
                     <tr>
-                      <td colSpan="5" className="px-6 py-4 text-center text-gray-500 dark:text-gray-400">
-                        No hay servidores registrados
-                      </td>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">ID</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Hostname</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Puerto</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Tipo</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Estado</th>
                     </tr>
-                  ) : (
-                    servers.map(server => (
-                      <tr key={server.id}>
-                        <td className="px-6 py-4 whitespace-nowrap">{server.id}</td>
-                        <td className="px-6 py-4 whitespace-nowrap font-medium">{server.hostname}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">{server.port}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">{server.server_type}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="flex items-center">
-                            <span className={`inline-block w-3 h-3 rounded-full mr-2 ${getStatusColor(server.status)}`}></span>
-                            {server.status}
-                          </span>
+                  </thead>
+                  <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                    {servers.length === 0 ? (
+                      <tr>
+                        <td colSpan="5" className="px-6 py-4 text-center text-gray-500 dark:text-gray-400">
+                          No hay servidores registrados
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                    ) : (
+                      servers.map(server => (
+                        <tr key={server.id}>
+                          <td className="px-6 py-4 whitespace-nowrap">{server.id}</td>
+                          <td className="px-6 py-4 whitespace-nowrap font-medium">{server.hostname}</td>
+                          <td className="px-6 py-4 whitespace-nowrap">{server.port}</td>
+                          <td className="px-6 py-4 whitespace-nowrap">{server.server_type}</td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className="flex items-center">
+                              <span className={`inline-block w-3 h-3 rounded-full mr-2 ${getStatusColor(server.status)}`}></span>
+                              {server.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>
