@@ -45,6 +45,8 @@ const navigation = [
       { name: 'Pipelines', href: '/admin/duckdb-swarm/pipelines' },
       { name: 'Control de Despliegue', href: '/admin/duckdb-swarm/simple' },
       { name: 'Flujos Yato', href: '/admin/duckdb-swarm/flujos' },
+      { name: 'Evidence.dev', href: '/admin/duckdb-swarm/evidence' },
+      { name: 'PowerBI', href: '/admin/duckdb-swarm/powerbi' },
     ]
   },
   { 

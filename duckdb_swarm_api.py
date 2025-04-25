@@ -76,12 +76,14 @@ def list_servers():
         result = conn.execute("""
             SELECT 
                 id, 
-                hostname, 
+                name, 
+                host, 
                 port, 
+                description,
                 status, 
-                server_type, 
-                created_at 
-            FROM duckdb_servers
+                created_at,
+                is_local
+            FROM servers
             ORDER BY id
         """).fetchall()
         
@@ -90,11 +92,13 @@ def list_servers():
         for row in result:
             servers.append({
                 'id': row[0],
-                'hostname': row[1],
-                'port': row[2],
-                'status': row[3],
-                'server_type': row[4],
-                'created_at': str(row[5])
+                'name': row[1],
+                'hostname': row[2],
+                'port': row[3],
+                'description': row[4],
+                'status': row[5],
+                'created_at': str(row[6]),
+                'is_local': bool(row[7])
             })
         
         return jsonify({'servers': servers})
@@ -1840,6 +1844,94 @@ if __name__ == '__main__':
         print("Ejecute primero extend_duckdb_schema_evidence_powerbi.py para inicializar la base de datos")
         exit(1)
     
-    # Iniciar el servidor
+# Rutas para pipelines y ejecuciones
+# Comentado por duplicación de función
+# @app.route('/api/pipelines', methods=['GET'])
+# def list_pipelines():
+#     """Lista todos los pipelines definidos"""
+#     conn = get_duckdb_connection()
+#     if not conn:
+#         return jsonify({'error': 'No se pudo conectar a DuckDB'}), 500
+#     
+#     try:
+#         # Simulamos datos de pipelines para la interfaz
+#         pipelines = [
+#             {
+#                 'id': 1,
+#                 'name': 'Pipeline de ETL Ventas',
+#                 'description': 'Proceso de extracción, transformación y carga de datos de ventas',
+#                 'server_id': 1,
+#                 'server_name': 'DuckDB Local',
+#                 'created_at': '2025-04-25 01:00:00',
+#                 'updated_at': '2025-04-25 01:00:00',
+#                 'status': 'active',
+#                 'last_execution_id': 1,
+#                 'last_execution_time': '2025-04-25 01:10:00',
+#                 'last_execution_status': 'success'
+#             },
+#             {
+#                 'id': 2,
+#                 'name': 'Pipeline de Análisis de Productos',
+#                 'description': 'Analiza el rendimiento de productos y categorías',
+#                 'server_id': 1,
+#                 'server_name': 'DuckDB Local',
+#                 'created_at': '2025-04-25 01:05:00',
+#                 'updated_at': '2025-04-25 01:05:00',
+#                 'status': 'active',
+#                 'last_execution_id': 2,
+#                 'last_execution_time': '2025-04-25 01:15:00',
+#                 'last_execution_status': 'success'
+#             }
+#         ]
+#         
+#         return jsonify({'pipelines': pipelines})
+#     except Exception as e:
+#         return jsonify({'error': str(e)}), 500
+#     finally:
+#         if conn:
+#             conn.close()
+
+# Comentado por duplicación de función
+# @app.route('/api/executions', methods=['GET'])
+# def list_executions():
+#     """Lista las ejecuciones de pipelines"""
+#     conn = get_duckdb_connection()
+#     if not conn:
+#         return jsonify({'error': 'No se pudo conectar a DuckDB'}), 500
+#     
+#     try:
+#         # Simulamos datos de ejecuciones para la interfaz
+#         executions = [
+#             {
+#                 'id': 1,
+#                 'pipeline_id': 1,
+#                 'pipeline_name': 'Pipeline de ETL Ventas',
+#                 'start_time': '2025-04-25 01:10:00',
+#                 'end_time': '2025-04-25 01:12:00',
+#                 'status': 'success',
+#                 'rows_processed': 1250,
+#                 'duration_ms': 120000
+#             },
+#             {
+#                 'id': 2,
+#                 'pipeline_id': 2,
+#                 'pipeline_name': 'Pipeline de Análisis de Productos',
+#                 'start_time': '2025-04-25 01:15:00',
+#                 'end_time': '2025-04-25 01:16:30',
+#                 'status': 'success',
+#                 'rows_processed': 850,
+#                 'duration_ms': 90000
+#             }
+#         ]
+#         
+#         return jsonify({'executions': executions})
+#     except Exception as e:
+#         return jsonify({'error': str(e)}), 500
+#     finally:
+#         if conn:
+#             conn.close()
+
+# Iniciar el servidor
+if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))
     app.run(host='0.0.0.0', port=port)
