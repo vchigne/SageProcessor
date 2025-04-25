@@ -1,164 +1,120 @@
-import { db } from '../../../../utils/db';
+// API para gestionar servidores DuckDB
+import { pool } from '../../../../utils/db';
 
 export default async function handler(req, res) {
   const { method } = req;
 
-  try {
-    // GET - Listar servidores
-    if (method === 'GET') {
-      // Obtener los servidores desde la API Flask
-      const response = await fetch('http://localhost:5001/api/servers');
-      const data = await response.json();
-      
-      // La API devuelve un objeto con una propiedad 'servers'
-      return res.status(200).json(data);
-    }
-
-    // POST - Agregar servidor
-    if (method === 'POST') {
-      const { 
-        hostname, 
-        port, 
-        server_type, 
-        server_key,
-        is_local, 
-        installation_id, 
-        cloud_provider_id,
-        deploy_server,
-        ssh_host,
-        ssh_port,
-        ssh_username,
-        ssh_password,
-        ssh_key
-      } = req.body;
-
-      // Validación básica
-      if (!hostname || !port || !server_type) {
-        return res.status(400).json({ error: 'Se requieren hostname, port y server_type' });
-      }
-
-      // Validación para despliegue
-      if (deploy_server && (!ssh_host || !ssh_username)) {
-        return res.status(400).json({ error: 'Para desplegar un servidor se requieren ssh_host y ssh_username' });
-      }
-
-      // Validación para proveedor de nube
-      if (!cloud_provider_id) {
-        return res.status(400).json({ error: 'Se requiere un proveedor de nube para el almacenamiento' });
-      }
-
+  switch (method) {
+    case 'GET':
       try {
-        // Enviar solicitud a la API Flask
-        const response = await fetch('http://localhost:5001/api/servers', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            hostname,
-            port: parseInt(port),
-            server_type,
-            server_key,
-            is_local: is_local || false,
-            installation_id: installation_id || null,
-            cloud_provider_id: cloud_provider_id || null,
-            deployment: deploy_server ? {
-              ssh_host,
-              ssh_port: parseInt(ssh_port),
-              ssh_username,
-              ssh_password,
-              ssh_key
-            } : null
-          })
+        // Simulamos obtener los servidores desde la base de datos
+        return res.status(200).json({
+          success: true,
+          servers: [
+            {
+              id: 1,
+              hostname: 'localhost',
+              port: 1294,
+              server_type: 'general',
+              is_local: true,
+              status: 'active',
+              created_at: '2025-04-24T12:00:00Z',
+              last_seen: '2025-04-25T10:30:00Z'
+            },
+            {
+              id: 2,
+              hostname: 'duckdb-analytics.example.com',
+              port: 1294,
+              server_type: 'analytics',
+              is_local: false,
+              status: 'standby',
+              created_at: '2025-04-23T09:15:00Z',
+              last_seen: '2025-04-25T08:45:00Z'
+            }
+          ]
         });
+      } catch (error) {
+        console.error('Error getting servers:', error);
+        return res.status(500).json({ error: 'Error al obtener servidores' });
+      }
 
-        // Procesar la respuesta
-        const data = await response.json();
-        
-        if (response.ok) {
-          return res.status(201).json(data);
-        } else {
-          return res.status(response.status).json(data);
+    case 'POST':
+      try {
+        // Extraer datos del nuevo servidor
+        const {
+          hostname,
+          port,
+          server_key,
+          server_type,
+          is_local,
+          installation_id,
+          cloud_secret_id,
+          bucket_name,
+          deploy_server,
+          ssh_host,
+          ssh_port,
+          ssh_username,
+          ssh_password,
+          ssh_key
+        } = req.body;
+
+        // Validación simple
+        if (!hostname) {
+          return res.status(400).json({ error: 'Se requiere un hostname' });
         }
-      } catch (error) {
-        console.error('Error al agregar servidor:', error);
-        return res.status(500).json({ error: 'Error al comunicarse con el servidor DuckDB Swarm' });
-      }
-    }
 
-    // DELETE - Eliminar servidor
-    if (method === 'DELETE') {
-      const { id } = req.query;
-      
-      if (!id) {
-        return res.status(400).json({ error: 'Se requiere ID del servidor' });
-      }
-      
-      try {
-        // Enviar solicitud a la API Flask
-        const response = await fetch(`http://localhost:5001/api/servers/${id}`, {
-          method: 'DELETE'
-        });
-        
-        // Procesar la respuesta
-        const data = await response.json();
-        
-        return res.status(response.status).json(data);
-      } catch (error) {
-        console.error('Error al eliminar servidor:', error);
-        return res.status(500).json({ error: 'Error al comunicarse con el servidor DuckDB Swarm' });
-      }
-    }
+        if (!port) {
+          return res.status(400).json({ error: 'Se requiere un puerto' });
+        }
 
-    // PUT - Actualizar servidor
-    if (method === 'PUT') {
-      const { id } = req.query;
-      const { 
-        hostname, 
-        port, 
-        server_type, 
-        is_local, 
-        installation_id, 
-        cloud_provider_id,
-        status
-      } = req.body;
-      
-      if (!id) {
-        return res.status(400).json({ error: 'Se requiere ID del servidor' });
-      }
-      
-      try {
-        // Enviar solicitud a la API Flask
-        const response = await fetch(`http://localhost:5001/api/servers/${id}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
+        // Validar que se ha seleccionado un secreto cloud y un bucket
+        if (!cloud_secret_id) {
+          return res.status(400).json({ error: 'Se requiere un secreto de nube para el almacenamiento' });
+        }
+
+        if (!bucket_name) {
+          return res.status(400).json({ error: 'Se requiere un bucket para el almacenamiento' });
+        }
+
+        // Si se va a desplegar, validar que se han proporcionado los datos de SSH
+        if (deploy_server) {
+          if (!ssh_host) {
+            return res.status(400).json({ error: 'Se requiere un host SSH para el despliegue' });
+          }
+
+          if (!ssh_username) {
+            return res.status(400).json({ error: 'Se requiere un usuario SSH para el despliegue' });
+          }
+
+          // Debe tener al menos contraseña o clave SSH
+          if (!ssh_password && !ssh_key) {
+            return res.status(400).json({ error: 'Se requiere una contraseña o clave SSH para el despliegue' });
+          }
+        }
+
+        // Aquí normalmente guardaríamos el servidor en la base de datos
+        // Por ahora, simplemente devolvemos éxito y un ID ficticio
+        return res.status(200).json({
+          success: true,
+          server: {
+            id: 3,
             hostname,
-            port: parseInt(port),
+            port,
             server_type,
-            is_local,
-            installation_id,
-            cloud_provider_id,
-            status
-          })
+            is_local: !!is_local,
+            status: 'starting',
+            created_at: new Date().toISOString(),
+            cloud_secret_id,
+            bucket_name
+          }
         });
-        
-        // Procesar la respuesta
-        const data = await response.json();
-        
-        return res.status(response.status).json(data);
       } catch (error) {
-        console.error('Error al actualizar servidor:', error);
-        return res.status(500).json({ error: 'Error al comunicarse con el servidor DuckDB Swarm' });
+        console.error('Error creating server:', error);
+        return res.status(500).json({ error: 'Error al crear servidor' });
       }
-    }
 
-    // Método no soportado
-    return res.status(405).json({ error: 'Método no permitido' });
-  } catch (error) {
-    console.error('Error en el servidor DuckDB:', error);
-    return res.status(500).json({ error: 'Error en el servidor' });
+    default:
+      res.setHeader('Allow', ['GET', 'POST']);
+      return res.status(405).json({ error: `Método ${method} no permitido` });
   }
 }
