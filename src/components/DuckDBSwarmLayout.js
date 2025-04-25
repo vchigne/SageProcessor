@@ -1,8 +1,25 @@
 import { useState } from 'react'
 import Link from 'next/link'
-import { ServerIcon, HomeIcon } from '@heroicons/react/24/outline'
+import { useRouter } from 'next/router';
+import { 
+  ServerIcon, 
+  HomeIcon, 
+  CodeBracketSquareIcon, 
+  CloudIcon,
+  CircleStackIcon,
+  PlayIcon,
+  DocumentDuplicateIcon,
+  Cog6ToothIcon
+} from '@heroicons/react/24/outline'
 
 export default function DuckDBSwarmLayout({ children }) {
+  const router = useRouter();
+  
+  // Helper function to check if a route is active
+  const isActive = (path) => {
+    return router.pathname.startsWith(path);
+  };
+  
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 dark:text-gray-100">
       <div className="flex flex-col lg:flex-row">
@@ -21,14 +38,122 @@ export default function DuckDBSwarmLayout({ children }) {
                   <ul className="-mx-2 space-y-1">
                     <li>
                       <Link
-                        href="/"
-                        className="group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold text-gray-700 dark:text-gray-200 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-gray-50 dark:hover:bg-gray-700"
+                        href="/admin/duckdb-swarm/dashboard"
+                        className={`group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold ${
+                          isActive('/admin/duckdb-swarm/dashboard') 
+                            ? 'bg-gray-50 dark:bg-gray-700 text-indigo-600 dark:text-indigo-400' 
+                            : 'text-gray-700 dark:text-gray-200 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-gray-50 dark:hover:bg-gray-700'
+                        }`}
                       >
                         <HomeIcon
-                          className="h-6 w-6 shrink-0 text-gray-400 group-hover:text-indigo-600"
+                          className={`h-6 w-6 shrink-0 ${
+                            isActive('/admin/duckdb-swarm/dashboard') 
+                              ? 'text-indigo-600' 
+                              : 'text-gray-400 group-hover:text-indigo-600'
+                          }`}
                           aria-hidden="true"
                         />
                         Dashboard
+                      </Link>
+                    </li>
+                    <li>
+                      <Link
+                        href="/admin/duckdb-swarm/pipelines"
+                        className={`group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold ${
+                          isActive('/admin/duckdb-swarm/pipelines') 
+                            ? 'bg-gray-50 dark:bg-gray-700 text-indigo-600 dark:text-indigo-400' 
+                            : 'text-gray-700 dark:text-gray-200 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-gray-50 dark:hover:bg-gray-700'
+                        }`}
+                      >
+                        <PlayIcon
+                          className={`h-6 w-6 shrink-0 ${
+                            isActive('/admin/duckdb-swarm/pipelines') 
+                              ? 'text-indigo-600' 
+                              : 'text-gray-400 group-hover:text-indigo-600'
+                          }`}
+                          aria-hidden="true"
+                        />
+                        Pipelines
+                      </Link>
+                    </li>
+                    <li>
+                      <Link
+                        href="/admin/duckdb-swarm/evidence"
+                        className={`group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold ${
+                          isActive('/admin/duckdb-swarm/evidence') 
+                            ? 'bg-gray-50 dark:bg-gray-700 text-indigo-600 dark:text-indigo-400' 
+                            : 'text-gray-700 dark:text-gray-200 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-gray-50 dark:hover:bg-gray-700'
+                        }`}
+                      >
+                        <DocumentDuplicateIcon
+                          className={`h-6 w-6 shrink-0 ${
+                            isActive('/admin/duckdb-swarm/evidence') 
+                              ? 'text-indigo-600' 
+                              : 'text-gray-400 group-hover:text-indigo-600'
+                          }`}
+                          aria-hidden="true"
+                        />
+                        Evidence.dev
+                      </Link>
+                    </li>
+                    <li>
+                      <Link
+                        href="/admin/duckdb-swarm/simple"
+                        className={`group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold ${
+                          isActive('/admin/duckdb-swarm/simple') 
+                            ? 'bg-gray-50 dark:bg-gray-700 text-indigo-600 dark:text-indigo-400' 
+                            : 'text-gray-700 dark:text-gray-200 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-gray-50 dark:hover:bg-gray-700'
+                        }`}
+                      >
+                        <ServerIcon
+                          className={`h-6 w-6 shrink-0 ${
+                            isActive('/admin/duckdb-swarm/simple') 
+                              ? 'text-indigo-600' 
+                              : 'text-gray-400 group-hover:text-indigo-600'
+                          }`}
+                          aria-hidden="true"
+                        />
+                        Servidores
+                      </Link>
+                    </li>
+                    <li>
+                      <Link
+                        href="/admin/duckdb-swarm/storage"
+                        className={`group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold ${
+                          isActive('/admin/duckdb-swarm/storage') 
+                            ? 'bg-gray-50 dark:bg-gray-700 text-indigo-600 dark:text-indigo-400' 
+                            : 'text-gray-700 dark:text-gray-200 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-gray-50 dark:hover:bg-gray-700'
+                        }`}
+                      >
+                        <CloudIcon
+                          className={`h-6 w-6 shrink-0 ${
+                            isActive('/admin/duckdb-swarm/storage') 
+                              ? 'text-indigo-600' 
+                              : 'text-gray-400 group-hover:text-indigo-600'
+                          }`}
+                          aria-hidden="true"
+                        />
+                        Almacenamiento
+                      </Link>
+                    </li>
+                    <li>
+                      <Link
+                        href="/admin/duckdb-swarm/settings"
+                        className={`group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold ${
+                          isActive('/admin/duckdb-swarm/settings') 
+                            ? 'bg-gray-50 dark:bg-gray-700 text-indigo-600 dark:text-indigo-400' 
+                            : 'text-gray-700 dark:text-gray-200 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-gray-50 dark:hover:bg-gray-700'
+                        }`}
+                      >
+                        <Cog6ToothIcon
+                          className={`h-6 w-6 shrink-0 ${
+                            isActive('/admin/duckdb-swarm/settings') 
+                              ? 'text-indigo-600' 
+                              : 'text-gray-400 group-hover:text-indigo-600'
+                          }`}
+                          aria-hidden="true"
+                        />
+                        Configuración
                       </Link>
                     </li>
                   </ul>

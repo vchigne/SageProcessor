@@ -42,6 +42,7 @@ const navigation = [
     icon: ServerIcon,
     submenu: [
       { name: 'Dashboard', href: '/admin/duckdb-swarm/dashboard' },
+      { name: 'Pipelines', href: '/admin/duckdb-swarm/pipelines' },
       { name: 'Control de Despliegue', href: '/admin/duckdb-swarm/simple' },
       { name: 'Flujos Yato', href: '/admin/duckdb-swarm/flujos' },
     ]

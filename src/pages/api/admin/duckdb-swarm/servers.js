@@ -6,32 +6,12 @@ export default async function handler(req, res) {
   try {
     // GET - Listar servidores
     if (method === 'GET') {
-      // Como estamos integrando con el servidor externo Flask/DuckDB, vamos a simular datos para pruebas
-      // En una implementación real, estos datos vendrían de la base de datos o del API de Flask
-      const servers = [
-        { 
-          id: 1, 
-          hostname: 'duckdb-primary', 
-          port: 1294, 
-          server_type: 'general',
-          status: 'active',
-          is_local: true,
-          installation_id: 1,
-          cloud_provider_id: 1
-        },
-        { 
-          id: 2, 
-          hostname: 'duckdb-analytics', 
-          port: 1295, 
-          server_type: 'analytics',
-          status: 'standby',
-          is_local: false,
-          installation_id: 2,
-          cloud_provider_id: 2
-        }
-      ];
-
-      return res.status(200).json({ servers });
+      // Obtener los servidores desde la API Flask
+      const response = await fetch('http://localhost:5001/api/servers');
+      const data = await response.json();
+      
+      // La API devuelve un objeto con una propiedad 'servers'
+      return res.status(200).json(data);
     }
 
     // POST - Agregar servidor
@@ -67,36 +47,43 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Se requiere un proveedor de nube para el almacenamiento' });
       }
 
-      // Lógica para desplegar servidor en host remoto (simulada)
-      let deploymentStatus = null;
-      if (deploy_server) {
-        console.log(`Desplegando servidor DuckDB en ${ssh_host}:${ssh_port} con usuario ${ssh_username}`);
-        // En una implementación real, aquí utilizaríamos SSH para conectar y desplegar
-        deploymentStatus = {
-          success: true,
-          message: 'Servidor desplegado correctamente'
-        };
+      try {
+        // Enviar solicitud a la API Flask
+        const response = await fetch('http://localhost:5001/api/servers', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            hostname,
+            port: parseInt(port),
+            server_type,
+            server_key,
+            is_local: is_local || false,
+            installation_id: installation_id || null,
+            cloud_provider_id: cloud_provider_id || null,
+            deployment: deploy_server ? {
+              ssh_host,
+              ssh_port: parseInt(ssh_port),
+              ssh_username,
+              ssh_password,
+              ssh_key
+            } : null
+          })
+        });
+
+        // Procesar la respuesta
+        const data = await response.json();
+        
+        if (response.ok) {
+          return res.status(201).json(data);
+        } else {
+          return res.status(response.status).json(data);
+        }
+      } catch (error) {
+        console.error('Error al agregar servidor:', error);
+        return res.status(500).json({ error: 'Error al comunicarse con el servidor DuckDB Swarm' });
       }
-
-      // En una implementación real, aquí insertaríamos el servidor en la base de datos
-      // y devolveríamos el resultado
-      const server = {
-        id: 3, // Simulado
-        hostname,
-        port: parseInt(port),
-        server_type,
-        server_key: '●●●●●●●●', // No devolvemos la clave real por seguridad
-        is_local: is_local || false,
-        installation_id: installation_id || null,
-        cloud_provider_id: cloud_provider_id || null,
-        status: 'starting',
-        deployment: deploymentStatus
-      };
-
-      return res.status(201).json({ 
-        server,
-        message: 'Servidor agregado correctamente'
-      });
     }
 
     // DELETE - Eliminar servidor
@@ -107,11 +94,20 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Se requiere ID del servidor' });
       }
       
-      // En una implementación real, aquí eliminaríamos el servidor de la base de datos
-      return res.status(200).json({ 
-        success: true,
-        message: `Servidor con ID ${id} eliminado correctamente`
-      });
+      try {
+        // Enviar solicitud a la API Flask
+        const response = await fetch(`http://localhost:5001/api/servers/${id}`, {
+          method: 'DELETE'
+        });
+        
+        // Procesar la respuesta
+        const data = await response.json();
+        
+        return res.status(response.status).json(data);
+      } catch (error) {
+        console.error('Error al eliminar servidor:', error);
+        return res.status(500).json({ error: 'Error al comunicarse con el servidor DuckDB Swarm' });
+      }
     }
 
     // PUT - Actualizar servidor
@@ -131,21 +127,32 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Se requiere ID del servidor' });
       }
       
-      // En una implementación real, aquí actualizaríamos el servidor en la base de datos
-      return res.status(200).json({ 
-        success: true,
-        message: `Servidor con ID ${id} actualizado correctamente`,
-        server: {
-          id: parseInt(id),
-          hostname,
-          port: parseInt(port),
-          server_type,
-          is_local,
-          installation_id,
-          cloud_provider_id,
-          status
-        }
-      });
+      try {
+        // Enviar solicitud a la API Flask
+        const response = await fetch(`http://localhost:5001/api/servers/${id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            hostname,
+            port: parseInt(port),
+            server_type,
+            is_local,
+            installation_id,
+            cloud_provider_id,
+            status
+          })
+        });
+        
+        // Procesar la respuesta
+        const data = await response.json();
+        
+        return res.status(response.status).json(data);
+      } catch (error) {
+        console.error('Error al actualizar servidor:', error);
+        return res.status(500).json({ error: 'Error al comunicarse con el servidor DuckDB Swarm' });
+      }
     }
 
     // Método no soportado
