@@ -414,14 +414,14 @@ const DuckDBSwarmSimple = () => {
                         onClick={async () => {
                           if (!newBucketName || !formData.cloud_secret_id) return;
                           
-                          // Intentar crear bucket
+                          // Intentar crear bucket usando el endpoint existente de emisores
                           try {
-                            const response = await fetch('/api/cloud-secrets/bucket/create', {
+                            const response = await fetch('/api/emisores/bucket', {
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({
-                                secretId: formData.cloud_secret_id,
-                                bucketName: newBucketName
+                                secreto_id: formData.cloud_secret_id,
+                                bucket: newBucketName
                               })
                             });
                             
@@ -582,7 +582,7 @@ const DuckDBSwarmSimple = () => {
                     setFormStep('cloud');
                   } else {
                     // Skip deploy step if not deploying a new server
-                    if (formData.cloud_provider_id) {
+                    if (formData.cloud_secret_id && formData.bucket_name) {
                       setFormStep('deploy');
                     } else {
                       setFormStep('cloud');
