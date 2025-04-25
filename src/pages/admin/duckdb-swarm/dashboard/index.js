@@ -24,17 +24,19 @@ const DuckDBDashboard = () => {
         const response = await fetch('/api/admin/duckdb-swarm/servers');
         if (response.ok) {
           const data = await response.json();
-          setServers(data);
+          // La API devuelve un objeto con una propiedad 'servers'
+          const serversList = data.servers || [];
+          setServers(serversList);
           
           // Calcular estadísticas
-          const activeServers = data.filter(server => server.status === 'active').length;
-          const totalDatabases = data.reduce((acc, server) => acc + (server.databases?.length || 0), 0);
-          const storageTotalGB = data.reduce((acc, server) => {
+          const activeServers = serversList.filter(server => server.status === 'active').length;
+          const totalDatabases = serversList.reduce((acc, server) => acc + (server.databases?.length || 0), 0);
+          const storageTotalGB = serversList.reduce((acc, server) => {
             return acc + (server.databases?.reduce((dbAcc, db) => dbAcc + (db.size_mb || 0), 0) || 0);
           }, 0) / 1024; // Convertir a GB
           
           setStats({
-            totalServers: data.length,
+            totalServers: serversList.length,
             activeServers,
             totalDatabases,
             storageTotalGB
@@ -138,7 +140,7 @@ const DuckDBDashboard = () => {
                         <div className="flex items-center">
                           <ServerIcon className="h-5 w-5 mr-2 text-gray-400" />
                           {server.hostname}:{server.port}
-                          {server.is_primary && (
+                          {server.is_local && (
                             <span className="ml-2 bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full">
                               Primary
                             </span>
@@ -161,7 +163,7 @@ const DuckDBDashboard = () => {
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                        {server.type || 'Standard'}
+                        {server.server_type || 'Standard'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                         {server.databases?.length || 0}
