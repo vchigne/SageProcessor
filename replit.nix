@@ -1,5 +1,6 @@
 {pkgs}: {
   deps = [
+    pkgs.duckdb
     pkgs.awscli
     pkgs.cacert
     pkgs.dnsutils
