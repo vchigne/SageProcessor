@@ -36,7 +36,16 @@ const navigation = [
   { name: 'Casillas de Datos', href: '/admin/data-boxes', icon: InboxStackIcon },
   { name: 'Portales', href: '/admin/portales', icon: WindowIcon },
   { name: 'Control de Acceso', href: '/access', icon: ShieldCheckIcon },
-  { name: 'DuckDB Swarm', href: '/admin/duckdb-swarm', icon: ServerIcon },
+  { 
+    name: 'DuckDB Swarm', 
+    href: '#',
+    icon: ServerIcon,
+    submenu: [
+      { name: 'Dashboard', href: '/admin/duckdb-swarm/dashboard' },
+      { name: 'Control de Despliegue', href: '/admin/duckdb-swarm/simple' },
+      { name: 'Flujos Yato', href: '/admin/duckdb-swarm/flujos' },
+    ]
+  },
   { 
     name: 'Maestros', 
     href: '#',
@@ -218,6 +227,10 @@ export default function Layout({ children }) {
     if (router.pathname.includes('/maestros/') || router.pathname === '/admin/emisores') {
       // Abre el submenú de Maestros
       setOpenSubmenus(prev => ({ ...prev, 'Maestros': true }));
+    }
+    if (router.pathname.includes('/admin/duckdb-swarm/')) {
+      // Abre el submenú de DuckDB Swarm
+      setOpenSubmenus(prev => ({ ...prev, 'DuckDB Swarm': true }));
     }
   }, [router.pathname]);
 
