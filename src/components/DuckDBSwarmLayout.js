@@ -9,7 +9,9 @@ import {
   CircleStackIcon,
   PlayIcon,
   DocumentDuplicateIcon,
-  Cog6ToothIcon
+  Cog6ToothIcon,
+  ChartBarIcon,
+  TableCellsIcon
 } from '@heroicons/react/24/outline'
 
 export default function DuckDBSwarmLayout({ children }) {
@@ -76,26 +78,7 @@ export default function DuckDBSwarmLayout({ children }) {
                         Pipelines
                       </Link>
                     </li>
-                    <li>
-                      <Link
-                        href="/admin/duckdb-swarm/evidence"
-                        className={`group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold ${
-                          isActive('/admin/duckdb-swarm/evidence') 
-                            ? 'bg-gray-50 dark:bg-gray-700 text-indigo-600 dark:text-indigo-400' 
-                            : 'text-gray-700 dark:text-gray-200 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-gray-50 dark:hover:bg-gray-700'
-                        }`}
-                      >
-                        <DocumentDuplicateIcon
-                          className={`h-6 w-6 shrink-0 ${
-                            isActive('/admin/duckdb-swarm/evidence') 
-                              ? 'text-indigo-600' 
-                              : 'text-gray-400 group-hover:text-indigo-600'
-                          }`}
-                          aria-hidden="true"
-                        />
-                        Evidence.dev
-                      </Link>
-                    </li>
+
                     <li>
                       <Link
                         href="/admin/duckdb-swarm/simple"
@@ -134,6 +117,46 @@ export default function DuckDBSwarmLayout({ children }) {
                           aria-hidden="true"
                         />
                         Almacenamiento
+                      </Link>
+                    </li>
+                    <li>
+                      <Link
+                        href="/admin/duckdb-swarm/evidence"
+                        className={`group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold ${
+                          isActive('/admin/duckdb-swarm/evidence') 
+                            ? 'bg-gray-50 dark:bg-gray-700 text-indigo-600 dark:text-indigo-400' 
+                            : 'text-gray-700 dark:text-gray-200 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-gray-50 dark:hover:bg-gray-700'
+                        }`}
+                      >
+                        <ChartBarIcon
+                          className={`h-6 w-6 shrink-0 ${
+                            isActive('/admin/duckdb-swarm/evidence') 
+                              ? 'text-indigo-600' 
+                              : 'text-gray-400 group-hover:text-indigo-600'
+                          }`}
+                          aria-hidden="true"
+                        />
+                        Evidence.dev
+                      </Link>
+                    </li>
+                    <li>
+                      <Link
+                        href="/admin/duckdb-swarm/powerbi"
+                        className={`group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold ${
+                          isActive('/admin/duckdb-swarm/powerbi') 
+                            ? 'bg-gray-50 dark:bg-gray-700 text-indigo-600 dark:text-indigo-400' 
+                            : 'text-gray-700 dark:text-gray-200 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-gray-50 dark:hover:bg-gray-700'
+                        }`}
+                      >
+                        <TableCellsIcon
+                          className={`h-6 w-6 shrink-0 ${
+                            isActive('/admin/duckdb-swarm/powerbi') 
+                              ? 'text-indigo-600' 
+                              : 'text-gray-400 group-hover:text-indigo-600'
+                          }`}
+                          aria-hidden="true"
+                        />
+                        PowerBI
                       </Link>
                     </li>
                     <li>
