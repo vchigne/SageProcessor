@@ -138,9 +138,10 @@ export default function Dashboard() {
         prodRes.json()
       ]);
 
-      setOrganizaciones(orgData);
-      setPaises(paisData);
-      setProductos(prodData);
+      // Asegurarse de que orgData es un array
+      setOrganizaciones(Array.isArray(orgData) ? orgData : []);
+      setPaises(Array.isArray(paisData) ? paisData : []);
+      setProductos(Array.isArray(prodData) ? prodData : []);
     } catch (error) {
       console.error('Error fetching filters data:', error);
     }
