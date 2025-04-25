@@ -45,7 +45,7 @@ app = Flask(__name__)
 CORS(app)  # Habilitar CORS para todas las rutas
 
 # Configuración
-DUCKDB_PATH = 'duckdb_data/analytics.duckdb'
+DUCKDB_PATH = 'duckdb_data/duckdb_swarm.db'
 
 def get_duckdb_connection():
     """Obtiene una conexión a la base de datos DuckDB"""
@@ -1432,11 +1432,412 @@ def list_storage_providers():
     finally:
         conn.close()
 
+# Endpoints para Evidence.dev
+@app.route('/api/evidence/projects', methods=['GET'])
+def list_evidence_projects():
+    """Lista todos los proyectos de Evidence.dev"""
+    conn = get_duckdb_connection()
+    projects = []
+    try:
+        result = conn.execute("""
+            SELECT id, name, description, folder_path, git_repo, created_at, updated_at, created_by, status
+            FROM evidence_projects
+            ORDER BY name
+        """).fetchall()
+        
+        projects = [
+            {
+                "id": row[0],
+                "name": row[1],
+                "description": row[2],
+                "folder_path": row[3],
+                "git_repo": row[4],
+                "created_at": row[5].isoformat() if row[5] else None,
+                "updated_at": row[6].isoformat() if row[6] else None,
+                "created_by": row[7],
+                "status": row[8]
+            }
+            for row in result
+        ]
+    except Exception as e:
+        print(f"Error al listar proyectos de Evidence.dev: {e}")
+    
+    return jsonify({"projects": projects})
+
+@app.route('/api/evidence/projects', methods=['POST'])
+def create_evidence_project():
+    """Crea un nuevo proyecto de Evidence.dev"""
+    data = request.json
+    conn = get_duckdb_connection()
+    
+    try:
+        # Validar datos mínimos
+        if not data.get('name'):
+            return jsonify({"error": "Se requiere un nombre para el proyecto"}), 400
+        
+        # Establecer valores por defecto
+        folder_path = data.get('folder_path', f"evidence/{data['name'].lower().replace(' ', '_')}")
+        git_repo = data.get('git_repo', None)
+        description = data.get('description', None)
+        created_by = data.get('created_by', 'admin')
+        
+        # Insertar proyecto
+        project_id = str(uuid.uuid4())
+        conn.execute("""
+            INSERT INTO evidence_projects (id, name, description, folder_path, git_repo, created_at, updated_at, created_by, status)
+            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, 'active')
+        """, [project_id, data['name'], description, folder_path, git_repo, created_by])
+        
+        # Crear estructura básica del proyecto (podría ser un proceso background)
+        # TODO: Implementar la creación real de la estructura del proyecto
+        
+        return jsonify({
+            "id": project_id,
+            "name": data['name'],
+            "description": description,
+            "folder_path": folder_path,
+            "git_repo": git_repo,
+            "created_by": created_by,
+            "status": "active"
+        }), 201
+    except Exception as e:
+        print(f"Error al crear proyecto de Evidence.dev: {e}")
+        return jsonify({"error": f"Error al crear proyecto: {str(e)}"}), 500
+
+@app.route('/api/evidence/projects/<string:project_id>', methods=['GET'])
+def get_evidence_project(project_id):
+    """Obtiene un proyecto específico de Evidence.dev"""
+    conn = get_duckdb_connection()
+    
+    try:
+        result = conn.execute("""
+            SELECT id, name, description, folder_path, git_repo, created_at, updated_at, created_by, status
+            FROM evidence_projects
+            WHERE id = ?
+        """, [project_id]).fetchone()
+        
+        if not result:
+            return jsonify({"error": "Proyecto no encontrado"}), 404
+        
+        project = {
+            "id": result[0],
+            "name": result[1],
+            "description": result[2],
+            "folder_path": result[3],
+            "git_repo": result[4],
+            "created_at": result[5].isoformat() if result[5] else None,
+            "updated_at": result[6].isoformat() if result[6] else None,
+            "created_by": result[7],
+            "status": result[8]
+        }
+        
+        # Obtener las fuentes de datos (data sources) asociadas
+        sources_result = conn.execute("""
+            SELECT id, name, database_id, query, description
+            FROM evidence_data_sources
+            WHERE project_id = ?
+        """, [project_id]).fetchall()
+        
+        sources = [
+            {
+                "id": row[0],
+                "name": row[1],
+                "database_id": row[2],
+                "query": row[3],
+                "description": row[4]
+            }
+            for row in sources_result
+        ]
+        
+        project["data_sources"] = sources
+        
+        # Obtener los reportes asociados
+        reports_result = conn.execute("""
+            SELECT id, name, path, description, created_at, updated_at, created_by
+            FROM evidence_reports
+            WHERE project_id = ?
+        """, [project_id]).fetchall()
+        
+        reports = [
+            {
+                "id": row[0],
+                "name": row[1],
+                "path": row[2],
+                "description": row[3],
+                "created_at": row[4].isoformat() if row[4] else None,
+                "updated_at": row[5].isoformat() if row[5] else None,
+                "created_by": row[6]
+            }
+            for row in reports_result
+        ]
+        
+        project["reports"] = reports
+        
+        return jsonify(project)
+    except Exception as e:
+        print(f"Error al obtener proyecto de Evidence.dev: {e}")
+        return jsonify({"error": f"Error al obtener proyecto: {str(e)}"}), 500
+
+@app.route('/api/evidence/projects/<string:project_id>', methods=['DELETE'])
+def delete_evidence_project(project_id):
+    """Elimina un proyecto de Evidence.dev"""
+    conn = get_duckdb_connection()
+    
+    try:
+        # Verificar si existe el proyecto
+        result = conn.execute("SELECT id FROM evidence_projects WHERE id = ?", [project_id]).fetchone()
+        if not result:
+            return jsonify({"error": "Proyecto no encontrado"}), 404
+        
+        # Eliminar fuentes de datos asociadas
+        conn.execute("DELETE FROM evidence_data_sources WHERE project_id = ?", [project_id])
+        
+        # Eliminar reportes asociados
+        conn.execute("DELETE FROM evidence_reports WHERE project_id = ?", [project_id])
+        
+        # Eliminar el proyecto
+        conn.execute("DELETE FROM evidence_projects WHERE id = ?", [project_id])
+        
+        return jsonify({"message": "Proyecto eliminado correctamente"})
+    except Exception as e:
+        print(f"Error al eliminar proyecto de Evidence.dev: {e}")
+        return jsonify({"error": f"Error al eliminar proyecto: {str(e)}"}), 500
+
+@app.route('/api/evidence/data-sources', methods=['GET'])
+def list_evidence_data_sources():
+    """Lista todas las fuentes de datos de Evidence.dev"""
+    conn = get_duckdb_connection()
+    sources = []
+    
+    try:
+        result = conn.execute("""
+            SELECT ds.id, ds.name, ds.project_id, ds.database_id, ds.query, ds.description,
+                   p.name as project_name, d.name as database_name
+            FROM evidence_data_sources ds
+            JOIN evidence_projects p ON ds.project_id = p.id
+            JOIN databases d ON ds.database_id = d.id
+            ORDER BY ds.name
+        """).fetchall()
+        
+        sources = [
+            {
+                "id": row[0],
+                "name": row[1],
+                "project_id": row[2],
+                "database_id": row[3],
+                "query": row[4],
+                "description": row[5],
+                "project_name": row[6],
+                "database_name": row[7]
+            }
+            for row in result
+        ]
+    except Exception as e:
+        print(f"Error al listar fuentes de datos de Evidence.dev: {e}")
+    
+    return jsonify({"data_sources": sources})
+
+# Endpoints para PowerBI
+@app.route('/api/powerbi/datasets', methods=['GET'])
+def list_powerbi_datasets():
+    """Lista todos los datasets de PowerBI"""
+    conn = get_duckdb_connection()
+    datasets = []
+    
+    try:
+        result = conn.execute("""
+            SELECT id, name, description, duckling_id, refresh_schedule, last_refresh,
+                   created_at, updated_at, created_by, status
+            FROM powerbi_datasets
+            ORDER BY name
+        """).fetchall()
+        
+        datasets = [
+            {
+                "id": row[0],
+                "name": row[1],
+                "description": row[2],
+                "duckling_id": row[3],
+                "refresh_schedule": row[4],
+                "last_refresh": row[5].isoformat() if row[5] else None,
+                "created_at": row[6].isoformat() if row[6] else None,
+                "updated_at": row[7].isoformat() if row[7] else None,
+                "created_by": row[8],
+                "status": row[9]
+            }
+            for row in result
+        ]
+    except Exception as e:
+        print(f"Error al listar datasets de PowerBI: {e}")
+    
+    return jsonify({"datasets": datasets})
+
+@app.route('/api/powerbi/datasets', methods=['POST'])
+def create_powerbi_dataset():
+    """Crea un nuevo dataset de PowerBI"""
+    data = request.json
+    conn = get_duckdb_connection()
+    
+    try:
+        # Validar datos mínimos
+        if not data.get('name'):
+            return jsonify({"error": "Se requiere un nombre para el dataset"}), 400
+        
+        if not data.get('duckling_id'):
+            return jsonify({"error": "Se requiere un duckling_id para el dataset"}), 400
+        
+        # Establecer valores por defecto
+        description = data.get('description', None)
+        refresh_schedule = data.get('refresh_schedule', None)
+        created_by = data.get('created_by', 'admin')
+        
+        # Insertar dataset
+        dataset_id = str(uuid.uuid4())
+        conn.execute("""
+            INSERT INTO powerbi_datasets (id, name, description, duckling_id, refresh_schedule, 
+                                    created_at, updated_at, created_by, status)
+            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, 'active')
+        """, [dataset_id, data['name'], description, data['duckling_id'], refresh_schedule, created_by])
+        
+        # Insertar tablas del dataset
+        tables = data.get('tables', [])
+        for table in tables:
+            table_id = str(uuid.uuid4())
+            conn.execute("""
+                INSERT INTO powerbi_tables (id, dataset_id, name, query, is_incremental, incremental_key)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, [
+                table_id, 
+                dataset_id, 
+                table.get('name', 'Table'),
+                table.get('query', ''),
+                table.get('is_incremental', False),
+                table.get('incremental_key', None)
+            ])
+        
+        return jsonify({
+            "id": dataset_id,
+            "name": data['name'],
+            "description": description,
+            "duckling_id": data['duckling_id'],
+            "refresh_schedule": refresh_schedule,
+            "created_by": created_by,
+            "status": "active"
+        }), 201
+    except Exception as e:
+        print(f"Error al crear dataset de PowerBI: {e}")
+        return jsonify({"error": f"Error al crear dataset: {str(e)}"}), 500
+
+@app.route('/api/powerbi/datasets/<string:dataset_id>', methods=['GET'])
+def get_powerbi_dataset(dataset_id):
+    """Obtiene un dataset específico de PowerBI"""
+    conn = get_duckdb_connection()
+    
+    try:
+        result = conn.execute("""
+            SELECT id, name, description, duckling_id, refresh_schedule, last_refresh,
+                   created_at, updated_at, created_by, status
+            FROM powerbi_datasets
+            WHERE id = ?
+        """, [dataset_id]).fetchone()
+        
+        if not result:
+            return jsonify({"error": "Dataset no encontrado"}), 404
+        
+        dataset = {
+            "id": result[0],
+            "name": result[1],
+            "description": result[2],
+            "duckling_id": result[3],
+            "refresh_schedule": result[4],
+            "last_refresh": result[5].isoformat() if result[5] else None,
+            "created_at": result[6].isoformat() if result[6] else None,
+            "updated_at": result[7].isoformat() if result[7] else None,
+            "created_by": result[8],
+            "status": result[9]
+        }
+        
+        # Obtener las tablas del dataset
+        tables_result = conn.execute("""
+            SELECT id, name, query, is_incremental, incremental_key, created_at, updated_at
+            FROM powerbi_tables
+            WHERE dataset_id = ?
+        """, [dataset_id]).fetchall()
+        
+        tables = [
+            {
+                "id": row[0],
+                "name": row[1],
+                "query": row[2],
+                "is_incremental": bool(row[3]),
+                "incremental_key": row[4],
+                "created_at": row[5].isoformat() if row[5] else None,
+                "updated_at": row[6].isoformat() if row[6] else None
+            }
+            for row in tables_result
+        ]
+        
+        dataset["tables"] = tables
+        
+        return jsonify(dataset)
+    except Exception as e:
+        print(f"Error al obtener dataset de PowerBI: {e}")
+        return jsonify({"error": f"Error al obtener dataset: {str(e)}"}), 500
+
+@app.route('/api/powerbi/datasets/<string:dataset_id>/refresh', methods=['POST'])
+def refresh_powerbi_dataset(dataset_id):
+    """Refresca un dataset de PowerBI"""
+    conn = get_duckdb_connection()
+    
+    try:
+        # Verificar si existe el dataset
+        result = conn.execute("SELECT id, name FROM powerbi_datasets WHERE id = ?", [dataset_id]).fetchone()
+        if not result:
+            return jsonify({"error": "Dataset no encontrado"}), 404
+        
+        # Simular refresco (en un entorno real, esto sería un proceso más complejo)
+        start_time = time.time()
+        time.sleep(1)  # Simular tiempo de procesamiento
+        end_time = time.time()
+        duration_ms = int((end_time - start_time) * 1000)
+        
+        # Actualizar timestamp de último refresco
+        conn.execute("""
+            UPDATE powerbi_datasets 
+            SET last_refresh = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """, [dataset_id])
+        
+        # Registrar en historial de refrescos
+        refresh_id = str(uuid.uuid4())
+        conn.execute("""
+            INSERT INTO powerbi_refresh_history 
+            (id, dataset_id, start_time, end_time, status, rows_processed, duration_ms)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, [
+            refresh_id,
+            dataset_id,
+            datetime.datetime.fromtimestamp(start_time),
+            datetime.datetime.fromtimestamp(end_time),
+            'success',
+            random.randint(100, 10000),  # Simulado
+            duration_ms
+        ])
+        
+        return jsonify({
+            "message": f"Dataset '{result[1]}' refrescado correctamente",
+            "refresh_time": datetime.datetime.now().isoformat(),
+            "duration_ms": duration_ms
+        })
+    except Exception as e:
+        print(f"Error al refrescar dataset de PowerBI: {e}")
+        return jsonify({"error": f"Error al refrescar dataset: {str(e)}"}), 500
+
 if __name__ == '__main__':
     # Verificar que la base de datos exista
     if not os.path.exists(DUCKDB_PATH):
         print(f"Error: La base de datos {DUCKDB_PATH} no existe")
-        print("Ejecute primero duckdb_init_fixed.py para inicializar la base de datos")
+        print("Ejecute primero extend_duckdb_schema_evidence_powerbi.py para inicializar la base de datos")
         exit(1)
     
     # Iniciar el servidor
