@@ -416,12 +416,12 @@ const DuckDBSwarmSimple = () => {
                           
                           // Intentar crear bucket usando el endpoint existente de emisores
                           try {
-                            const response = await fetch('/api/emisores/bucket', {
+                            const response = await fetch('/api/emisores/crear-bucket', {
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({
                                 secreto_id: formData.cloud_secret_id,
-                                bucket: newBucketName
+                                bucketName: newBucketName
                               })
                             });
                             
