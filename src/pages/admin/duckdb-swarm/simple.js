@@ -5,10 +5,15 @@ const DuckDBSwarmSimple = () => {
   const [loading, setLoading] = useState({
     servers: true,
     clouds: false,
-    installations: false
+    installations: false,
+    buckets: false
   });
   const [activeTab, setActiveTab] = useState('servers');
   const [clouds, setClouds] = useState([]);
+  const [cloudSecrets, setCloudSecrets] = useState([]);
+  const [buckets, setBuckets] = useState([]);
+  const [showNewBucket, setShowNewBucket] = useState(false);
+  const [newBucketName, setNewBucketName] = useState('');
   const [installations, setInstallations] = useState([]);
   const [formData, setFormData] = useState({
     hostname: '',
@@ -17,7 +22,8 @@ const DuckDBSwarmSimple = () => {
     server_type: 'general',
     is_local: false,
     installation_id: '',
-    cloud_provider_id: '',
+    cloud_secret_id: '',
+    bucket_name: '',
     ssh_host: '',
     ssh_port: 22,
     ssh_username: '',
@@ -54,6 +60,53 @@ const DuckDBSwarmSimple = () => {
       setLoading(prev => ({ ...prev, clouds: false }));
     }
   };
+  
+  // Fetch cloud secrets (para usar en la selección de almacenamiento)
+  const fetchCloudSecrets = async () => {
+    try {
+      setLoading(prev => ({ ...prev, clouds: true }));
+      const response = await fetch('/api/admin/duckdb-swarm/cloud-secrets');
+      const data = await response.json();
+      if (data.success && Array.isArray(data.secrets)) {
+        setCloudSecrets(data.secrets);
+      } else {
+        console.error('Formato inesperado en cloud-secrets:', data);
+        setCloudSecrets([]);
+      }
+    } catch (error) {
+      console.error('Error fetching cloud secrets:', error);
+      setCloudSecrets([]);
+    } finally {
+      setLoading(prev => ({ ...prev, clouds: false }));
+    }
+  };
+  
+  // Cargar buckets basado en el secreto cloud seleccionado
+  const fetchBuckets = async (secretId) => {
+    if (!secretId) {
+      setBuckets([]);
+      return;
+    }
+    
+    setLoading(prev => ({ ...prev, buckets: true }));
+    try {
+      const response = await fetch(`/api/emisores/buckets-secreto?secreto_id=${secretId}`);
+      if (!response.ok) {
+        throw new Error('Error fetching buckets');
+      }
+      const data = await response.json();
+      if (data.success && data.buckets) {
+        setBuckets(data.buckets);
+      } else {
+        setBuckets([]);
+      }
+    } catch (error) {
+      console.error('Error fetching buckets:', error);
+      setBuckets([]);
+    } finally {
+      setLoading(prev => ({ ...prev, buckets: false }));
+    }
+  };
 
   // Fetch SAGE installations
   const fetchInstallations = async () => {
@@ -82,8 +135,18 @@ const DuckDBSwarmSimple = () => {
   useEffect(() => {
     fetchServers();
     fetchClouds();
+    fetchCloudSecrets();
     fetchInstallations();
   }, []);
+  
+  // Cuando se cambia el secreto de nube, cargar sus buckets
+  useEffect(() => {
+    if (formData.cloud_secret_id) {
+      fetchBuckets(formData.cloud_secret_id);
+    } else {
+      setBuckets([]);
+    }
+  }, [formData.cloud_secret_id]);
 
   // Handle form submission
   const handleSubmit = async (e) => {
@@ -111,7 +174,8 @@ const DuckDBSwarmSimple = () => {
           server_type: 'general',
           is_local: false,
           installation_id: '',
-          cloud_provider_id: '',
+          cloud_secret_id: '',
+          bucket_name: '',
           ssh_host: '',
           ssh_port: 22,
           ssh_username: '',
@@ -268,26 +332,128 @@ const DuckDBSwarmSimple = () => {
       case 'cloud':
         return (
           <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Proveedor de Nube para Almacenamiento
-              </label>
-              <select
-                name="cloud_provider_id"
-                value={formData.cloud_provider_id}
-                onChange={handleInputChange}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white"
-                required
-              >
-                <option value="">Seleccionar proveedor</option>
-                {clouds.map(cloud => (
-                  <option key={cloud.id} value={cloud.id}>
-                    {cloud.name} ({cloud.provider_type})
-                  </option>
-                ))}
-              </select>
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                El proveedor de nube se utilizará para almacenar bases de datos y respaldos.
+            {/* Configuración Bucket */}
+            <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-md">
+              <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4">
+                Configuración Bucket
+              </h3>
+              
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Secreto Cloud
+                </label>
+                <select
+                  name="cloud_secret_id"
+                  value={formData.cloud_secret_id}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setFormData({ ...formData, cloud_secret_id: value, bucket_name: '' });
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white"
+                  required
+                >
+                  <option value="" disabled>Seleccionar secreto cloud</option>
+                  {cloudSecrets.map((secret) => (
+                    <option key={secret.id} value={secret.id.toString()}>
+                      {secret.nombre} ({secret.tipo})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              {formData.cloud_secret_id && (
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Bucket
+                  </label>
+                  <select
+                    name="bucket_name"
+                    value={formData.bucket_name}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white"
+                    required
+                  >
+                    <option value="" disabled>Seleccionar bucket</option>
+                    {buckets.map((bucket) => (
+                      <option key={bucket.name} value={bucket.name}>
+                        {bucket.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              
+              {formData.cloud_secret_id && (
+                <div>
+                  <div className="flex items-center mb-2 cursor-pointer" onClick={() => setShowNewBucket(!showNewBucket)}>
+                    <div className="h-5 w-5 text-indigo-600 mr-2">
+                      {showNewBucket ? (
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M5 10a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1z" clipRule="evenodd" />
+                        </svg>
+                      ) : (
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                    </div>
+                    <span className="text-sm font-medium text-indigo-600">Crear nuevo bucket</span>
+                  </div>
+                  
+                  {showNewBucket && (
+                    <div className="flex space-x-2 mt-2">
+                      <input
+                        type="text"
+                        value={newBucketName}
+                        onChange={(e) => setNewBucketName(e.target.value)}
+                        placeholder="Nombre del bucket"
+                        className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white text-sm"
+                      />
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!newBucketName || !formData.cloud_secret_id) return;
+                          
+                          // Intentar crear bucket
+                          try {
+                            const response = await fetch('/api/cloud-secrets/bucket/create', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                secretId: formData.cloud_secret_id,
+                                bucketName: newBucketName
+                              })
+                            });
+                            
+                            const data = await response.json();
+                            
+                            if (data.success) {
+                              // Actualizar lista de buckets
+                              fetchBuckets(formData.cloud_secret_id);
+                              setFormData({ ...formData, bucket_name: newBucketName });
+                              setNewBucketName('');
+                              setShowNewBucket(false);
+                              alert('Bucket creado correctamente');
+                            } else {
+                              alert(`Error al crear el bucket: ${data.message}`);
+                            }
+                          } catch (error) {
+                            console.error('Error creating bucket:', error);
+                            alert('Error al crear el bucket');
+                          }
+                        }}
+                        className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                      >
+                        Crear
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              <p className="mt-4 text-xs text-gray-500 dark:text-gray-400">
+                El proveedor de nube se utilizará para almacenar bases de datos y respaldos. 
+                Seleccione un secreto cloud y un bucket existente, o cree uno nuevo.
               </p>
             </div>
           </div>
