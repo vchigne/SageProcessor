@@ -291,38 +291,9 @@ def start_duckdb_ui(server_id):
         # Para propósitos de desarrollo, generamos una URL válida externamente
         ui_port = port + 80  # La UI estándar se ejecuta en puerto+80
         
-        # Obtener el hostname del request actual para URLs accesibles externamente
-        request_host = request.headers.get('Host', '')
-        if request_host:
-            request_host = request_host.split(':')[0]
-        
-        # Determinar el hostname a usar
-        external_hostname = request_host
-        if not external_hostname or external_hostname == 'localhost' or external_hostname == '127.0.0.1':
-            # Obtener la URL externa a partir de la solicitud
-            if request.url_root:
-                from urllib.parse import urlparse
-                parsed_url = urlparse(request.url_root)
-                external_hostname = parsed_url.hostname
-        
-        # Si todavía tenemos localhost, usar la URL de Replit
-        if not external_hostname or external_hostname == 'localhost' or external_hostname == '127.0.0.1':
-            import os
-            replit_url = os.environ.get('REPL_SLUG')
-            if replit_url:
-                external_hostname = f"{replit_url}.replit.dev"
-            else:
-                # Como último recurso, usar la IP de la máquina
-                import socket
-                try:
-                    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                    s.connect(("8.8.8.8", 80))
-                    external_hostname = s.getsockname()[0]
-                    s.close()
-                except:
-                    external_hostname = hostname
-        
-        ui_url = f"https://{external_hostname}/duckdb/"
+        # Para una aplicación en Replit, usamos la URL de la app Next.js
+        # donde podemos implementar las páginas de UI
+        ui_url = f"/admin/duckdb-swarm/ui"
         
         # Registrar el inicio en la base de datos
         conn = get_duckdb_connection()
@@ -2471,38 +2442,9 @@ def start_duckdb_notebook(server_id):
         # Para propósitos de desarrollo, generamos una URL simulada
         ui_port = port + 100  # La UI notebook se ejecuta en un puerto diferente
         
-        # Obtener el hostname del request actual para URLs accesibles externamente
-        request_host = request.headers.get('Host', '')
-        if request_host:
-            request_host = request_host.split(':')[0]
-        
-        # Determinar el hostname a usar
-        external_hostname = request_host
-        if not external_hostname or external_hostname == 'localhost' or external_hostname == '127.0.0.1':
-            # Obtener la URL externa a partir de la solicitud
-            if request.url_root:
-                from urllib.parse import urlparse
-                parsed_url = urlparse(request.url_root)
-                external_hostname = parsed_url.hostname
-        
-        # Si todavía tenemos localhost, usar la URL de Replit
-        if not external_hostname or external_hostname == 'localhost' or external_hostname == '127.0.0.1':
-            import os
-            replit_url = os.environ.get('REPL_SLUG')
-            if replit_url:
-                external_hostname = f"{replit_url}.replit.dev"
-            else:
-                # Como último recurso, usar la IP de la máquina
-                import socket
-                try:
-                    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                    s.connect(("8.8.8.8", 80))
-                    external_hostname = s.getsockname()[0]
-                    s.close()
-                except:
-                    external_hostname = hostname
-        
-        ui_url = f"https://{external_hostname}/duckdb-notebook/"
+        # Para una aplicación en Replit, usamos la URL de la app Next.js
+        # donde podemos implementar las páginas de UI de notebook
+        ui_url = f"/admin/duckdb-swarm/notebook"
         
         # Registrar el inicio en la base de datos
         conn = get_duckdb_connection()
@@ -2552,41 +2494,9 @@ def start_ui():
         # En servidores reales, aquí iniciaríamos el proceso de Jupyter/DuckDB UI
         # y devolveríamos la URL generada
         
-        # Generamos una URL para la UI local basada en la URL externa
-        ui_port = 8888  # Puerto típico de Jupyter
-        
-        # Obtener el hostname del request actual para URLs accesibles externamente
-        request_host = request.headers.get('Host', '')
-        if request_host:
-            request_host = request_host.split(':')[0]
-        
-        # Determinar el hostname a usar
-        external_hostname = request_host
-        if not external_hostname or external_hostname == 'localhost' or external_hostname == '127.0.0.1':
-            # Obtener la URL externa a partir de la solicitud
-            if request.url_root:
-                from urllib.parse import urlparse
-                parsed_url = urlparse(request.url_root)
-                external_hostname = parsed_url.hostname
-        
-        # Si todavía tenemos localhost, usar la URL de Replit
-        if not external_hostname or external_hostname == 'localhost' or external_hostname == '127.0.0.1':
-            import os
-            replit_url = os.environ.get('REPL_SLUG')
-            if replit_url:
-                external_hostname = f"{replit_url}.replit.dev"
-            else:
-                # Como último recurso, usar la IP de la máquina
-                import socket
-                try:
-                    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                    s.connect(("8.8.8.8", 80))
-                    external_hostname = s.getsockname()[0]
-                    s.close()
-                except:
-                    external_hostname = "localhost"
-        
-        ui_url = f"https://{external_hostname}/duckdb-notebook/index.html"
+        # Para una aplicación en Replit, usamos la URL de la app Next.js
+        # donde podemos implementar las páginas de UI
+        ui_url = f"/admin/duckdb-swarm/ui"
         
         return jsonify({
             'success': True,

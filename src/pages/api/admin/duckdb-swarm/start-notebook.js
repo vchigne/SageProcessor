@@ -41,7 +41,7 @@ async function getServer(serverId) {
 }
 
 export default async function handler(req, res) {
-  // Solo permitir POST para iniciar UI
+  // Solo permitir POST para iniciar notebook
   if (req.method !== 'POST') {
     return res.status(405).json({ success: false, error: 'Método no permitido' });
   }
@@ -63,11 +63,11 @@ export default async function handler(req, res) {
     if (server.status !== 'active') {
       return res.status(400).json({ 
         success: false, 
-        error: `El servidor debe estar activo para iniciar la UI. Estado actual: ${server.status}` 
+        error: `El servidor debe estar activo para iniciar el notebook. Estado actual: ${server.status}` 
       });
     }
     
-    // Construir URL de la API DuckDB para iniciar la UI regular
+    // Construir URL de la API DuckDB para iniciar la UI Notebook
     const duckDBApiURL = `http://localhost:5001`;
     
     // Obtener la lista de servidores desde la API de DuckDB para traducir el ID
@@ -93,8 +93,8 @@ export default async function handler(req, res) {
     // Usar el primer servidor disponible (en este caso el servidor local)
     const duckdbServerId = duckdbServer.id;
     
-    // Realizar solicitud al endpoint de UI del servidor DuckDB
-    const duckDBUIResponse = await fetch(`${duckDBApiURL}/start-ui`, {
+    // Realizar solicitud al endpoint de notebook del servidor DuckDB
+    const duckDBNotebookResponse = await fetch(`${duckDBApiURL}/api/servers/${duckdbServerId}/notebook`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -102,24 +102,24 @@ export default async function handler(req, res) {
       body: JSON.stringify({})
     });
     
-    if (!duckDBUIResponse.ok) {
-      const errorData = await duckDBUIResponse.json().catch(() => ({ message: 'Error desconocido' }));
-      return res.status(duckDBUIResponse.status).json({
+    if (!duckDBNotebookResponse.ok) {
+      const errorData = await duckDBNotebookResponse.json().catch(() => ({ message: 'Error desconocido' }));
+      return res.status(duckDBNotebookResponse.status).json({
         success: false,
-        error: `Error al iniciar UI regular de DuckDB: ${errorData.message || errorData.error || 'Error desconocido'}`
+        error: `Error al iniciar notebook DuckDB: ${errorData.message || errorData.error || 'Error desconocido'}`
       });
     }
     
-    const uiData = await duckDBUIResponse.json();
+    const notebookData = await duckDBNotebookResponse.json();
     
-    // Devolver la URL de la UI regular, pero reemplazarla por nuestra página UI
+    // Devolver la URL del notebook
     return res.status(200).json({
       success: true,
-      ui_url: `/admin/duckdb-swarm/ui`,
-      message: 'UI regular de DuckDB iniciada correctamente'
+      ui_url: notebookData.ui_url || `/admin/duckdb-swarm/notebook`,
+      message: 'Notebook DuckDB iniciado correctamente'
     });
   } catch (error) {
-    console.error('Error al iniciar UI regular de DuckDB:', error);
+    console.error('Error al iniciar notebook DuckDB:', error);
     return res.status(500).json({
       success: false,
       error: `Error interno del servidor: ${error.message}`

@@ -432,7 +432,7 @@ const DuckDBSwarmSimple = () => {
     }
   };
 
-  // Función para iniciar el notebook (UI analítica) de DuckDB
+  // Función para iniciar la UI estándar de DuckDB
   const startDuckDBUI = async (serverId, serverName) => {
     try {
       setUiStatus({
@@ -460,7 +460,62 @@ const DuckDBSwarmSimple = () => {
           loading: false
         });
         
-        // Abrir la UI en una nueva pestaña
+        // Abrir la UI en una nueva pestaña o navegar a ella
+        if (data.ui_url) {
+          window.open(data.ui_url, '_blank');
+        } else {
+          alert('La UI de DuckDB se ha iniciado pero no se pudo obtener la URL. Verifica el servidor.');
+        }
+      } else {
+        setUiStatus({
+          serverId,
+          url: null,
+          error: data.error || 'Error desconocido al iniciar la UI',
+          loading: false
+        });
+        alert(`Error al iniciar UI de DuckDB en ${serverName}: ${data.error || 'Error desconocido'}`);
+      }
+    } catch (error) {
+      console.error('Error al iniciar la UI de DuckDB:', error);
+      setUiStatus({
+        serverId,
+        url: null,
+        error: error.message,
+        loading: false
+      });
+      alert(`Error al iniciar UI de DuckDB: ${error.message}`);
+    }
+  };
+  
+  // Función para iniciar el notebook de DuckDB
+  const startDuckDBNotebook = async (serverId, serverName) => {
+    try {
+      setUiStatus({
+        serverId,
+        url: null,
+        error: null,
+        loading: true
+      });
+      
+      const response = await fetch('/api/admin/duckdb-swarm/start-notebook', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ serverId })
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok && data.success) {
+        setUiStatus({
+          serverId,
+          url: data.ui_url,
+          error: null,
+          loading: false
+        });
+        
+        // Abrir el notebook en una nueva pestaña
         if (data.ui_url) {
           window.open(data.ui_url, '_blank');
         } else {
@@ -1055,7 +1110,7 @@ const DuckDBSwarmSimple = () => {
                             {server.status === 'active' && (
                               <>
                               <button
-                                onClick={() => startDuckDBUI(server.id, server.name || server.hostname)}
+                                onClick={() => startDuckDBNotebook(server.id, server.name || server.hostname)}
                                 disabled={uiStatus.loading && uiStatus.serverId === server.id}
                                 className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 inline-flex items-center"
                               >
