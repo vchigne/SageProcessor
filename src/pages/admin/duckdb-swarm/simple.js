@@ -16,6 +16,7 @@ const DuckDBSwarmSimple = () => {
   const [newBucketName, setNewBucketName] = useState('');
   const [installations, setInstallations] = useState([]);
   const [formData, setFormData] = useState({
+    name: '',         // Nuevo campo para nombre descriptivo
     hostname: '',
     port: 1294,
     server_key: '',
@@ -168,6 +169,7 @@ const DuckDBSwarmSimple = () => {
         fetchServers();
         // Reset form
         setFormData({
+          name: '',
           hostname: '',
           port: 1294,
           server_key: '',
@@ -216,6 +218,21 @@ const DuckDBSwarmSimple = () => {
       case 'basic':
         return (
           <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Nombre Descriptivo
+              </label>
+              <input
+                type="text"
+                name="name"
+                value={formData.name}
+                onChange={handleInputChange}
+                placeholder="Servidor de Análisis Financiero, DuckDB Principal, etc."
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white"
+                required
+              />
+            </div>
+            
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -659,16 +676,18 @@ const DuckDBSwarmSimple = () => {
                   <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0">
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">ID</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Nombre</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Hostname</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Puerto</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Tipo</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Estado</th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Acciones</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                     {servers.length === 0 ? (
                       <tr>
-                        <td colSpan="5" className="px-6 py-4 text-center text-gray-500 dark:text-gray-400">
+                        <td colSpan="7" className="px-6 py-4 text-center text-gray-500 dark:text-gray-400">
                           No hay servidores registrados
                         </td>
                       </tr>
@@ -676,7 +695,8 @@ const DuckDBSwarmSimple = () => {
                       servers.map(server => (
                         <tr key={server.id}>
                           <td className="px-6 py-4 whitespace-nowrap">{server.id}</td>
-                          <td className="px-6 py-4 whitespace-nowrap font-medium">{server.hostname}</td>
+                          <td className="px-6 py-4 whitespace-nowrap font-medium">{server.name || "Sin nombre"}</td>
+                          <td className="px-6 py-4 whitespace-nowrap">{server.hostname}</td>
                           <td className="px-6 py-4 whitespace-nowrap">{server.port}</td>
                           <td className="px-6 py-4 whitespace-nowrap">{server.server_type}</td>
                           <td className="px-6 py-4 whitespace-nowrap">
@@ -684,6 +704,36 @@ const DuckDBSwarmSimple = () => {
                               <span className={`inline-block w-3 h-3 rounded-full mr-2 ${getStatusColor(server.status)}`}></span>
                               {server.status}
                             </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                            <button
+                              onClick={() => {
+                                // Cargar datos del servidor para edición
+                                setFormData({
+                                  id: server.id,
+                                  name: server.name || '',
+                                  hostname: server.hostname,
+                                  port: server.port,
+                                  server_key: server.server_key || '',
+                                  server_type: server.server_type,
+                                  is_local: server.is_local,
+                                  installation_id: server.installation_id || '',
+                                  cloud_secret_id: server.cloud_secret_id || '',
+                                  bucket_name: server.bucket_name || '',
+                                  ssh_host: '',
+                                  ssh_port: 22,
+                                  ssh_username: '',
+                                  ssh_password: '',
+                                  ssh_key: '',
+                                  deploy_server: false
+                                });
+                                setActiveTab('add_server');
+                                setFormStep('basic');
+                              }}
+                              className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-300"
+                            >
+                              Editar
+                            </button>
                           </td>
                         </tr>
                       ))

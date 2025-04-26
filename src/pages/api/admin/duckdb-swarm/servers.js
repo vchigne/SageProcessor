@@ -42,6 +42,7 @@ export default async function handler(req, res) {
       try {
         // Extraer datos del nuevo servidor
         const {
+          name,
           hostname,
           port,
           server_key,
@@ -67,6 +68,10 @@ export default async function handler(req, res) {
           return res.status(400).json({ error: 'Se requiere un puerto' });
         }
 
+        if (!name) {
+          return res.status(400).json({ error: 'Se requiere un nombre descriptivo' });
+        }
+
         // Validar que se ha seleccionado un secreto cloud y un bucket
         if (!cloud_secret_id) {
           return res.status(400).json({ error: 'Se requiere un secreto de nube para el almacenamiento' });
@@ -90,6 +95,41 @@ export default async function handler(req, res) {
           if (!ssh_password && !ssh_key) {
             return res.status(400).json({ error: 'Se requiere una contraseña o clave SSH para el despliegue' });
           }
+          
+          // Enviar solicitud al endpoint de despliegue para instalar DuckDB en el servidor remoto
+          try {
+            const deployResponse = await fetch('http://localhost:5001/api/servers/deploy', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                ssh_host,
+                ssh_port,
+                ssh_username,
+                ssh_password,
+                ssh_key,
+                port,
+                server_key
+              })
+            });
+            
+            const deployResult = await deployResponse.json();
+            
+            if (!deployResult.success) {
+              console.error('Error en el despliegue de DuckDB:', deployResult);
+              return res.status(500).json({ 
+                error: `Error al desplegar DuckDB: ${deployResult.message || 'Error desconocido'}` 
+              });
+            }
+            
+            console.log('DuckDB desplegado exitosamente:', deployResult);
+          } catch (deployError) {
+            console.error('Error al conectar con el API de despliegue:', deployError);
+            return res.status(500).json({ 
+              error: `Error al conectar con el API de despliegue: ${deployError.message}` 
+            });
+          }
         }
 
         // Aquí normalmente guardaríamos el servidor en la base de datos
@@ -98,6 +138,7 @@ export default async function handler(req, res) {
           success: true,
           server: {
             id: 3,
+            name,
             hostname,
             port,
             server_type,

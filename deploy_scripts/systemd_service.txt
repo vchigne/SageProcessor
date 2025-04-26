@@ -1,0 +1,18 @@
+[Unit]
+Description=DuckDB Server
+After=network.target
+
+[Service]
+User=USER_PLACEHOLDER
+WorkingDirectory=WORKDIR_PLACEHOLDER
+Environment="DUCKDB_PORT=PORT_PLACEHOLDER"
+Environment="DUCKDB_SERVER_KEY=KEY_PLACEHOLDER"
+Environment="DUCKDB_DATA_DIR=DATADIR_PLACEHOLDER"
+ExecStart=/usr/bin/python3 duckdb_server.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
