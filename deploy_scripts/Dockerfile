@@ -45,7 +45,16 @@ RUN mkdir -p /root/.vnc && \
     echo "$VNC_PASSWORD" | vncpasswd -f > /root/.vnc/passwd && \
     chmod 600 /root/.vnc/passwd && \
     echo '#!/bin/bash\nxrdb $HOME/.Xresources\nstartxfce4 &' > /root/.vnc/xstartup && \
-    chmod +x /root/.vnc/xstartup
+    chmod +x /root/.vnc/xstartup && \
+    # Crear usuario admin para VNC
+    useradd -m -s /bin/bash admin && \
+    echo "admin:$VNC_PASSWORD" | chpasswd && \
+    mkdir -p /home/admin/.vnc && \
+    echo "$VNC_PASSWORD" | vncpasswd -f > /home/admin/.vnc/passwd && \
+    chmod 600 /home/admin/.vnc/passwd && \
+    echo '#!/bin/bash\nxrdb $HOME/.Xresources\nstartxfce4 &' > /home/admin/.vnc/xstartup && \
+    chmod +x /home/admin/.vnc/xstartup && \
+    chown -R admin:admin /home/admin/.vnc
 
 # Configurar SSH
 RUN echo 'root:duckdb' | chpasswd && \

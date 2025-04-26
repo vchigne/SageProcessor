@@ -277,7 +277,7 @@ print_success "¡Instalación de DuckDB Server con Docker y VNC completada exito
 print_info "Servicios disponibles:"
 print_info "  API DuckDB: http://localhost:$DUCKDB_PORT"
 print_info "  VNC Server: localhost:5901 (password: la clave del API configurada)"
-print_info "  SSH Server: ssh -p 2222 root@localhost (password: duckdb)"
+print_info "  SSH Server: ssh -p 2222 admin@localhost (password: la clave del API configurada)"
 print_info ""
 print_info "Datos almacenados en: ~/duckdb_data"
 print_info ""
@@ -289,7 +289,7 @@ print_info ""
 print_info "Para probar la API: curl http://localhost:$DUCKDB_PORT/health"
 print_info ""
 print_info "Instrucciones para usar VNC:"
-print_info "1. Conéctate con un cliente VNC a localhost:5901 usando la contraseña 'duckdb'"
+print_info "1. Conéctate con un cliente VNC a localhost:5901 usando la clave del API como contraseña"
 print_info "2. En el entorno gráfico, ejecuta ~/start-duckdb-ui.sh para iniciar la interfaz DuckDB"
 
 exit 0
