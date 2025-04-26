@@ -111,7 +111,34 @@ def list_servers():
         # Convertir a formato JSON
         servers = []
         for row in result:
-            servers.append({
+            # Añadir información sobre VNC para todos los servidores
+            # En implementación real, esto debería venir de la base de datos
+            vnc_enabled = row[5] == 'active'  # Todos los servidores activos tienen VNC habilitado
+            
+            vnc_info = {}
+            if vnc_enabled:
+                if bool(row[7]):  # Es servidor local
+                    # Para servidor local, usamos localhost
+                    vnc_url = "http://localhost:5901/vnc.html?autoconnect=true&password=duckdbpass"
+                    vnc_info = {
+                        'host': 'localhost',
+                        'port': 5901,
+                        'username': 'duckdb',
+                        'password': 'duckdbpass',
+                        'url': vnc_url
+                    }
+                else:
+                    # Para servidores remotos
+                    vnc_url = f"http://{row[2]}:5901/vnc.html?autoconnect=true&password=duckdbpass"
+                    vnc_info = {
+                        'host': row[2],
+                        'port': 5901,
+                        'username': 'duckdb',
+                        'password': 'duckdbpass',
+                        'url': vnc_url
+                    }
+            
+            server_data = {
                 'id': row[0],
                 'name': row[1],
                 'hostname': row[2],
@@ -119,8 +146,11 @@ def list_servers():
                 'description': row[4],
                 'status': row[5],
                 'created_at': str(row[6]),
-                'is_local': bool(row[7])
-            })
+                'is_local': bool(row[7]),
+                'vnc_enabled': vnc_enabled,
+                'vnc_info': vnc_info
+            }
+            servers.append(server_data)
         
         return jsonify({'servers': servers})
     except Exception as e:
@@ -170,15 +200,26 @@ def add_server():
         # Simular inicialización del servidor
         time.sleep(1)
         
-        # Actualizar estado a activo
+        # Actualizar estado a activo y añadir información VNC por defecto
         conn.execute(
             "UPDATE duckdb_servers SET status = 'active' WHERE id = ?",
             [next_id]
         )
         
+        # Información VNC por defecto para todos los servidores
+        vnc_info = {
+            'host': hostname,
+            'port': 5901,
+            'username': 'duckdb',
+            'password': 'duckdbpass',
+            'url': f"http://{hostname}:5901/vnc.html?autoconnect=true&password=duckdbpass"
+        }
+        
         return jsonify({
             'message': f'Servidor {hostname}:{port} agregado exitosamente',
-            'server_id': next_id
+            'server_id': next_id,
+            'vnc_enabled': True,
+            'vnc_info': vnc_info
         }), 201
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -245,10 +286,23 @@ def deploy_server():
         )
         
         if result.get('success'):
-            message = 'DuckDB redesplegado exitosamente' if is_redeploy else 'DuckDB instalado y configurado exitosamente'
+            message = 'DuckDB con VNC redesplegado exitosamente' if is_redeploy else 'DuckDB con VNC instalado y configurado exitosamente'
+            
+            # Obtener detalles de VNC si existen
+            vnc_info = {}
+            if 'details' in result:
+                vnc_info = {
+                    'vnc_server': result['details'].get('vnc_server', f"{ssh_host}:5901"),
+                    'vnc_password': result['details'].get('vnc_password', 'duckdb'),
+                    'ssh_server': result['details'].get('ssh_server', f"{ssh_host}:2222"),
+                    'ssh_password': result['details'].get('ssh_password', 'duckdb')
+                }
+            
             return jsonify({
                 'success': True,
                 'message': message,
+                'vnc_enabled': True,
+                'vnc_info': vnc_info,
                 'details': result
             })
         else:

@@ -499,6 +499,53 @@ const DuckDBSwarmSimple = () => {
     }
   };
   
+  // VNC Access
+  const [vncModalOpen, setVncModalOpen] = useState(false);
+  const [vncInfo, setVncInfo] = useState(null);
+  
+  const startVNCSession = async (serverId, serverName) => {
+    try {
+      // Verificar si el servidor tiene VNC habilitado
+      const server = servers.find(s => s.id === serverId);
+      if (!server || !server.vnc_enabled) {
+        alert(`El servidor ${serverName} no tiene VNC habilitado.`);
+        return;
+      }
+      
+      setUiStatus({
+        serverId,
+        url: null,
+        error: null,
+        loading: true
+      });
+      
+      // Mostrar el modal con la información de VNC
+      setCurrentServerInfo({
+        name: serverName,
+        id: serverId,
+        hostname: server.hostname
+      });
+      setVncInfo(server.vnc_info);
+      setVncModalOpen(true);
+      
+      setUiStatus({
+        serverId,
+        url: null,
+        error: null,
+        loading: false
+      });
+    } catch (error) {
+      console.error('Error al iniciar sesión VNC:', error);
+      setUiStatus({
+        serverId,
+        url: null,
+        error: error.message,
+        loading: false
+      });
+      alert(`Error al iniciar sesión VNC: ${error.message}`);
+    }
+  };
+  
   // HTTP Server
   const startHTTPServer = async (serverId, serverName) => {
     try {
@@ -1186,80 +1233,32 @@ Para instrucciones detalladas, revise la configuración generada.
                           <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-4">
                             {server.status === 'active' && (
                               <div className="flex flex-wrap gap-2">
-                                {/* SSH Tunnel */}
-                                <button
-                                  onClick={() => startSSHTunnel(server.id, server.name || server.hostname)}
-                                  disabled={uiStatus.loading && uiStatus.serverId === server.id}
-                                  className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 inline-flex items-center"
-                                  title="Acceder mediante túnel SSH (más seguro)"
-                                >
-                                  {uiStatus.loading && uiStatus.serverId === server.id ? (
-                                    <>
-                                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                      </svg>
-                                      Iniciando...
-                                    </>
-                                  ) : (
-                                    <>
-                                      <svg className="h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                                      </svg>
-                                      SSH Tunnel
-                                    </>
-                                  )}
-                                </button>
-                                
-                                {/* HTTP Server */}
-                                <button
-                                  onClick={() => startHTTPServer(server.id, server.name || server.hostname)}
-                                  disabled={uiStatus.loading && uiStatus.serverId === server.id}
-                                  className="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300 inline-flex items-center ml-2"
-                                  title="Acceder mediante servidor HTTP (extensión httpserver)"
-                                >
-                                  {uiStatus.loading && uiStatus.serverId === server.id ? (
-                                    <>
-                                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                      </svg>
-                                      Iniciando...
-                                    </>
-                                  ) : (
-                                    <>
-                                      <svg className="h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
-                                      </svg>
-                                      HTTP Server
-                                    </>
-                                  )}
-                                </button>
-                                
-                                {/* Nginx Proxy */}
-                                <button
-                                  onClick={() => startNginxProxy(server.id, server.name || server.hostname)}
-                                  disabled={uiStatus.loading && uiStatus.serverId === server.id}
-                                  className="text-purple-600 hover:text-purple-900 dark:text-purple-400 dark:hover:text-purple-300 inline-flex items-center ml-2"
-                                  title="Configurar Nginx como proxy inverso (para equipos)"
-                                >
-                                  {uiStatus.loading && uiStatus.serverId === server.id ? (
-                                    <>
-                                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                      </svg>
-                                      Iniciando...
-                                    </>
-                                  ) : (
-                                    <>
-                                      <svg className="h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
-                                      </svg>
-                                      Nginx Proxy
-                                    </>
-                                  )}
-                                </button>
+                                {/* VNC Access */}
+                                {server.vnc_enabled && (
+                                  <button
+                                    onClick={() => startVNCSession(server.id, server.name || server.hostname)}
+                                    disabled={uiStatus.loading && uiStatus.serverId === server.id}
+                                    className="text-purple-600 hover:text-purple-900 dark:text-purple-400 dark:hover:text-purple-300 inline-flex items-center"
+                                    title="Acceder al entorno gráfico mediante VNC"
+                                  >
+                                    {uiStatus.loading && uiStatus.serverId === server.id ? (
+                                      <>
+                                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                        Iniciando...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <svg className="h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                        </svg>
+                                        Acceso VNC
+                                      </>
+                                    )}
+                                  </button>
+                                )}
                               </div>
                             )}
                             
@@ -1955,6 +1954,69 @@ Para instrucciones detalladas, revise la configuración generada.
               <div className="mt-6 flex justify-end space-x-3">
                 <button
                   onClick={() => setSshModalOpen(false)}
+                  className="px-4 py-2 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none"
+                >
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Modal para VNC Access */}
+      {vncModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                  Acceso VNC a {currentServerInfo.name || 'Servidor'}
+                </h2>
+                <button 
+                  onClick={() => setVncModalOpen(false)}
+                  className="text-gray-400 hover:text-gray-500 focus:outline-none"
+                >
+                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              
+              <div className="space-y-4">
+                <div className="p-3 bg-purple-50 dark:bg-purple-900 rounded-lg">
+                  <p className="text-purple-800 dark:text-purple-200 text-sm">
+                    Acceda al entorno gráfico completo del servidor DuckDB mediante VNC.
+                  </p>
+                </div>
+                
+                <div>
+                  <h3 className="text-md font-semibold text-gray-700 dark:text-gray-300">Detalles de conexión VNC:</h3>
+                  <div className="mt-2 bg-gray-100 dark:bg-gray-700 p-3 rounded-md">
+                    <p className="text-sm font-mono">
+                      <strong>Host:</strong> {currentServerInfo.hostname}<br />
+                      <strong>Puerto VNC:</strong> {vncInfo?.port || 5901}<br />
+                      <strong>Usuario:</strong> {vncInfo?.username || 'duckdb'}<br />
+                      <strong>Contraseña:</strong> {vncInfo?.password || 'duckdbpass'}<br />
+                      {vncInfo?.url && (
+                        <>
+                          <strong>URL de acceso web:</strong> <a href={vncInfo.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{vncInfo.url}</a>
+                        </>
+                      )}
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="p-3 bg-blue-50 dark:bg-blue-900 rounded-lg">
+                  <p className="text-blue-800 dark:text-blue-200 text-sm">
+                    Puede conectarse utilizando cualquier cliente VNC con los datos proporcionados o utilizar el acceso web si está disponible.
+                  </p>
+                </div>
+              </div>
+              
+              <div className="mt-6 flex justify-end space-x-3">
+                <button
+                  onClick={() => setVncModalOpen(false)}
                   className="px-4 py-2 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none"
                 >
                   Cerrar

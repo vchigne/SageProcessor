@@ -116,6 +116,11 @@ print_info "Preparando archivos para Docker..."
 TEMP_DIR=$(mktemp -d)
 cp ~/duckdb_server/duckdb_server.py $TEMP_DIR/
 cp ~/duckdb_server/Dockerfile $TEMP_DIR/
+cp ~/duckdb_server/start_vnc.sh $TEMP_DIR/
+cp ~/duckdb_server/supervisord.conf $TEMP_DIR/
+
+# Dar permisos ejecutables a los scripts
+chmod +x $TEMP_DIR/start_vnc.sh
 
 # Ir al directorio temporal
 cd $TEMP_DIR
@@ -145,21 +150,29 @@ else
 fi
 
 # Iniciar el contenedor Docker
-print_info "Iniciando contenedor DuckDB..."
+print_info "Iniciando contenedor DuckDB con soporte para VNC..."
 if [ $USE_SUDO_DOCKER -eq 1 ]; then
     sudo docker run -d \
         --name duckdb-server \
         -p $DUCKDB_PORT:1294 \
+        -p 5901:5901 \
+        -p 2222:22 \
         -v ~/duckdb_data:/data \
         -e DUCKDB_SERVER_KEY="$DUCKDB_KEY" \
+        -e VNC_PASSWORD="duckdb" \
+        -e VNC_GEOMETRY="1280x800" \
         --restart unless-stopped \
         duckdb-server
 else
     docker run -d \
         --name duckdb-server \
         -p $DUCKDB_PORT:1294 \
+        -p 5901:5901 \
+        -p 2222:22 \
         -v ~/duckdb_data:/data \
         -e DUCKDB_SERVER_KEY="$DUCKDB_KEY" \
+        -e VNC_PASSWORD="duckdb" \
+        -e VNC_GEOMETRY="1280x800" \
         --restart unless-stopped \
         duckdb-server
 fi
@@ -260,8 +273,12 @@ chmod +x ~/duckdb_server/logs_duckdb.sh
 # Limpiar archivos temporales
 rm -rf $TEMP_DIR
 
-print_success "¡Instalación de DuckDB Server con Docker completada exitosamente!"
-print_info "El servidor está disponible en http://localhost:$DUCKDB_PORT"
+print_success "¡Instalación de DuckDB Server con Docker y VNC completada exitosamente!"
+print_info "Servicios disponibles:"
+print_info "  API DuckDB: http://localhost:$DUCKDB_PORT"
+print_info "  VNC Server: localhost:5901 (password: duckdb)"
+print_info "  SSH Server: ssh -p 2222 root@localhost (password: duckdb)"
+print_info ""
 print_info "Datos almacenados en: ~/duckdb_data"
 print_info ""
 print_info "Scripts de administración:"
@@ -270,5 +287,9 @@ print_info "  ~/duckdb_server/stop_duckdb.sh    - Detener el servidor"
 print_info "  ~/duckdb_server/logs_duckdb.sh    - Ver logs del servidor"
 print_info ""
 print_info "Para probar la API: curl http://localhost:$DUCKDB_PORT/health"
+print_info ""
+print_info "Instrucciones para usar VNC:"
+print_info "1. Conéctate con un cliente VNC a localhost:5901 usando la contraseña 'duckdb'"
+print_info "2. En el entorno gráfico, ejecuta ~/start-duckdb-ui.sh para iniciar la interfaz DuckDB"
 
 exit 0

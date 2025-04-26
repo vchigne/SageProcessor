@@ -155,20 +155,29 @@ def deploy_duckdb_via_ssh(ssh_host, ssh_port=22, ssh_username=None, ssh_password
             install_script_path = os.path.join(DEPLOY_DIR, 'install_duckdb.sh')
             docker_install_script_path = os.path.join(DEPLOY_DIR, 'install_docker_duckdb.sh')
             dockerfile_path = os.path.join(DEPLOY_DIR, 'Dockerfile')
+            start_vnc_path = os.path.join(DEPLOY_DIR, 'start_vnc.sh')
+            supervisord_path = os.path.join(DEPLOY_DIR, 'supervisord.conf')
             
             remote_install_path = 'duckdb_server/install_duckdb.sh'
             remote_docker_install_path = 'duckdb_server/install_docker_duckdb.sh'
             remote_dockerfile_path = 'duckdb_server/Dockerfile'
+            remote_start_vnc_path = 'duckdb_server/start_vnc.sh'
+            remote_supervisord_path = 'duckdb_server/supervisord.conf'
             
             logger.info(f"Transfiriendo scripts de instalación a {ssh_host}")
             sftp.put(install_script_path, remote_install_path)
             sftp.put(docker_install_script_path, remote_docker_install_path)
             sftp.put(dockerfile_path, remote_dockerfile_path)
             
+            # Transferir archivos para VNC
+            logger.info(f"Transfiriendo archivos para VNC a {ssh_host}")
+            sftp.put(start_vnc_path, remote_start_vnc_path)
+            sftp.put(supervisord_path, remote_supervisord_path)
+            
             # Dar permisos de ejecución a los scripts de instalación
             logger.info("Dando permisos de ejecución a los scripts de instalación")
             # Usar un canal separado con keepalive activado para mejor tolerancia
-            chmod_cmd = f"chmod +x {remote_install_path} {remote_docker_install_path}"
+            chmod_cmd = f"chmod +x {remote_install_path} {remote_docker_install_path} {remote_start_vnc_path}"
             stdin, stdout, stderr = client.exec_command(
                 chmod_cmd,
                 get_pty=True,
@@ -259,10 +268,17 @@ def deploy_duckdb_via_ssh(ssh_host, ssh_port=22, ssh_username=None, ssh_password
                     'output': output
                 }
             
-            logger.info(f"Servidor DuckDB desplegado exitosamente en {ssh_host}:{duckdb_port}")
+            logger.info(f"Servidor DuckDB desplegado exitosamente en {ssh_host}:{duckdb_port} con VNC y SSH")
             return {
                 'success': True,
-                'message': f"Servidor DuckDB desplegado exitosamente en {ssh_host}:{duckdb_port}",
+                'message': f"Servidor DuckDB con VNC desplegado exitosamente en {ssh_host}",
+                'details': {
+                    'duckdb_api': f"{ssh_host}:{duckdb_port}",
+                    'vnc_server': f"{ssh_host}:5901",
+                    'ssh_server': f"{ssh_host}:2222",
+                    'vnc_password': 'duckdb',
+                    'ssh_password': 'duckdb'
+                },
                 'output': output,
                 'health_check': response
             }
