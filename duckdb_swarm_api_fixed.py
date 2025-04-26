@@ -1,0 +1,593 @@
+#!/usr/bin/env python3
+"""
+API REST para gestionar el enjambre (swarm) de servidores DuckDB
+Versión actualizada con soporte mejorado para VNC
+"""
+
+import os
+import sys
+import glob
+import time
+import json
+import random
+import logging
+import datetime
+import uuid
+import subprocess
+import signal
+import threading
+import traceback
+from pathlib import Path
+import requests
+
+try:
+    import duckdb
+except ImportError:
+    print("DuckDB no está instalado. Instalando...")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "duckdb"])
+    import duckdb
+
+try:
+    from flask import Flask, request, jsonify
+    from flask_cors import CORS
+except ImportError:
+    print("Flask o Flask-CORS no están instalados. Instalando...")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "flask", "flask-cors"])
+    from flask import Flask, request, jsonify
+    from flask_cors import CORS
+
+# Configuración de logging
+logging.basicConfig(level=logging.INFO,
+                   format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# Constantes
+DUCKDB_PATH = "duckdb_swarm.db"
+DEPLOYER_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'utils', 'ssh_deployer.py')
+
+# Crear aplicación Flask
+app = Flask(__name__)
+CORS(app)  # Habilitar CORS para todas las rutas
+
+def get_duckdb_connection():
+    """Obtiene una conexión a la base de datos DuckDB"""
+    try:
+        conn = duckdb.connect(DUCKDB_PATH)
+        # Inicializar tablas si no existen
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS servers (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                host TEXT NOT NULL,
+                port INTEGER NOT NULL,
+                api_key TEXT,
+                ssh_user TEXT,
+                ssh_port INTEGER DEFAULT 22,
+                ssh_key TEXT,
+                ssh_password TEXT,
+                status TEXT DEFAULT 'pending',
+                last_seen TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT
+            )
+        """)
+        return conn
+    except Exception as e:
+        logger.error(f"Error al conectar a DuckDB: {e}")
+        return None
+
+# Rutas de la API
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Ruta para verificar el estado de la API"""
+    return jsonify({
+        "status": "healthy",
+        "timestamp": datetime.datetime.now().isoformat(),
+        "version": "1.2.2"
+    })
+
+@app.route('/api/servers', methods=['GET'])
+def list_servers():
+    """Lista todos los servidores DuckDB registrados"""
+    conn = get_duckdb_connection()
+    if not conn:
+        return jsonify({'error': 'No se pudo conectar a DuckDB'}), 500
+    
+    try:
+        # Obtener servidores
+        results = conn.execute("""
+            SELECT id, name, host, port, api_key, ssh_user, ssh_port, 
+                   ssh_key IS NOT NULL as has_ssh_key, 
+                   ssh_password IS NOT NULL as has_ssh_password,
+                   status, last_seen, created_at, updated_at
+            FROM servers
+            ORDER BY id DESC
+        """).fetchall()
+        
+        servers = []
+        for row in results:
+            servers.append({
+                'id': row[0],
+                'name': row[1],
+                'hostname': row[2],
+                'port': row[3],
+                'api_key': row[4],
+                'ssh_user': row[5],
+                'ssh_port': row[6],
+                'has_ssh_key': bool(row[7]),
+                'has_ssh_password': bool(row[8]),
+                'status': row[9],
+                'last_seen': row[10],
+                'created_at': row[11],
+                'updated_at': row[12]
+            })
+        
+        return jsonify({'servers': servers})
+    except Exception as e:
+        logger.error(f"Error al listar servidores: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/servers', methods=['POST'])
+def add_server():
+    """Agrega un nuevo servidor DuckDB"""
+    conn = get_duckdb_connection()
+    if not conn:
+        return jsonify({'error': 'No se pudo conectar a DuckDB'}), 500
+    
+    try:
+        data = request.json
+        if not data:
+            return jsonify({'error': 'No se proporcionaron datos'}), 400
+        
+        name = data.get('name')
+        host = data.get('hostname')
+        port = data.get('port', 8000)
+        api_key = data.get('api_key')
+        ssh_user = data.get('ssh_user')
+        ssh_port = data.get('ssh_port', 22)
+        ssh_key = data.get('ssh_key')
+        ssh_password = data.get('ssh_password')
+        
+        if not name or not host:
+            return jsonify({'error': 'Se requieren nombre y hostname'}), 400
+        
+        # Verificar si ya existe un servidor con el mismo host y puerto
+        existing = conn.execute("""
+            SELECT id FROM servers WHERE host = ? AND port = ?
+        """, [host, port]).fetchone()
+        
+        if existing:
+            return jsonify({'error': f'Ya existe un servidor con hostname {host} y puerto {port}'}), 409
+        
+        # Insertar nuevo servidor
+        current_time = datetime.datetime.now().isoformat()
+        result = conn.execute("""
+            INSERT INTO servers (name, host, port, api_key, ssh_user, ssh_port, ssh_key, ssh_password, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+            RETURNING id
+        """, [name, host, port, api_key, ssh_user, ssh_port, ssh_key, ssh_password, current_time])
+        
+        server_id = result.fetchone()[0]
+        
+        return jsonify({
+            'success': True,
+            'server_id': server_id,
+            'message': f'Servidor {name} agregado correctamente'
+        })
+    except Exception as e:
+        logger.error(f"Error al agregar servidor: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/servers/deploy', methods=['POST'])
+def deploy_server():
+    """Despliega un nuevo servidor DuckDB mediante SSH o redespliega uno existente"""
+    try:
+        data = request.json
+        if not data:
+            return jsonify({'error': 'No se proporcionaron datos'}), 400
+        
+        server_id = data.get('server_id')
+        
+        if not server_id:
+            return jsonify({'error': 'Se requiere ID del servidor'}), 400
+        
+        # Obtener información del servidor
+        conn = get_duckdb_connection()
+        if not conn:
+            return jsonify({'error': 'No se pudo conectar a DuckDB'}), 500
+        
+        server = conn.execute("""
+            SELECT id, name, host, port, api_key, ssh_user, ssh_port, ssh_key, ssh_password
+            FROM servers
+            WHERE id = ?
+        """, [server_id]).fetchone()
+        
+        if not server:
+            return jsonify({'error': f'No se encontró el servidor con ID {server_id}'}), 404
+        
+        server_info = {
+            'id': server[0],
+            'name': server[1],
+            'host': server[2],
+            'port': server[3],
+            'api_key': server[4],
+            'ssh_user': server[5],
+            'ssh_port': server[6],
+            'ssh_key': server[7],
+            'ssh_password': server[8]
+        }
+        
+        # Verificar si tiene información SSH
+        if not server_info['ssh_user'] or not server_info['host']:
+            return jsonify({'error': 'El servidor no tiene configuración SSH completa'}), 400
+        
+        # Importar el módulo deployer
+        sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        import utils.ssh_deployer as ssh_deployer
+        
+        # Desplegar el servidor
+        result = ssh_deployer.deploy_duckdb_via_ssh(
+            ssh_host=server_info['host'],
+            ssh_port=server_info['ssh_port'],
+            ssh_username=server_info['ssh_user'],
+            ssh_password=server_info['ssh_password'],
+            ssh_key=server_info['ssh_key'],
+            duckdb_port=server_info['port'],
+            server_key=server_info['api_key']
+        )
+        
+        if result['success']:
+            # Actualizar estado del servidor en la base de datos
+            conn.execute("""
+                UPDATE servers
+                SET status = 'active', updated_at = ?
+                WHERE id = ?
+            """, [datetime.datetime.now().isoformat(), server_id])
+            
+            return jsonify({
+                'success': True,
+                'message': f'Servidor {server_info["name"]} desplegado correctamente',
+                'details': result['details'] if 'details' in result else {},
+                'server_id': server_id
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': result['message'],
+                'server_id': server_id
+            })
+    
+    except Exception as e:
+        logger.error(f"Error al desplegar servidor: {str(e)}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if 'conn' in locals() and conn:
+            conn.close()
+
+@app.route('/api/servers/<server_id>/vnc/status', methods=['GET'])
+def check_vnc_status(server_id):
+    """Verifica el estado del servicio VNC en un servidor"""
+    try:
+        # Primero obtener los detalles del servidor
+        conn = get_duckdb_connection()
+        server = conn.execute("""
+            SELECT id, name, host, port, api_key, ssh_user, ssh_port, ssh_key, ssh_password
+            FROM servers
+            WHERE id = ?
+        """, [server_id]).fetchone()
+        
+        if not server:
+            return jsonify({'error': 'Servidor no encontrado'}), 404
+        
+        server_info = {
+            'id': server[0],
+            'name': server[1],
+            'host': server[2],
+            'port': server[3],
+            'api_key': server[4],
+            'ssh_user': server[5],
+            'ssh_port': server[6]
+        }
+        
+        # Verificar si el servidor tiene SSH configurado
+        if not server_info['ssh_user'] or not server_info['host']:
+            return jsonify({'error': 'Servidor no tiene configuración SSH completa'}), 400
+        
+        # Intentar conectar por SSH para verificar servicios VNC
+        ssh_key = server[7]
+        ssh_password = server[8]
+        
+        # Verificar servicios VNC usando el módulo SSH
+        import utils.ssh_deployer as ssh_deployer
+        check_result = ssh_deployer.execute_command(
+            server_info['host'],
+            "ss -ltn | grep -E ':(5901|6080)' || echo 'No VNC services found'",
+            server_info['ssh_port'],
+            server_info['ssh_user'],
+            ssh_password,
+            ssh_key
+        )
+        
+        if check_result['success']:
+            # Analizar respuesta para ver si VNC y noVNC están activos
+            output = check_result['output']
+            vnc_active = ":5901" in output
+            novnc_active = ":6080" in output
+            
+            # Verificar logs si hay problemas
+            if not vnc_active or not novnc_active:
+                log_check = ssh_deployer.execute_command(
+                    server_info['host'],
+                    "tail -n 20 /var/log/vnc-startup.log 2>/dev/null || echo 'Log file not found'",
+                    server_info['ssh_port'],
+                    server_info['ssh_user'],
+                    ssh_password,
+                    ssh_key
+                )
+                logs = log_check['output'] if log_check['success'] else "No se pudieron obtener logs"
+            else:
+                logs = "Servicios funcionando correctamente"
+            
+            return jsonify({
+                'success': True,
+                'vnc_active': vnc_active,
+                'novnc_active': novnc_active,
+                'details': {
+                    'vnc_port': 5901,
+                    'novnc_port': 6080,
+                    'vnc_url': f"vnc://{server_info['host']}:5901",
+                    'novnc_url': f"http://{server_info['host']}:6080/vnc.html"
+                },
+                'logs': logs
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'No se pudo verificar los servicios VNC',
+                'error': check_result['message']
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"Error al verificar estado VNC en servidor {server_id}: {str(e)}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if 'conn' in locals() and conn:
+            conn.close()
+
+@app.route('/api/servers/<server_id>/vnc/repair', methods=['POST'])
+def repair_vnc(server_id):
+    """Intenta reparar el servicio VNC en un servidor"""
+    try:
+        # Primero obtener los detalles del servidor
+        conn = get_duckdb_connection()
+        server = conn.execute("""
+            SELECT id, name, host, port, api_key, ssh_user, ssh_port, ssh_key, ssh_password
+            FROM servers
+            WHERE id = ?
+        """, [server_id]).fetchone()
+        
+        if not server:
+            return jsonify({'error': 'Servidor no encontrado'}), 404
+        
+        server_info = {
+            'id': server[0],
+            'name': server[1],
+            'host': server[2],
+            'port': server[3],
+            'api_key': server[4],
+            'ssh_user': server[5],
+            'ssh_port': server[6]
+        }
+        
+        # Verificar si el servidor tiene SSH configurado
+        if not server_info['ssh_user'] or not server_info['host']:
+            return jsonify({'error': 'Servidor no tiene configuración SSH completa'}), 400
+        
+        # Intentar conectar por SSH para reparar servicios VNC
+        ssh_key = server[7]
+        ssh_password = server[8]
+        
+        # Ejecutar script de reparación VNC
+        import utils.ssh_deployer as ssh_deployer
+        repair_command = f"docker exec duckdb-server /bin/bash -c 'if [ -f /fix_vnc.sh ]; then chmod +x /fix_vnc.sh && /fix_vnc.sh {server_info['api_key']}; else echo \"Script fix_vnc.sh no encontrado\"; fi'"
+        
+        repair_result = ssh_deployer.execute_command(
+            server_info['host'],
+            repair_command,
+            server_info['ssh_port'],
+            server_info['ssh_user'],
+            ssh_password,
+            ssh_key
+        )
+        
+        if repair_result['success']:
+            # Verificar si la reparación fue exitosa
+            time.sleep(5)  # Dar tiempo a que los servicios inicien
+            
+            check_command = "ss -ltn | grep -E ':(5901|6080)' || echo 'No VNC services found'"
+            check_result = ssh_deployer.execute_command(
+                server_info['host'],
+                check_command,
+                server_info['ssh_port'],
+                server_info['ssh_user'],
+                ssh_password,
+                ssh_key
+            )
+            
+            if check_result['success']:
+                output = check_result['output']
+                vnc_active = ":5901" in output
+                novnc_active = ":6080" in output
+                
+                return jsonify({
+                    'success': True,
+                    'message': 'Intento de reparación completado',
+                    'vnc_active': vnc_active,
+                    'novnc_active': novnc_active,
+                    'repair_output': repair_result['output'],
+                    'details': {
+                        'vnc_port': 5901,
+                        'novnc_port': 6080,
+                        'vnc_url': f"vnc://{server_info['host']}:5901",
+                        'novnc_url': f"http://{server_info['host']}:6080/vnc.html"
+                    }
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'message': 'No se pudo verificar el estado después de la reparación',
+                    'repair_output': repair_result['output'],
+                    'error': check_result['message']
+                }), 500
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Error al ejecutar script de reparación',
+                'error': repair_result['message']
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"Error al reparar VNC en servidor {server_id}: {str(e)}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if 'conn' in locals() and conn:
+            conn.close()
+
+@app.route('/api/servers/<int:server_id>/check-vnc', methods=['GET'])
+def check_vnc_legacy(server_id):
+    """Versión legacy del verificador de VNC (redirecciona al endpoint nuevo)"""
+    return check_vnc_status(str(server_id))
+
+# Endpoint para obtener los proveedores de almacenamiento
+@app.route('/api/storage/providers', methods=['GET'])
+def list_storage_providers():
+    """Lista los proveedores de almacenamiento disponibles"""
+    providers = [
+        {
+            'id': 'aws',
+            'name': 'Amazon S3',
+            'icon': 'aws.svg',
+            'description': 'Amazon Simple Storage Service (S3)',
+            'credential_fields': [
+                {'name': 'access_key', 'label': 'Access Key', 'type': 'text', 'required': True},
+                {'name': 'secret_key', 'label': 'Secret Key', 'type': 'password', 'required': True},
+                {'name': 'region', 'label': 'Region', 'type': 'text', 'required': True}
+            ]
+        },
+        {
+            'id': 'azure',
+            'name': 'Azure Blob Storage',
+            'icon': 'azure.svg',
+            'description': 'Microsoft Azure Blob Storage',
+            'credential_fields': [
+                {'name': 'storage_account', 'label': 'Storage Account', 'type': 'text', 'required': True},
+                {'name': 'storage_key', 'label': 'Storage Key', 'type': 'password', 'required': True}
+            ]
+        },
+        {
+            'id': 'gcp',
+            'name': 'Google Cloud Storage',
+            'icon': 'gcp.svg',
+            'description': 'Google Cloud Storage',
+            'credential_fields': [
+                {'name': 'project_id', 'label': 'Project ID', 'type': 'text', 'required': True},
+                {'name': 'client_email', 'label': 'Client Email', 'type': 'text', 'required': True},
+                {'name': 'private_key', 'label': 'Private Key', 'type': 'textarea', 'required': True}
+            ]
+        },
+        {
+            'id': 'minio',
+            'name': 'MinIO',
+            'icon': 'minio.svg',
+            'description': 'Self-hosted object storage compatible with S3 API',
+            'credential_fields': [
+                {'name': 'endpoint', 'label': 'Endpoint URL', 'type': 'text', 'required': True},
+                {'name': 'access_key', 'label': 'Access Key', 'type': 'text', 'required': True},
+                {'name': 'secret_key', 'label': 'Secret Key', 'type': 'password', 'required': True}
+            ]
+        }
+    ]
+    return jsonify(providers)
+
+# Endpoint para obtener instalaciones SAGE
+@app.route('/api/sage/installations', methods=['GET'])
+def list_sage_installations():
+    """Lista las instalaciones SAGE disponibles para DuckDB Swarm"""
+    installations = [
+        {
+            'id': 1,
+            'name': 'SAGE Local',
+            'host': 'localhost',
+            'port': 5000,
+            'description': 'Instalación local de SAGE',
+            'status': 'active',
+            'version': '2.5.0',
+            'databases': 12,
+            'templates': 25,
+            'last_seen': '2025-04-25T18:30:00Z'
+        }
+    ]
+    return jsonify(installations)
+
+# Endpoint para obtener secrets de cloud
+@app.route('/api/cloud/secrets', methods=['GET'])
+def list_cloud_secrets():
+    """Lista los secrets de proveedores cloud disponibles para DuckDB Swarm"""
+    secrets = [
+        {
+            'id': 1,
+            'name': 'AWS Production',
+            'provider_id': 'aws',
+            'provider_name': 'Amazon S3',
+            'description': 'Credenciales de producción para AWS S3',
+            'has_credentials': True,
+            'created_at': '2025-04-20T10:00:00Z',
+            'updated_at': '2025-04-22T15:30:00Z'
+        },
+        {
+            'id': 2,
+            'name': 'Azure Storage',
+            'provider_id': 'azure',
+            'provider_name': 'Azure Blob Storage',
+            'description': 'Credenciales para Azure Blob Storage',
+            'has_credentials': True,
+            'created_at': '2025-04-21T09:45:00Z',
+            'updated_at': '2025-04-21T09:45:00Z'
+        },
+        {
+            'id': 3,
+            'name': 'GCP Analytics',
+            'provider_id': 'gcp',
+            'provider_name': 'Google Cloud Storage',
+            'description': 'Acceso a bucket de analítica en GCP',
+            'has_credentials': True,
+            'created_at': '2025-04-23T14:20:00Z',
+            'updated_at': '2025-04-24T10:15:00Z'
+        },
+        {
+            'id': 4,
+            'name': 'MinIO Local',
+            'provider_id': 'minio',
+            'provider_name': 'MinIO',
+            'description': 'Servidor MinIO local para desarrollo',
+            'has_credentials': True,
+            'created_at': '2025-04-20T11:30:00Z',
+            'updated_at': '2025-04-20T11:30:00Z'
+        }
+    ]
+    return jsonify(secrets)
+
+if __name__ == '__main__':
+    # Verificar que la base de datos exista o crearla
+    if not os.path.exists(DUCKDB_PATH):
+        logger.info(f"Creando base de datos {DUCKDB_PATH}")
+        conn = duckdb.connect(DUCKDB_PATH)
+        conn.close()
+    
+    # Iniciar servidor
+    app.run(host='0.0.0.0', port=5001)

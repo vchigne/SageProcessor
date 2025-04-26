@@ -344,6 +344,149 @@ def deploy_duckdb_via_ssh(ssh_host, ssh_port=22, ssh_username=None, ssh_password
         logger.error(f"Error en el despliegue: {str(e)}", exc_info=True)
         return {'success': False, 'message': f"Error en el despliegue: {str(e)}"}
 
+def execute_command(ssh_host, command, ssh_port=22, ssh_username=None, ssh_password=None, ssh_key=None, timeout=120):
+    """
+    Ejecuta un comando SSH en un servidor remoto
+    
+    Args:
+        ssh_host (str): Hostname o IP del servidor
+        command (str): Comando a ejecutar
+        ssh_port (int): Puerto SSH (por defecto 22)
+        ssh_username (str): Usuario SSH
+        ssh_password (str, optional): Contraseña SSH
+        ssh_key (str, optional): Clave privada SSH en formato string
+        timeout (int): Timeout para la ejecución del comando en segundos
+        
+    Returns:
+        dict: Resultado de la ejecución con estado, mensaje y salida
+    """
+    try:
+        # Inicializar cliente SSH
+        client = paramiko.SSHClient()
+        
+        # Manejo especial para la política de verificación de claves
+        try:
+            client.load_system_host_keys()
+        except Exception as e:
+            logger.warning(f"No se pudieron cargar las claves del sistema: {str(e)}")
+        
+        # Configurar política para hosts desconocidos
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        
+        # Archivo temporal para clave privada si se proporciona
+        key_file = None
+        
+        try:
+            if ssh_key:
+                # Crear archivo temporal para la clave
+                key_file = tempfile.NamedTemporaryFile(delete=False)
+                key_file.write(ssh_key.encode())
+                key_file.close()
+                
+                # Establecer permisos correctos para la clave
+                os.chmod(key_file.name, 0o600)
+                
+                # Conectar con clave privada
+                pkey = paramiko.RSAKey.from_private_key_file(key_file.name)
+                # Configurar opciones para conexiones más robustas
+                disabled_algorithms = {'pubkeys': ['rsa-sha2-256', 'rsa-sha2-512']}
+                client.connect(
+                    hostname=ssh_host,
+                    port=ssh_port,
+                    username=ssh_username,
+                    pkey=pkey,
+                    timeout=20,
+                    look_for_keys=False,
+                    allow_agent=False,
+                    banner_timeout=30,
+                    auth_timeout=20,
+                    disabled_algorithms=disabled_algorithms
+                )
+            else:
+                # Conectar con contraseña
+                # Configurar opciones para conexiones más robustas
+                disabled_algorithms = {'pubkeys': ['rsa-sha2-256', 'rsa-sha2-512']}
+                client.connect(
+                    hostname=ssh_host,
+                    port=ssh_port,
+                    username=ssh_username,
+                    password=ssh_password,
+                    timeout=20,
+                    look_for_keys=False,
+                    allow_agent=False,
+                    banner_timeout=30,
+                    auth_timeout=20,
+                    disabled_algorithms=disabled_algorithms
+                )
+            
+            # Ejecutar el comando
+            stdin, stdout, stderr = client.exec_command(
+                command,
+                get_pty=True,
+                timeout=timeout
+            )
+            
+            # Configurar keepalive y timeout para el canal
+            channel = stdout.channel
+            channel.settimeout(timeout)
+            
+            # Leer la salida en tiempo real
+            output = ""
+            error_output = ""
+            
+            while not stdout.channel.exit_status_ready():
+                if stdout.channel.recv_ready():
+                    chunk = stdout.channel.recv(1024).decode('utf-8', errors='replace')
+                    output += chunk
+                    
+                if stderr.channel.recv_stderr_ready():
+                    chunk = stderr.channel.recv_stderr(1024).decode('utf-8', errors='replace')
+                    error_output += chunk
+                    
+                time.sleep(0.1)
+            
+            # Leer cualquier dato restante
+            while stdout.channel.recv_ready():
+                chunk = stdout.channel.recv(1024).decode('utf-8', errors='replace')
+                output += chunk
+                
+            while stderr.channel.recv_stderr_ready():
+                chunk = stderr.channel.recv_stderr(1024).decode('utf-8', errors='replace')
+                error_output += chunk
+            
+            # Obtener código de salida
+            exit_status = stdout.channel.recv_exit_status()
+            
+            # Construir resultado
+            result = {
+                'success': exit_status == 0,
+                'exit_status': exit_status,
+                'output': output.strip(),
+                'error': error_output.strip(),
+                'message': f"Comando ejecutado con código de salida {exit_status}"
+            }
+            
+            return result
+                
+        finally:
+            # Limpiar archivo temporal
+            if key_file and os.path.exists(key_file.name):
+                os.unlink(key_file.name)
+                
+            # Cerrar la conexión SSH
+            client.close()
+            
+    except Exception as e:
+        # Otros errores
+        logger.error(f"Error al ejecutar comando: {str(e)}", exc_info=True)
+        return {
+            'success': False,
+            'exit_status': -1,
+            'output': "",
+            'error': str(e),
+            'message': f"Error al ejecutar comando: {str(e)}"
+        }
+
 def check_connection(ssh_host, ssh_port=22, ssh_username=None, ssh_password=None, ssh_key=None):
     """
     Verifica la conexión SSH a un servidor

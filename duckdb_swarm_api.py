@@ -414,6 +414,188 @@ def start_duckdb_ui(server_id):
         logger.error(f"Error al iniciar UI de DuckDB en servidor {server_id}: {str(e)}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/servers/<server_id>/vnc/status', methods=['GET'])
+def check_vnc_status(server_id):
+    """Verifica el estado del servicio VNC en un servidor"""
+    try:
+        # Primero obtener los detalles del servidor
+        conn = get_duckdb_connection()
+        server = conn.execute("""
+            SELECT id, name, host, port, api_key, ssh_user, ssh_port, ssh_key, ssh_password
+            FROM servers
+            WHERE id = ?
+        """, [server_id]).fetchone()
+        
+        if not server:
+            return jsonify({'error': 'Servidor no encontrado'}), 404
+        
+        server_info = {
+            'id': server[0],
+            'name': server[1],
+            'host': server[2],
+            'port': server[3],
+            'ssh_user': server[5],
+            'ssh_port': server[6]
+        }
+        
+        # Verificar si el servidor tiene SSH configurado
+        if not server_info['ssh_user'] or not server_info['host']:
+            return jsonify({'error': 'Servidor no tiene configuración SSH completa'}), 400
+        
+        # Intentar conectar por SSH para verificar servicios VNC
+        ssh_key = server[7]
+        ssh_password = server[8]
+        
+        # Verificar servicios VNC usando el módulo SSH
+        import utils.ssh_deployer as ssh_deployer
+        check_result = ssh_deployer.execute_command(
+            server_info['host'],
+            "ss -ltn | grep -E ':(5901|6080)' || echo 'No VNC services found'",
+            server_info['ssh_port'],
+            server_info['ssh_user'],
+            ssh_password,
+            ssh_key
+        )
+        
+        if check_result['success']:
+            # Analizar respuesta para ver si VNC y noVNC están activos
+            output = check_result['output']
+            vnc_active = ":5901" in output
+            novnc_active = ":6080" in output
+            
+            # Verificar logs si hay problemas
+            if not vnc_active or not novnc_active:
+                log_check = ssh_deployer.execute_command(
+                    server_info['host'],
+                    "tail -n 20 /var/log/vnc-startup.log 2>/dev/null || echo 'Log file not found'",
+                    server_info['ssh_port'],
+                    server_info['ssh_user'],
+                    ssh_password,
+                    ssh_key
+                )
+                logs = log_check['output'] if log_check['success'] else "No se pudieron obtener logs"
+            else:
+                logs = "Servicios funcionando correctamente"
+            
+            return jsonify({
+                'success': True,
+                'vnc_active': vnc_active,
+                'novnc_active': novnc_active,
+                'details': {
+                    'vnc_port': 5901,
+                    'novnc_port': 6080,
+                    'vnc_url': f"vnc://{server_info['host']}:5901",
+                    'novnc_url': f"http://{server_info['host']}:6080/vnc.html"
+                },
+                'logs': logs
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'No se pudo verificar los servicios VNC',
+                'error': check_result['message']
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"Error al verificar estado VNC en servidor {server_id}: {str(e)}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/servers/<server_id>/vnc/repair', methods=['POST'])
+def repair_vnc(server_id):
+    """Intenta reparar el servicio VNC en un servidor"""
+    try:
+        # Primero obtener los detalles del servidor
+        conn = get_duckdb_connection()
+        server = conn.execute("""
+            SELECT id, name, host, port, api_key, ssh_user, ssh_port, ssh_key, ssh_password
+            FROM servers
+            WHERE id = ?
+        """, [server_id]).fetchone()
+        
+        if not server:
+            return jsonify({'error': 'Servidor no encontrado'}), 404
+        
+        server_info = {
+            'id': server[0],
+            'name': server[1],
+            'host': server[2],
+            'port': server[3],
+            'api_key': server[4],
+            'ssh_user': server[5],
+            'ssh_port': server[6]
+        }
+        
+        # Verificar si el servidor tiene SSH configurado
+        if not server_info['ssh_user'] or not server_info['host']:
+            return jsonify({'error': 'Servidor no tiene configuración SSH completa'}), 400
+        
+        # Intentar conectar por SSH para reparar servicios VNC
+        ssh_key = server[7]
+        ssh_password = server[8]
+        
+        # Ejecutar script de reparación VNC
+        import utils.ssh_deployer as ssh_deployer
+        repair_command = f"docker exec duckdb-server /bin/bash -c 'if [ -f /fix_vnc.sh ]; then chmod +x /fix_vnc.sh && /fix_vnc.sh {server_info['api_key']}; else echo \"Script fix_vnc.sh no encontrado\"; fi'"
+        
+        repair_result = ssh_deployer.execute_command(
+            server_info['host'],
+            repair_command,
+            server_info['ssh_port'],
+            server_info['ssh_user'],
+            ssh_password,
+            ssh_key
+        )
+        
+        if repair_result['success']:
+            # Verificar si la reparación fue exitosa
+            time.sleep(5)  # Dar tiempo a que los servicios inicien
+            
+            check_command = "ss -ltn | grep -E ':(5901|6080)' || echo 'No VNC services found'"
+            check_result = ssh_deployer.execute_command(
+                server_info['host'],
+                check_command,
+                server_info['ssh_port'],
+                server_info['ssh_user'],
+                ssh_password,
+                ssh_key
+            )
+            
+            if check_result['success']:
+                output = check_result['output']
+                vnc_active = ":5901" in output
+                novnc_active = ":6080" in output
+                
+                return jsonify({
+                    'success': True,
+                    'message': 'Intento de reparación completado',
+                    'vnc_active': vnc_active,
+                    'novnc_active': novnc_active,
+                    'repair_output': repair_result['output'],
+                    'details': {
+                        'vnc_port': 5901,
+                        'novnc_port': 6080,
+                        'vnc_url': f"vnc://{server_info['host']}:5901",
+                        'novnc_url': f"http://{server_info['host']}:6080/vnc.html"
+                    }
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'message': 'No se pudo verificar el estado después de la reparación',
+                    'repair_output': repair_result['output'],
+                    'error': check_result['message']
+                }), 500
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Error al ejecutar script de reparación',
+                'error': repair_result['message']
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"Error al reparar VNC en servidor {server_id}: {str(e)}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/servers/<server_id>/status', methods=['GET'])
 def check_server_status(server_id):
     """Verifica el estado de un servidor DuckDB remoto"""
@@ -2383,45 +2565,46 @@ def refresh_powerbi_dataset(dataset_id):
         print(f"Error al refrescar dataset de PowerBI: {e}")
         return jsonify({"error": f"Error al refrescar dataset: {str(e)}"}), 500
 
+# Eliminando la definición duplicada de la función check_vnc_status, ya que se definió antes
+# Ahora agregamos un endpoint alternativo que llama a la función original
 @app.route('/api/servers/<int:server_id>/check-vnc', methods=['GET'])
-def check_vnc_status(server_id):
-    """Verifica el estado del servicio VNC en un servidor"""
+def check_vnc_legacy(server_id):
+    """Versión legacy del verificador de VNC (redirecciona al endpoint nuevo)"""
+    return check_vnc_status(str(server_id))
+
+# Este endpoint simulado ya no es necesario, ya que tenemos la implementación real arriba
+@app.route('/api/servers/<int:server_id>/check-vnc-info', methods=['GET'])
+def get_vnc_info(server_id):
+    """Versión alternativa para obtener información VNC (endpoint para compatibilidad)"""
     conn = get_duckdb_connection()
     if not conn:
         return jsonify({'error': 'No se pudo conectar a DuckDB'}), 500
     
     try:
-        # Obtener información del servidor
-        server = conn.execute("SELECT hostname, ssh_port, ssh_user, api_key FROM duckdb_servers WHERE id = ?",
-                             [server_id]).fetchone()
+        # Obtener información del servidor 
+        server = conn.execute("SELECT hostname FROM servers WHERE id = ?", [server_id]).fetchone()
         
         if not server:
             return jsonify({'error': f'El servidor con ID {server_id} no existe'}), 404
         
-        hostname, ssh_port, ssh_user, api_key = server
+        hostname = server[0]
         
-        # Información de diagnóstico del VNC
+        # Información diagnóstica simulada
         vnc_info = {
             'server_id': server_id,
             'hostname': hostname,
             'vnc_port': 5901,
             'novnc_port': 6080,
-            'vnc_status': 'checking',
-            'novnc_status': 'checking',
-            'diagnostic_info': {}
-        }
-        
-        # En producción, verificaríamos la conexión real a través de SSH
-        # Aquí simulamos información de estado
-        vnc_info['vnc_status'] = 'running'
-        vnc_info['novnc_status'] = 'running'
-        vnc_info['diagnostic_info'] = {
-            'vnc_process_count': 1,
-            'websockify_process_count': 1,
-            'vnc_url': f"vnc://{hostname}:5901",
-            'novnc_url': f"http://{hostname}:6080/vnc.html",
-            'novnc_url_autoconnect': f"http://{hostname}:6080/vnc.html?autoconnect=true&resize=scale",
-            'help_message': "Usa un cliente VNC con la IP y puerto 5901 o accede a través de noVNC web"
+            'vnc_status': 'running',
+            'novnc_status': 'running',
+            'diagnostic_info': {
+                'vnc_process_count': 1,
+                'websockify_process_count': 1,
+                'vnc_url': f"vnc://{hostname}:5901",
+                'novnc_url': f"http://{hostname}:6080/vnc.html",
+                'novnc_url_autoconnect': f"http://{hostname}:6080/vnc.html?autoconnect=true&resize=scale",
+                'help_message': "Usa un cliente VNC con la IP y puerto 5901 o accede a través de noVNC web"
+            }
         }
         
         return jsonify({
@@ -2431,7 +2614,8 @@ def check_vnc_status(server_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 @app.route('/api/servers/<int:server_id>/restart-vnc', methods=['POST'])
 def restart_vnc(server_id):

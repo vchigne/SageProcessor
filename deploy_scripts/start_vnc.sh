@@ -1,184 +1,189 @@
 #!/bin/bash
+
 # Script para iniciar el servidor VNC
+# Versión mejorada con mejor manejo de errores y reintentos automáticos
+# Uso: ./start_vnc.sh [password]
 
-# Usar bash para depuración
-set -x
+# --- Función para buscar el siguiente puerto disponible
+find_free_port() {
+    local port=$1
+    while ss -ltn | awk '{print $4}' | grep -q ":$port$"; do
+        port=$((port+1))
+    done
+    echo "$port"
+}
 
-# Configurar logging más detallado
-exec > >(tee -a /var/log/vnc-startup.log) 2>&1
-echo "$(date): Iniciando script de configuración VNC"
-
-# Establecer DISPLAY de manera explícita en formato correcto
-export DISPLAY=:1
-echo "$(date): DISPLAY configurado como $DISPLAY"
-
-# Configurar variables de entorno adicionales para X
-export XDG_RUNTIME_DIR=/tmp/runtime-admin
-mkdir -p $XDG_RUNTIME_DIR
-chmod 700 $XDG_RUNTIME_DIR
-chown admin:admin $XDG_RUNTIME_DIR
-
-echo "$(date): Verificando variables de entorno para VNC"
-env | grep -i vnc
-env | grep -i display
-
-# Verificar configuración
-echo "$(date): Geometría: $VNC_GEOMETRY, Profundidad: $VNC_DEPTH, Contraseña configurada: $(if [ -n "$VNC_PASSWORD" ]; then echo "Sí"; else echo "No"; fi)"
-
-# Asegurarse que no hay sesiones VNC previas (para root y admin)
-echo "$(date): Deteniendo sesiones VNC previas"
-pkill -f Xtigervnc || true
-vncserver -kill :1 &>/dev/null || true
-su - admin -c "vncserver -kill :1" &>/dev/null || true
-
-# Asegurarse que el directorio .vnc exista y tenga permisos correctos
-echo "$(date): Configurando directorios .vnc"
-mkdir -p /home/admin/.vnc
-mkdir -p /root/.vnc
-
-# Verificar permisos de los xstartup
-echo "$(date): Verificando scripts xstartup"
-if [ -f /home/admin/.vnc/xstartup ]; then
-  echo "$(date): Script xstartup de admin existe"
-  cat /home/admin/.vnc/xstartup
-  chmod +x /home/admin/.vnc/xstartup
+# --- Leer contraseña del argumento o usar la predeterminada
+if [ -z "$1" ]; then
+    PASSWORD="duckdb"
 else
-  echo "$(date): Creando script xstartup para admin"
-  cat > /home/admin/.vnc/xstartup << 'EOF'
-#!/bin/sh
-[ -r $HOME/.Xresources ] && xrdb $HOME/.Xresources
-export XKL_XMODMAP_DISABLE=1
-export XDG_CURRENT_DESKTOP="XFCE"
+    PASSWORD="$1"
+fi
+
+# --- Variables de configuración
+LOG_FILE="/var/log/vnc-startup.log"
+RETRY_COUNT=3
+DISPLAY_NUMBER=":1"
+VNC_PORT=5901
+HTTP_PORT=6080
+
+# --- Crear directorio para logs
+mkdir -p /var/log > /dev/null 2>&1 || true
+touch ${LOG_FILE}
+chown root:root ${LOG_FILE}
+chmod 644 ${LOG_FILE}
+
+echo "[$(date)] Iniciando servidor VNC..." | tee -a ${LOG_FILE}
+
+# --- Matar cualquier instancia previa de VNC
+echo "[$(date)] Deteniendo cualquier instancia previa de VNC..." | tee -a ${LOG_FILE}
+vncserver -kill ${DISPLAY_NUMBER} > /dev/null 2>&1 || true
+pkill -f "Xvnc" > /dev/null 2>&1 || true
+pkill -f "x11vnc" > /dev/null 2>&1 || true
+pkill -f "websockify" > /dev/null 2>&1 || true
+sleep 2
+
+# --- Limpiar archivos temporales y de bloqueo
+echo "[$(date)] Limpiando archivos temporales..." | tee -a ${LOG_FILE}
+rm -f /tmp/.X1-lock > /dev/null 2>&1 || true
+rm -f /tmp/.X11-unix/X1 > /dev/null 2>&1 || true
+rm -f ~/.vnc/*.pid > /dev/null 2>&1 || true
+rm -f ~/.vnc/*.log > /dev/null 2>&1 || true
+rm -f /root/.vnc/*.pid > /dev/null 2>&1 || true
+
+# --- Asegurar la existencia de directorios necesarios
+mkdir -p ~/.vnc > /dev/null 2>&1 || true
+mkdir -p /root/.vnc > /dev/null 2>&1 || true
+
+# --- Configurar la contraseña VNC
+echo "[$(date)] Configurando contraseña VNC..." | tee -a ${LOG_FILE}
+echo -e "$PASSWORD\n$PASSWORD\n\n" | vncpasswd > /dev/null 2>&1 || echo "$PASSWORD" | vncpasswd -f > ~/.vnc/passwd
+cp -f ~/.vnc/passwd /root/.vnc/passwd > /dev/null 2>&1 || true
+chmod 600 ~/.vnc/passwd > /dev/null 2>&1 || true
+chmod 600 /root/.vnc/passwd > /dev/null 2>&1 || true
+
+# --- Crear xstartup si no existe
+if [ ! -f ~/.vnc/xstartup ]; then
+    echo "[$(date)] Creando archivo xstartup..." | tee -a ${LOG_FILE}
+    cat > ~/.vnc/xstartup << EOF
+#!/bin/bash
+xrdb \$HOME/.Xresources
 startxfce4 &
 EOF
-  chmod +x /home/admin/.vnc/xstartup
+    chmod +x ~/.vnc/xstartup
 fi
 
-# Configuración VNC para permitir conexiones remotas
-echo "$(date): Configurando parámetros VNC para permitir conexiones remotas"
-cat > /home/admin/.vnc/config << EOF
-no-remote-connections=0
-localhost=no
-AlwaysShared=1
-EOF
-chmod 644 /home/admin/.vnc/config
-chown admin:admin /home/admin/.vnc/config -R
-
-# Configurar contraseña VNC si está definida
-if [ -n "$VNC_PASSWORD" ]; then
-  echo "$(date): Configurando contraseña VNC para admin"
-  echo "$VNC_PASSWORD" | vncpasswd -f > /home/admin/.vnc/passwd
-  chmod 600 /home/admin/.vnc/passwd
-  chown admin:admin /home/admin/.vnc/passwd
-else
-  echo "$(date): ADVERTENCIA: No se ha configurado contraseña VNC, usando 'duckdb' por defecto"
-  echo "duckdb" | vncpasswd -f > /home/admin/.vnc/passwd
-  chmod 600 /home/admin/.vnc/passwd
-  chown admin:admin /home/admin/.vnc/passwd
-fi
-
-# Verificar que Xfce está instalado
-echo "$(date): Verificando instalación de Xfce"
-if ! command -v startxfce4 > /dev/null; then
-  echo "$(date): ERROR: Xfce no está instalado, intentando instalar"
-  apt-get update && apt-get install -y xfce4 xfce4-goodies
-fi
-
-# Instalar TigerVNC específicamente si no está
-echo "$(date): Verificando instalación de TigerVNC"
-if ! command -v vncserver > /dev/null; then
-  echo "$(date): TigerVNC no está instalado, instalando..."
-  apt-get update && apt-get install -y tigervnc-standalone-server tigervnc-common
-fi
-
-# Asegurarse que el puerto 5901 no está en uso
-echo "$(date): Verificando que el puerto 5901 está disponible"
-if netstat -tuln | grep -q ":5901"; then
-  echo "$(date): Puerto 5901 ya está en uso, deteniendo procesos..."
-  fuser -k 5901/tcp || true
-  sleep 2
-fi
-
-# Iniciar servidor VNC para el usuario admin con acceso desde cualquier dirección IP
-echo "$(date): Iniciando servidor VNC como usuario admin"
-su - admin -c "touch ~/.Xauthority"
-
-# Configuración detallada para asegurar correcta inicialización
-su - admin -c "vncserver -kill :1" &>/dev/null || true
-su - admin -c "rm -f /tmp/.X1-lock /tmp/.X11-unix/X1" &>/dev/null || true
-sleep 1
-
-# Usar configuración explícita para TigerVNC
-echo "$(date): Iniciando vncserver con parámetros explícitos"
-su - admin -c "vncserver :1 -geometry $VNC_GEOMETRY -depth $VNC_DEPTH -localhost no -rfbport 5901 -SecurityTypes VncAuth -rfbauth /home/admin/.vnc/passwd"
-VNC_STATUS=$?
-
-if [ $VNC_STATUS -ne 0 ]; then
-  echo "$(date): ERROR: Fallo al iniciar vncserver, código de salida: $VNC_STATUS"
-  # Intentar iniciar sin algunos parámetros en caso de error
-  echo "$(date): Intentando iniciar vncserver con parámetros mínimos"
-  su - admin -c "vncserver :1 -localhost no"
-  VNC_STATUS=$?
-  
-  if [ $VNC_STATUS -ne 0 ]; then
-    echo "$(date): ERROR: Segundo intento fallido, código de salida: $VNC_STATUS"
-    echo "$(date): Iniciando intento de emergencia sin parámetros"
-    su - admin -c "vncserver"
-    VNC_STATUS=$?
-    
-    if [ $VNC_STATUS -ne 0 ]; then
-      echo "$(date): FALLÓ COMPLETAMENTE: No se pudo iniciar VNC después de tres intentos"
-      exit 1
+# --- Función para verificar si el servidor VNC está escuchando
+check_vnc_running() {
+    if ss -ltn | awk '{print $4}' | grep -q ":${VNC_PORT}$"; then
+        return 0
     else
-      echo "$(date): VNC iniciado con configuración de emergencia"
+        return 1
     fi
-  else
-    echo "$(date): VNC iniciado con éxito en el segundo intento"
-  fi
-else
-  echo "$(date): VNC iniciado con éxito en el primer intento"
+}
+
+# --- Función para verificar si websockify está escuchando
+check_websockify_running() {
+    if ss -ltn | awk '{print $4}' | grep -q ":${HTTP_PORT}$"; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# --- Intentar iniciar el servidor VNC varias veces
+vnc_started=false
+for attempt in $(seq 1 ${RETRY_COUNT}); do
+    echo "[$(date)] Intento ${attempt}/${RETRY_COUNT} de iniciar VNC..." | tee -a ${LOG_FILE}
+    
+    # Usar diferentes opciones según el intento para mayor robustez
+    case ${attempt} in
+        1)
+            echo "[$(date)] Usando TigerVNC con opciones estándar..." | tee -a ${LOG_FILE}
+            vncserver ${DISPLAY_NUMBER} -geometry 1280x800 -depth 24 -localhost no >> ${LOG_FILE} 2>&1
+            ;;
+        2)
+            echo "[$(date)] Usando TigerVNC con opciones alternativas..." | tee -a ${LOG_FILE}
+            vncserver ${DISPLAY_NUMBER} -geometry 1024x768 -depth 16 -localhost no -fg >> ${LOG_FILE} 2>&1 &
+            ;;
+        3)
+            echo "[$(date)] Intentando con x11vnc como alternativa..." | tee -a ${LOG_FILE}
+            if command -v x11vnc > /dev/null; then
+                export DISPLAY=${DISPLAY_NUMBER}
+                Xvfb ${DISPLAY_NUMBER} -screen 0 1280x800x16 >> ${LOG_FILE} 2>&1 &
+                sleep 2
+                x11vnc -display ${DISPLAY_NUMBER} -forever -shared -rfbport ${VNC_PORT} -passwd ${PASSWORD} >> ${LOG_FILE} 2>&1 &
+            else
+                echo "[$(date)] x11vnc no está instalado, usando opción de último recurso..." | tee -a ${LOG_FILE}
+                vncserver ${DISPLAY_NUMBER} -geometry 800x600 -depth 8 -localhost no >> ${LOG_FILE} 2>&1
+            fi
+            ;;
+    esac
+    
+    # Esperar a que el servidor inicie
+    sleep 5
+    
+    # Verificar si VNC está escuchando
+    if check_vnc_running; then
+        echo "[$(date)] ✓ VNC iniciado correctamente en el intento ${attempt}" | tee -a ${LOG_FILE}
+        vnc_started=true
+        break
+    else
+        echo "[$(date)] ✗ VNC no pudo iniciarse en el intento ${attempt}" | tee -a ${LOG_FILE}
+        # Limpiar antes del siguiente intento
+        vncserver -kill ${DISPLAY_NUMBER} > /dev/null 2>&1 || true
+        pkill -f "Xvnc" > /dev/null 2>&1 || true
+        pkill -f "x11vnc" > /dev/null 2>&1 || true
+        sleep 2
+    fi
+done
+
+# --- Si VNC no se pudo iniciar después de todos los intentos
+if ! ${vnc_started}; then
+    echo "[$(date)] ✗ No se pudo iniciar el servidor VNC después de ${RETRY_COUNT} intentos" | tee -a ${LOG_FILE}
+    echo "[$(date)] Mostrando las últimas líneas del log:" | tee -a ${LOG_FILE}
+    tail -n 20 ${LOG_FILE}
+    exit 1
 fi
 
-# Verificar procesos VNC
-echo "$(date): Verificando procesos VNC en ejecución:"
-ps aux | grep vnc
+# --- Iniciar websockify para noVNC
+echo "[$(date)] Iniciando websockify para noVNC..." | tee -a ${LOG_FILE}
+if [ -d "/opt/novnc" ]; then
+    cd /opt/novnc
+    websockify --web . ${HTTP_PORT} localhost:${VNC_PORT} >> ${LOG_FILE} 2>&1 &
+    sleep 2
+    
+    if check_websockify_running; then
+        echo "[$(date)] ✓ Websockify iniciado correctamente" | tee -a ${LOG_FILE}
+    else
+        echo "[$(date)] ✗ Websockify no pudo iniciarse" | tee -a ${LOG_FILE}
+    fi
+else
+    echo "[$(date)] ✗ No se encontró noVNC en /opt/novnc" | tee -a ${LOG_FILE}
+fi
 
-# Crear script para iniciar DuckDB-UI para usuario root
-cat > ~/start-duckdb-ui.sh << 'EOF'
-#!/bin/bash
-# Iniciar servidor DuckDB con interfaz UI
-cd ~
-duckdb -ui &
-# Esperar 5 segundos para que DuckDB inicie
-sleep 5
-# Abrir navegador con la interfaz
-firefox http://localhost:4213 &
-EOF
+# --- Verificación final
+echo "[$(date)] Verificación final de servicios:" | tee -a ${LOG_FILE}
 
-# Hacer ejecutable el script
-chmod +x ~/start-duckdb-ui.sh
+if check_vnc_running; then
+    echo "[$(date)] ✓ VNC está escuchando en el puerto ${VNC_PORT}" | tee -a ${LOG_FILE}
+else
+    echo "[$(date)] ✗ VNC NO está escuchando en el puerto ${VNC_PORT}" | tee -a ${LOG_FILE}
+fi
 
-# Crear script para iniciar DuckDB-UI para usuario admin
-cat > /home/admin/start-duckdb-ui.sh << 'EOF'
-#!/bin/bash
-# Iniciar servidor DuckDB con interfaz UI
-cd ~
-duckdb -ui &
-# Esperar 5 segundos para que DuckDB inicie
-sleep 5
-# Abrir navegador con la interfaz
-firefox http://localhost:4213 &
-EOF
+if check_websockify_running; then
+    echo "[$(date)] ✓ Websockify está escuchando en el puerto ${HTTP_PORT}" | tee -a ${LOG_FILE}
+else
+    echo "[$(date)] ✗ Websockify NO está escuchando en el puerto ${HTTP_PORT}" | tee -a ${LOG_FILE}
+fi
 
-# Hacer ejecutable el script y asignar propiedad
-chmod +x /home/admin/start-duckdb-ui.sh
-chown admin:admin /home/admin/start-duckdb-ui.sh
-
-# Mostrar mensaje informativo
-echo "Servidor VNC iniciado en puerto 5901"
-echo "noVNC (Web VNC) disponible en http://localhost:6080/vnc.html"
-echo "DuckDB API escuchando en puerto 1294"
-echo "Para iniciar DuckDB UI, ejecuta ~/start-duckdb-ui.sh desde el entorno VNC"
-
-# Mantener el script en ejecución monitoreando los logs de VNC del usuario admin
-tail -f /home/admin/.vnc/*xvnc.log
+# --- Resumen final
+if check_vnc_running && check_websockify_running; then
+    echo "[$(date)] ✓ Todos los servicios iniciados correctamente" | tee -a ${LOG_FILE}
+    echo "[$(date)] - VNC disponible en el puerto ${VNC_PORT}" | tee -a ${LOG_FILE}
+    echo "[$(date)] - noVNC disponible en http://localhost:${HTTP_PORT}/vnc.html" | tee -a ${LOG_FILE}
+    exit 0
+else
+    echo "[$(date)] ⚠ Algunos servicios no pudieron iniciarse" | tee -a ${LOG_FILE}
+    exit 1
+fi

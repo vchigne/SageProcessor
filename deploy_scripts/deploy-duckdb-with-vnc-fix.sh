@@ -1,195 +1,317 @@
 #!/bin/bash
-# Script para desplegar DuckDB Server con VNC mejorado
-# Este script debe ejecutarse en el servidor remoto
 
-# Configuración de colores
+# Script de despliegue mejorado para DuckDB con arreglos VNC
+# Este script instala Docker, configura y despliega un servidor DuckDB con acceso VNC
+# Uso: ./deploy-duckdb-with-vnc-fix.sh [puerto] [api_key]
+
+set -e
+
+# --- Colores para output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m' # Sin color
 
-# Función para mostrar mensajes con formato
-log_info() {
-    echo -e "${BLUE}[INFO]${NC} $1"
+# --- Función para buscar el siguiente puerto disponible
+find_free_port() {
+    local port=$1
+    while ss -ltn | awk '{print $4}' | grep -q ":$port$"; do
+        port=$((port+1))
+    done
+    echo "$port"
 }
 
-log_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
-}
-
-log_warn() {
-    echo -e "${YELLOW}[WARN]${NC} $1"
-}
-
-log_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
-
-# Verificar que Docker esté instalado
-if ! command -v docker &> /dev/null; then
-    log_error "Docker no está instalado. Instalando Docker..."
-    curl -fsSL https://get.docker.com -o get-docker.sh
-    sh get-docker.sh
-    if [ $? -ne 0 ]; then
-        log_error "No se pudo instalar Docker. Abortando."
-        exit 1
-    fi
-    log_success "Docker instalado correctamente."
-fi
-
-# Crear directorio para DuckDB si no existe
-mkdir -p ~/duckdb_data
-mkdir -p ~/duckdb_server
-
-# Directorio temporal para la construcción
-BUILD_DIR=$(mktemp -d)
-log_info "Usando directorio temporal: $BUILD_DIR"
-
-# Copiar archivos al directorio de construcción
-cp -r * "$BUILD_DIR/"
-cd "$BUILD_DIR"
-
-# Configuración del servidor
-SERVER_PORT=1294
-VNC_PORT=5901
-NOVNC_PORT=6080
-SSH_PORT=2222
-
-# Construir la imagen de Docker
-log_info "Construyendo imagen Docker de DuckDB Server... (0%)"
-docker build -t duckdb-server . > docker_build.log 2>&1 &
-build_pid=$!
-
-# Mostrar progreso de la construcción mientras se ejecuta
-progress=0
-while kill -0 $build_pid 2> /dev/null; do
-    if [ $progress -lt 90 ]; then
-        progress=$((progress + 10))
-        log_info "Construyendo imagen Docker de DuckDB Server... ($progress%)"
-        sleep 5
-    else
-        log_info "Finalizando construcción... (90%)"
-        sleep 5
-    fi
-done
-
-# Verificar si la construcción tuvo éxito
-if wait $build_pid; then
-    log_info "Imagen Docker construida exitosamente (100%)!"
-else
-    log_error "Error al construir la imagen Docker. Revisar docker_build.log para más detalles."
+# --- Función para mensaje de error y salida
+error_exit() {
+    echo -e "${RED}[ERROR] $1${NC}" >&2
     exit 1
+}
+
+# --- Función para mensaje de información
+info() {
+    echo -e "${BLUE}[INFO] $1${NC}"
+}
+
+# --- Función para mensaje de éxito
+success() {
+    echo -e "${GREEN}[SUCCESS] $1${NC}"
+}
+
+# --- Función para mensaje de advertencia
+warning() {
+    echo -e "${YELLOW}[WARNING] $1${NC}"
+}
+
+# --- Verificar que el script se ejecuta como usuario con permisos sudo
+if [ "$(id -u)" -eq 0 ]; then
+    error_exit "Este script no debe ejecutarse como root directamente. Use un usuario con permisos sudo."
 fi
 
-# Verificar si existe un contenedor previo
-log_info "Verificando si existe un contenedor previo..."
-docker ps -a --format "{{.Names}}" | grep duckdb-server
-
-# Detener y eliminar contenedor previo si existe
-if docker ps -a --format "{{.Names}}" | grep -q "duckdb-server"; then
-    log_info "Deteniendo y eliminando contenedor anterior..."
-    docker stop duckdb-server
-    docker rm duckdb-server
+# --- Configurar puerto y clave API
+if [ -z "$1" ]; then
+    # Si no se especifica puerto, buscar uno disponible
+    DDB_PORT=$(find_free_port 8000)
+    info "Usando puerto disponible: $DDB_PORT"
+else
+    DDB_PORT=$1
+    info "Usando puerto especificado: $DDB_PORT"
 fi
 
-# Iniciar nuevo contenedor
-log_info "Iniciando contenedor DuckDB con soporte para VNC..."
+if [ -z "$2" ]; then
+    API_KEY="duckdb"
+    warning "No se especificó clave API, usando valor predeterminado: 'duckdb'"
+else
+    API_KEY="$2"
+    info "Usando clave API configurada"
+fi
+
+# --- Verificar si Docker ya está instalado
+if ! command -v docker &> /dev/null; then
+    info "Docker no está instalado. Instalando..."
+    
+    # Instalar dependencias
+    sudo apt-get update
+    sudo apt-get install -y apt-transport-https ca-certificates curl software-properties-common
+
+    # Agregar clave GPG de Docker
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+
+    # Agregar repositorio Docker
+    sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+
+    # Instalar Docker
+    sudo apt-get update
+    sudo apt-get install -y docker-ce docker-ce-cli containerd.io
+
+    # Agregar usuario actual al grupo docker
+    sudo usermod -aG docker $USER
+    
+    success "Docker instalado correctamente"
+else
+    info "Docker ya está instalado"
+fi
+
+# --- Crear directorios necesarios
+info "Creando directorios para datos y configuración..."
+mkdir -p ~/duckdb_data
+chmod 755 ~/duckdb_data
+
+# --- Verificar si existe un contenedor previo
+info "Verificando si existe un contenedor previo..."
+CONTAINER_ID=$(docker ps -a -q -f name=duckdb-server)
+if [ ! -z "$CONTAINER_ID" ]; then
+    warning "Se encontró un contenedor existente. Deteniéndolo y eliminándolo..."
+    docker stop $CONTAINER_ID || true
+    docker rm $CONTAINER_ID || true
+fi
+
+# --- Crear imagen Docker
+info "Construyendo imagen Docker para DuckDB Server..."
+cat > Dockerfile << 'EOL'
+# Imagen base
+FROM ubuntu:20.04 as base
+ENV DEBIAN_FRONTEND=noninteractive
+WORKDIR /app
+RUN apt-get update && apt-get install -y \
+    curl \
+    python3 \
+    python3-pip \
+    openssh-server \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+
+# Instalar DuckDB y dependencias
+FROM base as duckdb
+RUN pip install --no-cache-dir duckdb flask flask-cors requests pymysql sqlalchemy pymssql pyodbc psycopg2-binary pandas tabulate
+
+# Instalar entorno gráfico
+FROM duckdb as desktop
+RUN apt-get update && apt-get install -y \
+    xfce4 \
+    xfce4-goodies \
+    tightvncserver \
+    x11vnc \
+    xvfb \
+    supervisor \
+    net-tools \
+    wget \
+    iptables \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Construir imagen final
+FROM desktop as stage-3
+# Abrir puertos
+RUN iptables -A INPUT -p tcp --dport 5901 -j ACCEPT && \
+    iptables -A INPUT -p tcp --dport 6080 -j ACCEPT && \
+    iptables -A INPUT -p tcp --dport 2222 -j ACCEPT
+
+WORKDIR /app
+COPY duckdb_server.py .
+COPY start_vnc.sh .
+COPY fix_vnc.sh /fix_vnc.sh
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Instalar noVNC
+RUN mkdir -p /opt && \
+    cd /opt && \
+    curl -L -o novnc.tar.gz https://github.com/novnc/noVNC/archive/v1.3.0.tar.gz && \
+    tar xzvf novnc.tar.gz && \
+    mv noVNC-1.3.0 novnc && \
+    rm novnc.tar.gz && \
+    cd novnc && \
+    ln -s vnc.html index.html
+
+# Configurar VNC
+RUN mkdir -p /root/.vnc
+RUN echo "duckdb" | vncpasswd -f > /root/.vnc/passwd && \
+    chmod 600 /root/.vnc/passwd
+
+# Configurar SSH
+RUN echo 'root:duckdb' | chpasswd && \
+    sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
+    sed -i 's/^#ListenAddress 0.0.0.0/ListenAddress 0.0.0.0/' /etc/ssh/sshd_config && \
+    sed -i 's/^#Port 22/Port 2222/' /etc/ssh/sshd_config && \
+    mkdir -p /var/run/sshd
+
+# Preparar script de inicio VNC
+RUN echo '#!/bin/bash\nvncserver -kill :1 || true\nrm -rf /tmp/.X1-lock /tmp/.X11-unix/X1\nvncserver :1 -geometry 1280x800 -depth 24 -localhost no\nwebsockify --web=/opt/novnc 6080 localhost:5901' > /root/start-vnc.sh
+RUN chmod +x start_vnc.sh
+
+# Exponer puertos
+EXPOSE 5901 6080 2222
+
+# Comando para iniciar todos los servicios
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+EOL
+
+# Crear archivo de configuración de supervisor
+cat > supervisord.conf << 'EOL'
+[supervisord]
+nodaemon=true
+user=root
+logfile=/var/log/supervisor/supervisord.log
+logfile_maxbytes=50MB
+logfile_backups=10
+
+[program:sshd]
+command=/usr/sbin/sshd -D
+autorestart=true
+stderr_logfile=/var/log/sshd.err.log
+stdout_logfile=/var/log/sshd.out.log
+
+[program:duckdb-server]
+command=python3 /app/duckdb_server.py --port %(ENV_DDB_PORT)s --api-key %(ENV_API_KEY)s
+autorestart=true
+stderr_logfile=/var/log/duckdb-server.err.log
+stdout_logfile=/var/log/duckdb-server.out.log
+
+[program:vnc]
+command=/app/start_vnc.sh %(ENV_API_KEY)s
+autorestart=true
+startretries=3
+autostart=true
+startsecs=5
+stderr_logfile=/var/log/vnc.err.log
+stdout_logfile=/var/log/vnc.out.log
+
+[program:novnc]
+command=websockify --web=/opt/novnc 6080 localhost:5901
+autorestart=true
+startretries=3
+autostart=true
+startsecs=5
+stderr_logfile=/var/log/novnc.err.log
+stdout_logfile=/var/log/novnc.out.log
+EOL
+
+info "Construyendo imagen Docker..."
+docker build -t duckdb-server . || error_exit "Error al construir imagen Docker"
+success "Imagen Docker construida exitosamente (100%)!"
+
+# --- Iniciar contenedor
+info "Iniciando contenedor DuckDB con soporte para VNC..."
 docker run -d \
     --name duckdb-server \
-    -p $SERVER_PORT:1294 \
-    -p $VNC_PORT:5901 \
-    -p $NOVNC_PORT:6080 \
-    -p $SSH_PORT:22 \
+    -p $DDB_PORT:5000 \
+    -p 5901:5901 \
+    -p 6080:6080 \
+    -p 2222:2222 \
     -v ~/duckdb_data:/data \
-    -e VNC_GEOMETRY=1280x800 \
-    -e VNC_DEPTH=24 \
-    duckdb-server
+    -v $(pwd)/fix_vnc.sh:/fix_vnc.sh \
+    -e DDB_PORT=5000 \
+    -e API_KEY="$API_KEY" \
+    duckdb-server || error_exit "Error al iniciar contenedor"
 
-# Verificar que el contenedor se inició correctamente
-log_info "Verificando estado del contenedor..."
+# --- Verificar estado del contenedor
+info "Verificando estado del contenedor..."
 sleep 3
-if docker ps | grep -q "duckdb-server"; then
-    log_success "¡Contenedor DuckDB iniciado correctamente!"
-else
-    log_error "Error al iniciar el contenedor. Abortando."
-    exit 1
+CONTAINER_RUNNING=$(docker ps -q -f name=duckdb-server)
+if [ -z "$CONTAINER_RUNNING" ]; then
+    error_exit "El contenedor se detuvo inmediatamente. Revise los logs con: docker logs duckdb-server"
 fi
+success "¡Contenedor DuckDB iniciado correctamente!"
 
-# Copiar script de arreglo VNC al contenedor
-log_info "Copiando script de arreglo VNC al contenedor..."
-docker cp fix_vnc.sh duckdb-server:/fix_vnc.sh
-docker exec duckdb-server chmod +x /fix_vnc.sh
+# --- Ejecutar script de arreglo VNC
+info "Ejecutando script de arreglo VNC..."
+docker exec duckdb-server /bin/bash -c "chmod +x /fix_vnc.sh && /fix_vnc.sh $API_KEY"
 
-# Ejecutar script de arreglo VNC dentro del contenedor
-log_info "Ejecutando script de arreglo VNC en el contenedor..."
-docker exec duckdb-server /fix_vnc.sh
-
-# Verificar si el servidor VNC está en ejecución
-log_info "Verificando que el servidor VNC está en ejecución..."
-if docker exec duckdb-server netstat -tuln | grep -q ":5901"; then
-    log_success "¡Servidor VNC está ejecutándose en el puerto 5901!"
-else
-    log_warn "El servidor VNC no parece estar ejecutándose en el puerto 5901."
-fi
-
-# Verificar que el servidor DuckDB está en ejecución
-log_info "Verificando que el servidor DuckDB está en ejecución..."
+# --- Verificar que el servidor está en ejecución
+info "Verificando que el servidor DuckDB está en ejecución..."
 sleep 2
-if curl -s "http://localhost:$SERVER_PORT/health" | grep -q "healthy"; then
-    log_success "¡Servidor DuckDB respondió: $(curl -s http://localhost:$SERVER_PORT/health)!"
-else
-    log_warn "El servidor DuckDB no respondió correctamente."
+HEALTH_CHECK=$(curl -s http://localhost:$DDB_PORT/health)
+if [ -z "$HEALTH_CHECK" ]; then
+    error_exit "El servidor DuckDB no responde. Revise los logs con: docker logs duckdb-server"
 fi
+success "¡Servidor DuckDB respondió: $HEALTH_CHECK!"
 
-# Crear scripts de administración
-log_info "Creando scripts de administración..."
-mkdir -p ~/duckdb_server
-cat > ~/duckdb_server/restart_duckdb.sh << 'EOF'
+# --- Crear scripts de administración
+info "Creando scripts de administración..."
+cat > restart_duckdb.sh << EOL
 #!/bin/bash
 docker restart duckdb-server
-EOF
+echo "Servidor DuckDB reiniciado"
+EOL
 
-cat > ~/duckdb_server/stop_duckdb.sh << 'EOF'
+cat > stop_duckdb.sh << EOL
 #!/bin/bash
 docker stop duckdb-server
-EOF
+echo "Servidor DuckDB detenido"
+EOL
 
-cat > ~/duckdb_server/logs_duckdb.sh << 'EOF'
+cat > logs_duckdb.sh << EOL
 #!/bin/bash
 docker logs duckdb-server
-EOF
+EOL
 
-cat > ~/duckdb_server/fix_vnc.sh << 'EOF'
+cat > fix_vnc_again.sh << EOL
 #!/bin/bash
-docker exec duckdb-server /fix_vnc.sh
-EOF
+docker exec duckdb-server /bin/bash -c "chmod +x /fix_vnc.sh && /fix_vnc.sh $API_KEY"
+echo "Script de arreglo VNC ejecutado"
+EOL
 
-chmod +x ~/duckdb_server/*.sh
+chmod +x restart_duckdb.sh stop_duckdb.sh logs_duckdb.sh fix_vnc_again.sh
 
-# Mensaje final de éxito
-log_success "¡Instalación de DuckDB Server con Docker y VNC completada exitosamente!"
-echo
-log_info "Servicios disponibles:"
-log_info "  API DuckDB: http://localhost:$SERVER_PORT"
-log_info "  VNC Server: localhost:$VNC_PORT (password: la clave del API configurada)"
-log_info "  noVNC (Web VNC): http://localhost:$NOVNC_PORT/vnc.html (password: la clave del API configurada)"
-log_info "  SSH Server: ssh -p $SSH_PORT admin@localhost (password: la clave del API configurada)"
-echo
-log_info "Datos almacenados en: ~/duckdb_data"
-echo
-log_info "Scripts de administración:"
-log_info "  ~/duckdb_server/restart_duckdb.sh - Reiniciar el servidor"
-log_info "  ~/duckdb_server/stop_duckdb.sh    - Detener el servidor"
-log_info "  ~/duckdb_server/logs_duckdb.sh    - Ver logs del servidor"
-log_info "  ~/duckdb_server/fix_vnc.sh        - Arreglar VNC si no funciona"
-echo
-log_info "Para probar la API: curl http://localhost:$SERVER_PORT/health"
-echo
-log_info "Instrucciones para usar VNC:"
-log_info "1. Conéctate con un cliente VNC a localhost:$VNC_PORT usando la clave del API como contraseña"
-log_info "2. En el entorno gráfico, ejecuta ~/start-duckdb-ui.sh para iniciar la interfaz DuckDB"
-echo
-log_info "Para acceder a noVNC (VNC vía web), visita:"
-log_info "  http://localhost:$NOVNC_PORT/vnc.html"
-log_info "  o con autoconexión: http://localhost:$NOVNC_PORT/vnc.html?autoconnect=true"
+# --- Mostrar información de conexión
+success "¡Instalación de DuckDB Server con Docker y VNC completada exitosamente!"
+info "Servicios disponibles:"
+info "  API DuckDB: http://localhost:$DDB_PORT"
+info "  VNC Server: localhost:5901 (password: la clave del API configurada)"
+info "  noVNC (Web VNC): http://localhost:6080/vnc.html (password: la clave del API configurada)"
+info "  SSH Server: ssh -p 2222 admin@localhost (password: la clave del API configurada)"
+info ""
+info "Datos almacenados en: ~/duckdb_data"
+info ""
+info "Scripts de administración:"
+info "  ~/duckdb_server/restart_duckdb.sh - Reiniciar el servidor"
+info "  ~/duckdb_server/stop_duckdb.sh    - Detener el servidor"
+info "  ~/duckdb_server/logs_duckdb.sh    - Ver logs del servidor"
+info "  ~/duckdb_server/fix_vnc_again.sh  - Ejecutar de nuevo el arreglo VNC"
+info ""
+info "Para probar la API: curl http://localhost:$DDB_PORT/health"
+info ""
+info "Instrucciones para usar VNC:"
+info "1. Conéctate con un cliente VNC a localhost:5901 usando la clave del API como contraseña"
+info "2. Alternativamente, accede al cliente Web en http://localhost:6080/vnc.html"
+info "3. En el entorno gráfico, ejecuta ~/start-duckdb-ui.sh para iniciar la interfaz DuckDB"
