@@ -434,7 +434,25 @@ def repair_vnc(server_id):
         
         # Ejecutar script de reparación VNC
         import utils.ssh_deployer as ssh_deployer
-        repair_command = f"docker exec duckdb-server /bin/bash -c 'if [ -f /fix_vnc.sh ]; then chmod +x /fix_vnc.sh && /fix_vnc.sh {server_info['api_key']}; else echo \"Script fix_vnc.sh no encontrado\"; fi'"
+        
+        # Primero transferir el script actualizado si es necesario
+        script_path = "/home/runner/workspace/deploy_scripts/fix_vnc.sh"
+        transfer_result = ssh_deployer.transfer_file(
+            server_info['host'],
+            script_path,
+            "/tmp/fix_vnc.sh",
+            server_info['ssh_port'],
+            server_info['ssh_user'],
+            ssh_password,
+            ssh_key
+        )
+        
+        # Preparar el comando para ejecutar el script (con la API key como contraseña)
+        if transfer_result['success']:
+            repair_command = f"chmod +x /tmp/fix_vnc.sh && sudo /tmp/fix_vnc.sh {server_info['api_key']}"
+        else:
+            # Intentar usar el script existente si la transferencia falla
+            repair_command = f"if [ -f /deploy_scripts/fix_vnc.sh ]; then chmod +x /deploy_scripts/fix_vnc.sh && sudo /deploy_scripts/fix_vnc.sh {server_info['api_key']}; elif [ -f /fix_vnc.sh ]; then chmod +x /fix_vnc.sh && sudo /fix_vnc.sh {server_info['api_key']}; else echo \"Script fix_vnc.sh no encontrado\"; fi"
         
         repair_result = ssh_deployer.execute_command(
             server_info['host'],

@@ -175,9 +175,9 @@ RUN echo 'root:duckdb' | chpasswd && \
     sed -i 's/^#Port 22/Port 2222/' /etc/ssh/sshd_config && \
     mkdir -p /var/run/sshd
 
-# Preparar script de inicio VNC
-RUN echo '#!/bin/bash\nvncserver -kill :1 || true\nrm -rf /tmp/.X1-lock /tmp/.X11-unix/X1\nvncserver :1 -geometry 1280x800 -depth 24 -localhost no\nwebsockify --web=/opt/novnc 6080 localhost:5901' > /root/start-vnc.sh
-RUN chmod +x start_vnc.sh
+# Usar nuestros scripts mejorados para VNC
+COPY start_vnc.sh /app/start_vnc.sh
+RUN chmod +x /app/start_vnc.sh
 
 # Exponer puertos
 EXPOSE 5901 6080 2222
@@ -212,18 +212,9 @@ command=/app/start_vnc.sh %(ENV_API_KEY)s
 autorestart=true
 startretries=3
 autostart=true
-startsecs=5
+startsecs=10
 stderr_logfile=/var/log/vnc.err.log
 stdout_logfile=/var/log/vnc.out.log
-
-[program:novnc]
-command=websockify --web=/opt/novnc 6080 localhost:5901
-autorestart=true
-startretries=3
-autostart=true
-startsecs=5
-stderr_logfile=/var/log/novnc.err.log
-stdout_logfile=/var/log/novnc.out.log
 EOL
 
 info "Construyendo imagen Docker..."
@@ -253,9 +244,8 @@ if [ -z "$CONTAINER_RUNNING" ]; then
 fi
 success "¡Contenedor DuckDB iniciado correctamente!"
 
-# --- Ejecutar script de arreglo VNC
-info "Ejecutando script de arreglo VNC..."
-docker exec duckdb-server /bin/bash -c "chmod +x /fix_vnc.sh && /fix_vnc.sh $API_KEY"
+# --- Ya no es necesario ejecutar script de arreglo VNC, ya que start_vnc.sh usa la implementación mejorada
+info "VNC configurado correctamente durante el inicio - no es necesario repararlo"
 
 # --- Verificar que el servidor está en ejecución
 info "Verificando que el servidor DuckDB está en ejecución..."

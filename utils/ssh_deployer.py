@@ -30,6 +30,272 @@ class KnownHostsPolicy(paramiko.MissingHostKeyPolicy):
         # Si necesitaramos guardar las claves permanentemente, deberíamos implementar
         # un sistema de almacenamiento de claves externo
 
+def transfer_file(ssh_host, local_path, remote_path, ssh_port=22, ssh_username=None, 
+               ssh_password=None, ssh_key=None):
+    """
+    Transfiere un archivo al servidor remoto usando SFTP
+    
+    Args:
+        ssh_host (str): Hostname o IP del servidor
+        local_path (str): Ruta local del archivo a transferir
+        remote_path (str): Ruta remota donde guardar el archivo
+        ssh_port (int): Puerto SSH (por defecto 22)
+        ssh_username (str): Usuario SSH
+        ssh_password (str, optional): Contraseña SSH
+        ssh_key (str, optional): Clave privada SSH en formato string
+        
+    Returns:
+        dict: Resultado de la transferencia con estado y mensaje
+    """
+    try:
+        # Verificar que el archivo local existe
+        if not os.path.exists(local_path):
+            logger.error(f"El archivo local {local_path} no existe")
+            return {'success': False, 'message': f"El archivo local {local_path} no existe"}
+        
+        # Inicializar cliente SSH
+        client = paramiko.SSHClient()
+        
+        # Manejo de claves conocidas
+        try:
+            client.load_system_host_keys()
+        except Exception as e:
+            logger.warning(f"No se pudieron cargar las claves del sistema: {str(e)}")
+        
+        # Configuramos una política para hosts desconocidos
+        client.set_missing_host_key_policy(KnownHostsPolicy())
+        
+        # Archivo temporal para clave privada si se proporciona
+        key_file = None
+        sftp = None
+        
+        try:
+            # Conectar al servidor
+            logger.info(f"Conectando a {ssh_host}:{ssh_port} con usuario {ssh_username} para transferir archivo")
+            
+            if ssh_key:
+                # Crear archivo temporal para la clave
+                key_file = tempfile.NamedTemporaryFile(delete=False)
+                key_file.write(ssh_key.encode())
+                key_file.close()
+                
+                # Establecer permisos correctos para la clave
+                os.chmod(key_file.name, 0o600)
+                
+                # Conectar con clave privada
+                pkey = paramiko.RSAKey.from_private_key_file(key_file.name)
+                disabled_algorithms = {'pubkeys': ['rsa-sha2-256', 'rsa-sha2-512']}
+                client.connect(
+                    hostname=ssh_host,
+                    port=ssh_port,
+                    username=ssh_username,
+                    pkey=pkey,
+                    timeout=30,
+                    look_for_keys=False,
+                    allow_agent=False,
+                    banner_timeout=60,
+                    auth_timeout=30,
+                    disabled_algorithms=disabled_algorithms
+                )
+            else:
+                # Conectar con contraseña
+                disabled_algorithms = {'pubkeys': ['rsa-sha2-256', 'rsa-sha2-512']}
+                client.connect(
+                    hostname=ssh_host,
+                    port=ssh_port,
+                    username=ssh_username,
+                    password=ssh_password,
+                    timeout=30,
+                    look_for_keys=False,
+                    allow_agent=False,
+                    banner_timeout=60,
+                    auth_timeout=30,
+                    disabled_algorithms=disabled_algorithms
+                )
+            
+            # Verificar conexión
+            transport = client.get_transport()
+            if not transport or not transport.is_active():
+                return {'success': False, 'message': 'No se pudo establecer la conexión SSH'}
+            
+            # Transferir el archivo
+            sftp = client.open_sftp()
+            
+            # Crear directorio remoto si no existe
+            remote_dir = os.path.dirname(remote_path)
+            if remote_dir:
+                try:
+                    # Crear directorios recursivamente
+                    current_dir = ""
+                    for dir_part in remote_dir.split('/'):
+                        if not dir_part:
+                            continue
+                        current_dir += f"/{dir_part}"
+                        try:
+                            sftp.stat(current_dir)
+                        except FileNotFoundError:
+                            logger.info(f"Creando directorio remoto {current_dir}")
+                            sftp.mkdir(current_dir)
+                except Exception as e:
+                    logger.warning(f"Error al crear directorio remoto {remote_dir}: {str(e)}")
+            
+            # Transferir el archivo
+            logger.info(f"Transfiriendo {local_path} a {ssh_host}:{remote_path}")
+            sftp.put(local_path, remote_path)
+            
+            # Verificar que el archivo se transfirió correctamente
+            try:
+                sftp.stat(remote_path)
+                logger.info(f"Archivo transferido exitosamente a {ssh_host}:{remote_path}")
+                return {'success': True, 'message': f"Archivo transferido exitosamente a {remote_path}"}
+            except FileNotFoundError:
+                logger.error(f"No se pudo verificar el archivo transferido en {remote_path}")
+                return {'success': False, 'message': f"No se pudo verificar el archivo transferido en {remote_path}"}
+                
+        finally:
+            # Limpiar
+            if sftp:
+                sftp.close()
+            if client:
+                client.close()
+            if key_file and os.path.exists(key_file.name):
+                os.unlink(key_file.name)
+                
+    except Exception as e:
+        logger.error(f"Error al transferir archivo a {ssh_host}: {str(e)}", exc_info=True)
+        return {'success': False, 'message': f"Error al transferir archivo: {str(e)}"}
+
+def execute_command(ssh_host, command, ssh_port=22, ssh_username=None, ssh_password=None, ssh_key=None, timeout=300, get_pty=True):
+    """
+    Ejecuta un comando en el servidor remoto vía SSH
+    
+    Args:
+        ssh_host (str): Hostname o IP del servidor
+        command (str): Comando a ejecutar
+        ssh_port (int): Puerto SSH (por defecto 22)
+        ssh_username (str): Usuario SSH
+        ssh_password (str, optional): Contraseña SSH
+        ssh_key (str, optional): Clave privada SSH en formato string
+        timeout (int): Tiempo máximo de ejecución en segundos
+        get_pty (bool): Si se debe asignar un pseudo-terminal
+        
+    Returns:
+        dict: Resultado de la ejecución con estado y mensaje
+    """
+    try:
+        # Inicializar cliente SSH
+        client = paramiko.SSHClient()
+        
+        # Manejo de claves conocidas
+        try:
+            client.load_system_host_keys()
+        except Exception as e:
+            logger.warning(f"No se pudieron cargar las claves del sistema: {str(e)}")
+        
+        # Configuramos una política para hosts desconocidos
+        client.set_missing_host_key_policy(KnownHostsPolicy())
+        
+        # Archivo temporal para clave privada si se proporciona
+        key_file = None
+        
+        try:
+            # Conectar al servidor
+            logger.info(f"Conectando a {ssh_host}:{ssh_port} con usuario {ssh_username} para ejecutar comando")
+            
+            if ssh_key:
+                # Crear archivo temporal para la clave
+                key_file = tempfile.NamedTemporaryFile(delete=False)
+                key_file.write(ssh_key.encode())
+                key_file.close()
+                
+                # Establecer permisos correctos para la clave
+                os.chmod(key_file.name, 0o600)
+                
+                # Conectar con clave privada
+                pkey = paramiko.RSAKey.from_private_key_file(key_file.name)
+                disabled_algorithms = {'pubkeys': ['rsa-sha2-256', 'rsa-sha2-512']}
+                client.connect(
+                    hostname=ssh_host,
+                    port=ssh_port,
+                    username=ssh_username,
+                    pkey=pkey,
+                    timeout=30,
+                    look_for_keys=False,
+                    allow_agent=False,
+                    banner_timeout=60,
+                    auth_timeout=30,
+                    disabled_algorithms=disabled_algorithms
+                )
+            else:
+                # Conectar con contraseña
+                disabled_algorithms = {'pubkeys': ['rsa-sha2-256', 'rsa-sha2-512']}
+                client.connect(
+                    hostname=ssh_host,
+                    port=ssh_port,
+                    username=ssh_username,
+                    password=ssh_password,
+                    timeout=30,
+                    look_for_keys=False,
+                    allow_agent=False,
+                    banner_timeout=60,
+                    auth_timeout=30,
+                    disabled_algorithms=disabled_algorithms
+                )
+            
+            # Verificar conexión
+            transport = client.get_transport()
+            if not transport or not transport.is_active():
+                return {'success': False, 'message': 'No se pudo establecer la conexión SSH'}
+            
+            # Ejecutar comando
+            logger.info(f"Ejecutando comando en {ssh_host}: {command}")
+            stdin, stdout, stderr = client.exec_command(
+                command,
+                get_pty=get_pty,
+                timeout=timeout
+            )
+            
+            # Configurar timeout del canal
+            channel = stdout.channel
+            channel.settimeout(timeout)
+            
+            # Leer salida estándar y error
+            output = stdout.read().decode('utf-8', errors='replace')
+            error = stderr.read().decode('utf-8', errors='replace')
+            
+            # Obtener código de salida
+            exit_status = stdout.channel.recv_exit_status()
+            
+            if exit_status != 0:
+                logger.warning(f"Comando terminó con código {exit_status}: {error}")
+                return {
+                    'success': False,
+                    'exit_status': exit_status,
+                    'output': output,
+                    'error': error,
+                    'message': f"Comando terminó con código {exit_status}"
+                }
+            
+            logger.info(f"Comando ejecutado exitosamente en {ssh_host}")
+            return {
+                'success': True,
+                'exit_status': exit_status,
+                'output': output,
+                'error': error,
+                'message': "Comando ejecutado exitosamente"
+            }
+                
+        finally:
+            # Limpiar
+            if client:
+                client.close()
+            if key_file and os.path.exists(key_file.name):
+                os.unlink(key_file.name)
+                
+    except Exception as e:
+        logger.error(f"Error al ejecutar comando en {ssh_host}: {str(e)}", exc_info=True)
+        return {'success': False, 'message': f"Error al ejecutar comando: {str(e)}"}
+
 def deploy_duckdb_via_ssh(ssh_host, ssh_port=22, ssh_username=None, ssh_password=None, 
                           ssh_key=None, duckdb_port=1294, server_key=None):
     """

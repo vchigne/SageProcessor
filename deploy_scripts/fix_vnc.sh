@@ -1,126 +1,133 @@
 #!/bin/bash
 
-# Script de arreglo para servicios VNC
-# Este script soluciona problemas comunes con el servidor VNC en containers Docker
-# Uso: ./fix_vnc.sh [password]
-
 set -e
+
+# --- Variables
+VNC_DISPLAY=":1"
+VNC_PORT="5901"
+HTTP_PORT="6080"
+PASSWORD="${1:-duckdb}"  # Usa el primer argumento o 'duckdb' por defecto
+USER_HOME=$(eval echo ~$USER)
+NOVNC_DIR="/opt/novnc"
+LOG_FILE="/var/log/vnc-startup.log"
+SYSTEMD_DIR="/etc/systemd/system"
 
 echo "[+] Iniciando script de reparación VNC..."
 
-# --- Leer contraseña del argumento o usar la predeterminada
-if [ -z "$1" ]; then
-    PASSWORD="duckdb"
-    echo "[*] Usando contraseña predeterminada: duckdb"
-else
-    PASSWORD="$1"
-    echo "[*] Usando contraseña proporcionada"
-fi
-
-# --- Variables
-VNC_PORT=5901
-HTTP_PORT=6080
-DISPLAY_NUMBER=":1"
-LOG_FILE="/var/log/vnc-startup.log"
-
-echo "[*] Verificando si VNC está en ejecución..."
-if pgrep Xvnc > /dev/null; then
-    echo "[*] El servidor VNC ya está en ejecución, reiniciando..."
-    vncserver -kill ${DISPLAY_NUMBER} > /dev/null 2>&1 || true
-fi
-
-# --- Detener servicios si existen
+# --- Detener servicios existentes
 echo "[*] Deteniendo servicios existentes..."
 pkill -f "websockify" > /dev/null 2>&1 || true
 pkill -f "Xvnc" > /dev/null 2>&1 || true
+pkill -f "tigervnc" > /dev/null 2>&1 || true
 pkill -f "x11vnc" > /dev/null 2>&1 || true
+vncserver -kill ${VNC_DISPLAY} > /dev/null 2>&1 || true
 sleep 2
 
-# --- Crear directorios necesarios
+# --- Asegurar que los directorios existan
 echo "[*] Configurando directorios VNC..."
-mkdir -p ~/.vnc > /dev/null 2>&1 || true
-mkdir -p /root/.vnc > /dev/null 2>&1 || true
+mkdir -p "$USER_HOME/.vnc" > /dev/null 2>&1 || true
+mkdir -p "/root/.vnc" > /dev/null 2>&1 || true
 
-# --- Crear contraseña de VNC
+# --- Crear password VNC (usando API key)
 echo "[*] Reconfigurando contraseña VNC..."
-echo -e "$PASSWORD\n$PASSWORD\n\n" | vncpasswd > /dev/null 2>&1 || echo "$PASSWORD" | vncpasswd -f > ~/.vnc/passwd
+echo "$PASSWORD" | vncpasswd -f > "$USER_HOME/.vnc/passwd"
+chmod 600 "$USER_HOME/.vnc/passwd"
+# Copiar también para root por si acaso
+cp -f "$USER_HOME/.vnc/passwd" "/root/.vnc/passwd" 2>/dev/null || true
+chmod 600 "/root/.vnc/passwd" 2>/dev/null || true
 
-# --- Asegurar permisos
-chmod 600 ~/.vnc/passwd > /dev/null 2>&1 || true
-chmod 600 /root/.vnc/passwd > /dev/null 2>&1 || true
+# --- Limpiar archivos temporales y de bloqueo
+echo "[*] Limpiando archivos temporales y de bloqueo..."
+rm -f /tmp/.X*-lock > /dev/null 2>&1 || true
+rm -f /tmp/.X11-unix/X* > /dev/null 2>&1 || true
+rm -f "$USER_HOME/.vnc/*.pid" > /dev/null 2>&1 || true
+rm -f "$USER_HOME/.vnc/*.log" > /dev/null 2>&1 || true
+rm -f "/root/.vnc/*.pid" > /dev/null 2>&1 || true
 
-# --- Configurar xstartup si no existe
-if [ ! -f ~/.vnc/xstartup ]; then
-    echo "[*] Creando archivo xstartup..."
-    cat <<EOF > ~/.vnc/xstartup
+# --- Crear xstartup para XFCE4
+echo "[*] Creando archivo xstartup..."
+cat > "$USER_HOME/.vnc/xstartup" <<EOF
 #!/bin/bash
 xrdb \$HOME/.Xresources
 startxfce4 &
 EOF
-    chmod +x ~/.vnc/xstartup
-fi
+chmod +x "$USER_HOME/.vnc/xstartup"
 
-# --- Intentar arreglar problemas de bloqueo de archivos
-echo "[*] Limpiando archivos temporales y de bloqueo..."
-rm -f /tmp/.X1-lock > /dev/null 2>&1 || true
-rm -f /tmp/.X11-unix/X1 > /dev/null 2>&1 || true
-rm -f ~/.vnc/*.pid > /dev/null 2>&1 || true
-rm -f ~/.vnc/*.log > /dev/null 2>&1 || true
-
-# --- Reiniciar VNC con opciones más robustas
+# --- Reiniciar VNC con opciones mejoradas
 echo "[*] Iniciando servidor VNC con opciones mejoradas..."
-vncserver ${DISPLAY_NUMBER} -geometry 1280x800 -depth 24 -localhost no -fg > ${LOG_FILE} 2>&1 &
-VNC_PID=$!
-
-# --- Esperar a que VNC inicie
-echo "[*] Esperando a que el servidor VNC inicie..."
-sleep 5
+vncserver ${VNC_DISPLAY} -geometry 1280x800 -depth 24 -localhost no > ${LOG_FILE} 2>&1
+sleep 3
 
 # --- Verificar si VNC está escuchando
 if ! ss -ltn | awk '{print $4}' | grep -q ":${VNC_PORT}$"; then
     echo "[!] Advertencia: VNC no está escuchando en el puerto ${VNC_PORT}, intentando un método alternativo..."
     
-    # --- Intentar con x11vnc como alternativa
-    if command -v x11vnc > /dev/null; then
-        echo "[*] Intentando iniciar x11vnc..."
-        x11vnc -display ${DISPLAY_NUMBER} -forever -shared -rfbport ${VNC_PORT} -passwd ${PASSWORD} > ${LOG_FILE} 2>&1 &
-        sleep 3
+    # --- Intentar con método alternativo
+    if command -v Xvfb > /dev/null; then
+        echo "[*] Iniciando método alternativo con Xvfb + x11vnc..."
+        Xvfb ${VNC_DISPLAY} -screen 0 1280x800x16 > /dev/null 2>&1 &
+        sleep 2
+        
+        if command -v x11vnc > /dev/null; then
+            DISPLAY=${VNC_DISPLAY} x11vnc -display ${VNC_DISPLAY} -forever -shared -rfbport ${VNC_PORT} -passwd "${PASSWORD}" > /dev/null 2>&1 &
+            sleep 2
+        else
+            echo "[!] x11vnc no encontrado, intento final con tigervnc..."
+            vncserver ${VNC_DISPLAY} -geometry 800x600 -depth 16 -localhost no > /dev/null 2>&1
+            sleep 2
+        fi
+    else
+        echo "[!] Xvfb no encontrado, intento final con configuración mínima..."
+        vncserver ${VNC_DISPLAY} -geometry 800x600 -depth 8 -localhost no > /dev/null 2>&1
+        sleep 2
     fi
 fi
 
-# --- Verificar si websockify está en ejecución
+# --- Verificar si websockify está en ejecución e iniciarlo si es necesario
+echo "[*] Configurando websockify para noVNC..."
 if ! pgrep -f "websockify" > /dev/null; then
-    echo "[*] Iniciando websockify para noVNC..."
     if [ -d "/opt/novnc" ]; then
         cd /opt/novnc
         websockify --web . ${HTTP_PORT} localhost:${VNC_PORT} > /dev/null 2>&1 &
         sleep 2
+    elif [ -d "/usr/share/novnc" ]; then
+        cd /usr/share/novnc
+        websockify --web . ${HTTP_PORT} localhost:${VNC_PORT} > /dev/null 2>&1 &
+        sleep 2
     else
-        echo "[!] Advertencia: No se encontró directorio noVNC en /opt/novnc"
+        echo "[!] Advertencia: No se encontró directorio noVNC"
     fi
 fi
 
 # --- Verificación final
-echo "[*] Verificando servicios..."
+echo "[*] Verificación final de servicios..."
 VNC_RUNNING=0
 WEBSOCKIFY_RUNNING=0
 
-if ss -ltn | awk '{print $4}' | grep -q ":${VNC_PORT}$"; then
+if ss -ltn | grep -q ":${VNC_PORT}"; then
     echo "[✓] VNC está escuchando correctamente en el puerto ${VNC_PORT}"
     VNC_RUNNING=1
 else
     echo "[✗] VNC NO está escuchando en el puerto ${VNC_PORT}"
+    # Mostrar procesos que podrían estar interfiriendo
+    echo "Procesos en el puerto ${VNC_PORT}:"
+    lsof -i :${VNC_PORT} 2>/dev/null || echo "Ninguno"
 fi
 
-if ss -ltn | awk '{print $4}' | grep -q ":${HTTP_PORT}$"; then
+if ss -ltn | grep -q ":${HTTP_PORT}"; then
     echo "[✓] Websockify está escuchando correctamente en el puerto ${HTTP_PORT}"
     WEBSOCKIFY_RUNNING=1
 else
     echo "[✗] Websockify NO está escuchando en el puerto ${HTTP_PORT}"
+    # Mostrar procesos que podrían estar interfiriendo
+    echo "Procesos en el puerto ${HTTP_PORT}:"
+    lsof -i :${HTTP_PORT} 2>/dev/null || echo "Ninguno"
 fi
 
 if [ ${VNC_RUNNING} -eq 1 ] && [ ${WEBSOCKIFY_RUNNING} -eq 1 ]; then
     echo "[✓] Reparación VNC completada exitosamente"
+    echo "[✓] VNC nativo disponible en: `hostname -I | awk '{print $1}'`:${VNC_PORT}"
+    echo "[✓] VNC web disponible en: http://`hostname -I | awk '{print $1}'`:${HTTP_PORT}/vnc.html"
     exit 0
 else
     echo "[!] Reparación parcial - Revisa los logs en ${LOG_FILE}"
