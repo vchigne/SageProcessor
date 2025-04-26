@@ -12,11 +12,15 @@ export default async function handler(req, res) {
   }
 
   try {
+    console.log(`Iniciando reparación VNC para servidor ${id}...`);
+    
     // Llamar al API de DuckDB Swarm para reparar VNC
     const response = await fetch(`http://localhost:5001/api/servers/${id}/vnc/repair`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' }
     });
+    
+    console.log(`Respuesta del API: ${response.status}`);
     
     if (!response.ok) {
       const errorText = await response.text();
