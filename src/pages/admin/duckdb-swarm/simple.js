@@ -6,7 +6,8 @@ const DuckDBSwarmSimple = () => {
     servers: true,
     clouds: false,
     installations: false,
-    buckets: false
+    buckets: false,
+    redeploy: false
   });
   const [activeTab, setActiveTab] = useState('servers');
   const [clouds, setClouds] = useState([]);
@@ -15,7 +16,10 @@ const DuckDBSwarmSimple = () => {
   const [showNewBucket, setShowNewBucket] = useState(false);
   const [newBucketName, setNewBucketName] = useState('');
   const [installations, setInstallations] = useState([]);
+  const [editMode, setEditMode] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [formData, setFormData] = useState({
+    id: null,          // ID del servidor cuando estamos en modo edición
     name: '',         // Nuevo campo para nombre descriptivo
     hostname: '',
     port: 1294,
@@ -705,7 +709,7 @@ const DuckDBSwarmSimple = () => {
                               {server.status}
                             </span>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-4">
                             <button
                               onClick={() => {
                                 // Cargar datos del servidor para edición
@@ -727,13 +731,46 @@ const DuckDBSwarmSimple = () => {
                                   ssh_key: '',
                                   deploy_server: false
                                 });
-                                setActiveTab('add_server');
-                                setFormStep('basic');
+                                setEditMode(true);
+                                setShowEditModal(true);
                               }}
                               className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-300"
                             >
                               Editar
                             </button>
+                            
+                            {!server.is_local && (
+                              <button
+                                onClick={async () => {
+                                  if (confirm(`¿Seguro que deseas redesplegar el servidor ${server.name || server.hostname}?`)) {
+                                    try {
+                                      setLoading(prev => ({ ...prev, redeploy: true }));
+                                      // Esta sería la llamada para redesplegar (implementaremos la API)
+                                      const response = await fetch(`/api/admin/duckdb-swarm/servers/${server.id}/redeploy`, {
+                                        method: 'POST',
+                                      });
+                                      
+                                      if (response.ok) {
+                                        alert('Servidor redesplegado correctamente');
+                                        fetchServers();
+                                      } else {
+                                        const data = await response.json();
+                                        alert(data.error || 'Error al redesplegar servidor');
+                                      }
+                                    } catch (error) {
+                                      console.error('Error redeploying server:', error);
+                                      alert('Error al redesplegar servidor');
+                                    } finally {
+                                      setLoading(prev => ({ ...prev, redeploy: false }));
+                                    }
+                                  }
+                                }}
+                                className="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300"
+                                disabled={loading.redeploy}
+                              >
+                                {loading.redeploy ? 'Redesplegando...' : 'Redesplegar'}
+                              </button>
+                            )}
                           </td>
                         </tr>
                       ))
@@ -781,6 +818,245 @@ const DuckDBSwarmSimple = () => {
             {renderFormStep()}
             {renderStepButtons()}
           </form>
+        </div>
+      )}
+
+      {/* Modal de Edición */}
+      {showEditModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div className="fixed inset-0 transition-opacity" aria-hidden="true">
+              <div className="absolute inset-0 bg-gray-500 dark:bg-gray-900 opacity-75"></div>
+            </div>
+            
+            <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+            
+            <div className="inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-3xl sm:w-full">
+              <div className="bg-white dark:bg-gray-800 px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                <div className="sm:flex sm:items-start">
+                  <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
+                    <h3 className="text-lg leading-6 font-medium text-gray-900 dark:text-white">
+                      Editar Servidor: {formData.name || formData.hostname}
+                    </h3>
+                    <div className="mt-4">
+                      <form onSubmit={async (e) => {
+                        e.preventDefault();
+                        try {
+                          const response = await fetch(`/api/admin/duckdb-swarm/servers/${formData.id}`, {
+                            method: 'PUT',
+                            headers: {
+                              'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                              name: formData.name,
+                              hostname: formData.hostname,
+                              port: formData.port,
+                              server_key: formData.server_key,
+                              server_type: formData.server_type,
+                              is_local: formData.is_local,
+                              installation_id: formData.installation_id,
+                              cloud_secret_id: formData.cloud_secret_id,
+                              bucket_name: formData.bucket_name
+                            })
+                          });
+                          
+                          if (response.ok) {
+                            alert('Servidor actualizado correctamente');
+                            fetchServers();
+                            setShowEditModal(false);
+                          } else {
+                            const error = await response.json();
+                            alert(error.error || 'Error al actualizar el servidor');
+                          }
+                        } catch (error) {
+                          console.error('Error updating server:', error);
+                          alert('Error al actualizar el servidor');
+                        }
+                      }}>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                              Nombre Descriptivo
+                            </label>
+                            <input
+                              type="text"
+                              name="name"
+                              value={formData.name}
+                              onChange={handleInputChange}
+                              placeholder="Nombre descriptivo"
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white"
+                              required
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                              Hostname / IP
+                            </label>
+                            <input
+                              type="text"
+                              name="hostname"
+                              value={formData.hostname}
+                              onChange={handleInputChange}
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white"
+                              required
+                            />
+                          </div>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                              Puerto
+                            </label>
+                            <input
+                              type="number"
+                              name="port"
+                              value={formData.port}
+                              onChange={handleInputChange}
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white"
+                              required
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                              Tipo de Servidor
+                            </label>
+                            <select
+                              name="server_type"
+                              value={formData.server_type}
+                              onChange={handleInputChange}
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white"
+                              required
+                            >
+                              <option value="general">General</option>
+                              <option value="analytics">Analytics</option>
+                              <option value="reporting">Reporting</option>
+                              <option value="processing">Processing</option>
+                              <option value="backup">Backup</option>
+                              <option value="data-lake">Data Lake</option>
+                            </select>
+                          </div>
+                        </div>
+                        
+                        <div className="mt-4">
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Clave del Servidor
+                          </label>
+                          <input
+                            type="password"
+                            name="server_key"
+                            value={formData.server_key}
+                            onChange={handleInputChange}
+                            placeholder="Dejar en blanco para no cambiar"
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white"
+                          />
+                          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            Deja este campo en blanco si no deseas cambiar la clave
+                          </p>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                              Instalación SAGE
+                            </label>
+                            <select
+                              name="installation_id"
+                              value={formData.installation_id}
+                              onChange={handleInputChange}
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white"
+                            >
+                              <option value="">Ninguna</option>
+                              {installations.map(installation => (
+                                <option key={installation.id} value={installation.id}>
+                                  {installation.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                              Secreto Cloud
+                            </label>
+                            <select
+                              name="cloud_secret_id"
+                              value={formData.cloud_secret_id}
+                              onChange={(e) => {
+                                setFormData({ 
+                                  ...formData, 
+                                  cloud_secret_id: e.target.value,
+                                  bucket_name: '' 
+                                });
+                              }}
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white"
+                            >
+                              <option value="">Ninguno</option>
+                              {cloudSecrets.map(secret => (
+                                <option key={secret.id} value={secret.id.toString()}>
+                                  {secret.nombre} ({secret.tipo})
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        
+                        {formData.cloud_secret_id && (
+                          <div className="mt-4">
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                              Bucket
+                            </label>
+                            <select
+                              name="bucket_name"
+                              value={formData.bucket_name}
+                              onChange={handleInputChange}
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white"
+                              required={!!formData.cloud_secret_id}
+                            >
+                              <option value="" disabled>Seleccionar bucket</option>
+                              {buckets.map(bucket => (
+                                <option key={bucket.name} value={bucket.name}>
+                                  {bucket.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+                        
+                        <div className="flex items-center mt-4">
+                          <input
+                            type="checkbox"
+                            name="is_local"
+                            checked={formData.is_local}
+                            onChange={handleInputChange}
+                            className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                          />
+                          <label className="ml-2 block text-sm text-gray-700 dark:text-gray-300">
+                            Marcar como servidor local
+                          </label>
+                        </div>
+                        
+                        <div className="mt-6 flex justify-end space-x-3">
+                          <button
+                            type="button"
+                            onClick={() => setShowEditModal(false)}
+                            className="inline-flex justify-center px-4 py-2 text-sm font-medium text-gray-700 bg-white dark:bg-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            type="submit"
+                            className="inline-flex justify-center px-4 py-2 text-sm font-medium text-white bg-indigo-600 border border-transparent rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                          >
+                            Guardar Cambios
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

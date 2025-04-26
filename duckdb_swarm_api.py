@@ -175,13 +175,16 @@ def add_server():
 
 @app.route('/api/servers/deploy', methods=['POST'])
 def deploy_server():
-    """Despliega un nuevo servidor DuckDB mediante SSH"""
+    """Despliega un nuevo servidor DuckDB mediante SSH o redespliega uno existente"""
     try:
         # Obtener datos del request
         data = request.json
         if not data:
             return jsonify({'error': 'No se proporcionaron datos'}), 400
             
+        # Verificar si es un redespliegue o un nuevo despliegue
+        is_redeploy = data.get('redeploy', False)
+        
         # Validar datos requeridos
         ssh_host = data.get('ssh_host')
         ssh_port = int(data.get('ssh_port', 22))
@@ -200,7 +203,8 @@ def deploy_server():
             return jsonify({'error': 'Se requiere una contraseña o clave SSH'}), 400
             
         # Primero verificar la conexión
-        logger.info(f"Verificando conexión SSH a {ssh_host}:{ssh_port} con usuario {ssh_username}")
+        operation_type = "redespliegue" if is_redeploy else "despliegue"
+        logger.info(f"Verificando conexión SSH para {operation_type} a {ssh_host}:{ssh_port} con usuario {ssh_username}")
         check_result = check_connection(
             ssh_host=ssh_host,
             ssh_port=ssh_port,
@@ -217,7 +221,7 @@ def deploy_server():
             }), 400
             
         # Desplegar DuckDB
-        logger.info(f"Desplegando DuckDB en {ssh_host}:{ssh_port} con puerto DuckDB {duckdb_port}")
+        logger.info(f"{operation_type.capitalize()} de DuckDB en {ssh_host}:{ssh_port} con puerto DuckDB {duckdb_port}")
         result = deploy_duckdb_via_ssh(
             ssh_host=ssh_host,
             ssh_port=ssh_port,
@@ -229,15 +233,16 @@ def deploy_server():
         )
         
         if result.get('success'):
+            message = 'DuckDB redesplegado exitosamente' if is_redeploy else 'DuckDB instalado y configurado exitosamente'
             return jsonify({
                 'success': True,
-                'message': 'DuckDB instalado y configurado exitosamente',
+                'message': message,
                 'details': result
             })
         else:
             return jsonify({
                 'success': False,
-                'message': result.get('message', 'Error al desplegar DuckDB'),
+                'message': result.get('message', f'Error al {operation_type} DuckDB'),
                 'details': result
             }), 500
             
