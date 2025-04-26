@@ -102,6 +102,12 @@ RUN mkdir -p /root/.vnc && \
 RUN echo 'root:duckdb' | chpasswd && \
     sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
 
+# Agregar un script para iniciar VNC manualmente si es necesario
+RUN echo '#!/bin/bash\nvncserver -kill :1 || true\nvncserver :1 -localhost no -geometry $VNC_GEOMETRY -depth $VNC_DEPTH' > /usr/local/bin/start-vnc && \
+    chmod +x /usr/local/bin/start-vnc && \
+    echo '#!/bin/bash\nsupervisorctl restart vnc' > /usr/local/bin/restart-vnc && \
+    chmod +x /usr/local/bin/restart-vnc
+
 # Exponer puertos
 EXPOSE 1294 5901 6080 22
 

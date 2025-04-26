@@ -1,13 +1,26 @@
 #!/bin/bash
 # Script para iniciar el servidor VNC
 
+# Usar bash para depuración
+set -x
+
 # Configurar logging más detallado
 exec > >(tee -a /var/log/vnc-startup.log) 2>&1
 echo "$(date): Iniciando script de configuración VNC"
 
-# Establecer DISPLAY
+# Establecer DISPLAY de manera explícita en formato correcto
 export DISPLAY=:1
 echo "$(date): DISPLAY configurado como $DISPLAY"
+
+# Configurar variables de entorno adicionales para X
+export XDG_RUNTIME_DIR=/tmp/runtime-admin
+mkdir -p $XDG_RUNTIME_DIR
+chmod 700 $XDG_RUNTIME_DIR
+chown admin:admin $XDG_RUNTIME_DIR
+
+echo "$(date): Verificando variables de entorno para VNC"
+env | grep -i vnc
+env | grep -i display
 
 # Verificar configuración
 echo "$(date): Geometría: $VNC_GEOMETRY, Profundidad: $VNC_DEPTH, Contraseña configurada: $(if [ -n "$VNC_PASSWORD" ]; then echo "Sí"; else echo "No"; fi)"
