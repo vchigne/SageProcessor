@@ -88,7 +88,7 @@ export default async function handler(req, res) {
           redeploy: true // Indicamos que es un redespliegue
         }));
         
-        const deployResponse = await fetch('http://localhost:5001/api/servers/deploy', {
+        const deployResponse = await fetch('http://localhost:5000/api/servers/deploy', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
