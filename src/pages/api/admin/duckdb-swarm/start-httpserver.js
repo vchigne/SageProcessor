@@ -2,9 +2,9 @@ import { pool } from '@/utils/db';
 
 async function getServer(serverId) {
   try {
-    // Intentar obtener el servidor de la base de datos PostgreSQL
+    // Intentar obtener el servidor de la base de datos PostgreSQL con información SSH
     const { rows } = await pool.query(
-      'SELECT * FROM duckdb_servers WHERE id = $1',
+      'SELECT id, name, hostname, port, server_key, status, is_local, ssh_host, ssh_port, ssh_username, ssh_password, ssh_key FROM duckdb_servers WHERE id = $1',
       [serverId]
     );
     
@@ -29,6 +29,7 @@ async function getServer(serverId) {
         hostname: server.hostname,
         port: server.port,
         status: server.status,
+        is_local: server.is_local || false,
         server_key: server.api_key || ''
       };
     }
@@ -78,6 +79,22 @@ export default async function handler(req, res) {
     // Construir URL de la API DuckDB para iniciar el servidor HTTP
     const duckDBApiURL = `http://localhost:5001`;
     
+    // Si es un servidor remoto, necesitamos usar SSH para configurar httpserver
+    let remoteCommand = null;
+    let sshInfo = null;
+    
+    if (!server.is_local && server.ssh_host && server.ssh_username) {
+      sshInfo = {
+        host: server.ssh_host,
+        port: server.ssh_port || 22,
+        username: server.ssh_username,
+        password: server.ssh_password || null,
+        key: server.ssh_key || null
+      };
+      
+      console.log(`Preparando comando remoto para httpserver en servidor ${server.id} (${server.name})`);
+    }
+    
     // Realizar solicitud al endpoint del servidor DuckDB para iniciar httpserver
     const httpServerResponse = await fetch(`${duckDBApiURL}/api/servers/${server.id}/httpserver`, {
       method: 'POST',
@@ -86,7 +103,8 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         port,
-        auth: `${username}:${password}`
+        auth: `${username}:${password}`,
+        ssh: sshInfo
       })
     });
     

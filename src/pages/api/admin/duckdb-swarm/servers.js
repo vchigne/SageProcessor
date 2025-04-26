@@ -178,9 +178,10 @@ export default async function handler(req, res) {
           const result = await client.query(`
             INSERT INTO duckdb_servers (
               name, hostname, port, server_key, server_type, is_local, status, 
-              cloud_secret_id, bucket_name, installation_id
+              cloud_secret_id, bucket_name, installation_id,
+              ssh_host, ssh_port, ssh_username, ssh_password, ssh_key
             ) VALUES (
-              $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
+              $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
             ) RETURNING *
           `, [
             name, 
@@ -192,8 +193,21 @@ export default async function handler(req, res) {
             deploy_successful ? 'active' : 'starting', 
             cloud_secret_id, 
             bucket_name, 
-            installation_id || ''
+            installation_id || '',
+            ssh_host || null,
+            ssh_port || 22,
+            ssh_username || null,
+            ssh_password || null,
+            ssh_key || null
           ]);
+          
+          console.log('Servidor DuckDB creado con credenciales SSH:', {
+            ssh_host,
+            ssh_port,
+            ssh_username,
+            ssh_password: ssh_password ? '******' : null,
+            ssh_key: ssh_key ? '[CLAVE PRIVADA]' : null
+          });
           
           return res.status(201).json({
             success: true,
@@ -207,8 +221,179 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: 'Error al crear servidor: ' + error.message });
       }
 
+    case 'PUT':
+      try {
+        const { id } = req.query;
+        
+        if (!id) {
+          return res.status(400).json({ error: 'Se requiere ID del servidor' });
+        }
+        
+        // Extraer datos actualizados
+        const {
+          name,
+          hostname,
+          port,
+          server_key,
+          server_type,
+          is_local,
+          installation_id,
+          cloud_secret_id,
+          bucket_name,
+          ssh_host,
+          ssh_port,
+          ssh_username,
+          ssh_password,
+          ssh_key,
+          status
+        } = req.body;
+        
+        // Validaciones básicas
+        if (!hostname) {
+          return res.status(400).json({ error: 'Se requiere un hostname' });
+        }
+        
+        if (!port) {
+          return res.status(400).json({ error: 'Se requiere un puerto' });
+        }
+        
+        if (!name) {
+          return res.status(400).json({ error: 'Se requiere un nombre descriptivo' });
+        }
+        
+        // Actualizar el servidor en la base de datos
+        const client = await pool.connect();
+        try {
+          // Construir dinámicamente la consulta SQL y los parámetros
+          let updateFields = [];
+          let queryParams = [];
+          let paramIndex = 1;
+          
+          // Agregamos cada campo solo si está definido
+          if (name !== undefined) {
+            updateFields.push(`name = $${paramIndex++}`);
+            queryParams.push(name);
+          }
+          
+          if (hostname !== undefined) {
+            updateFields.push(`hostname = $${paramIndex++}`);
+            queryParams.push(hostname);
+          }
+          
+          if (port !== undefined) {
+            updateFields.push(`port = $${paramIndex++}`);
+            queryParams.push(port);
+          }
+          
+          if (server_key !== undefined) {
+            updateFields.push(`server_key = $${paramIndex++}`);
+            queryParams.push(server_key);
+          }
+          
+          if (server_type !== undefined) {
+            updateFields.push(`server_type = $${paramIndex++}`);
+            queryParams.push(server_type);
+          }
+          
+          if (is_local !== undefined) {
+            updateFields.push(`is_local = $${paramIndex++}`);
+            queryParams.push(!!is_local);
+          }
+          
+          if (status !== undefined) {
+            updateFields.push(`status = $${paramIndex++}`);
+            queryParams.push(status);
+          }
+          
+          if (cloud_secret_id !== undefined) {
+            updateFields.push(`cloud_secret_id = $${paramIndex++}`);
+            queryParams.push(cloud_secret_id);
+          }
+          
+          if (bucket_name !== undefined) {
+            updateFields.push(`bucket_name = $${paramIndex++}`);
+            queryParams.push(bucket_name);
+          }
+          
+          if (installation_id !== undefined) {
+            updateFields.push(`installation_id = $${paramIndex++}`);
+            queryParams.push(installation_id);
+          }
+          
+          if (ssh_host !== undefined) {
+            updateFields.push(`ssh_host = $${paramIndex++}`);
+            queryParams.push(ssh_host);
+          }
+          
+          if (ssh_port !== undefined) {
+            updateFields.push(`ssh_port = $${paramIndex++}`);
+            queryParams.push(ssh_port);
+          }
+          
+          if (ssh_username !== undefined) {
+            updateFields.push(`ssh_username = $${paramIndex++}`);
+            queryParams.push(ssh_username);
+          }
+          
+          if (ssh_password !== undefined) {
+            updateFields.push(`ssh_password = $${paramIndex++}`);
+            queryParams.push(ssh_password);
+          }
+          
+          if (ssh_key !== undefined) {
+            updateFields.push(`ssh_key = $${paramIndex++}`);
+            queryParams.push(ssh_key);
+          }
+          
+          // Agregar updated_at timestamp
+          updateFields.push(`updated_at = CURRENT_TIMESTAMP`);
+          
+          // Solo continuar si hay campos para actualizar
+          if (updateFields.length === 0) {
+            return res.status(400).json({ error: 'No se proporcionaron campos para actualizar' });
+          }
+          
+          // Agregar el ID del servidor como último parámetro
+          queryParams.push(id);
+          
+          const query = `
+            UPDATE duckdb_servers 
+            SET ${updateFields.join(', ')}
+            WHERE id = $${paramIndex}
+            RETURNING *
+          `;
+          
+          console.log('Ejecutando consulta de actualización:', query);
+          console.log('Con parámetros:', queryParams);
+          
+          const result = await client.query(query, queryParams);
+          
+          if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Servidor no encontrado' });
+          }
+          
+          console.log('Servidor DuckDB actualizado con credenciales SSH:', {
+            ssh_host,
+            ssh_port,
+            ssh_username,
+            ssh_password: ssh_password ? '******' : '[no modificado]',
+            ssh_key: ssh_key ? '[CLAVE PRIVADA]' : '[no modificado]'
+          });
+          
+          return res.status(200).json({
+            success: true,
+            server: result.rows[0]
+          });
+        } finally {
+          client.release();
+        }
+      } catch (error) {
+        console.error('Error updating server:', error);
+        return res.status(500).json({ error: 'Error al actualizar servidor: ' + error.message });
+      }
+      
     default:
-      res.setHeader('Allow', ['GET', 'POST']);
+      res.setHeader('Allow', ['GET', 'POST', 'PUT']);
       return res.status(405).json({ error: `Método ${method} no permitido` });
   }
 }

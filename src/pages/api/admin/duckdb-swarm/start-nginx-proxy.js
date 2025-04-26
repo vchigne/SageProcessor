@@ -2,9 +2,9 @@ import { pool } from '@/utils/db';
 
 async function getServer(serverId) {
   try {
-    // Intentar obtener el servidor de la base de datos PostgreSQL
+    // Intentar obtener el servidor de la base de datos PostgreSQL con información SSH
     const { rows } = await pool.query(
-      'SELECT * FROM duckdb_servers WHERE id = $1',
+      'SELECT id, name, hostname, port, server_key, status, is_local, ssh_host, ssh_port, ssh_username, ssh_password, ssh_key FROM duckdb_servers WHERE id = $1',
       [serverId]
     );
     
@@ -29,6 +29,7 @@ async function getServer(serverId) {
         hostname: server.hostname,
         port: server.port,
         status: server.status,
+        is_local: server.is_local || false,
         server_key: server.api_key || ''
       };
     }
@@ -77,6 +78,23 @@ export default async function handler(req, res) {
     // Construir URL de la API DuckDB para iniciar la UI
     const duckDBApiURL = `http://localhost:5001`;
     
+    // Verificar si tenemos información SSH para servidores remotos
+    let sshInfo = null;
+    let hasSSHAccess = false;
+    
+    if (!server.is_local && server.ssh_host && server.ssh_username) {
+      sshInfo = {
+        host: server.ssh_host,
+        port: server.ssh_port || 22,
+        username: server.ssh_username,
+        password: server.ssh_password || null,
+        key: server.ssh_key || null
+      };
+      
+      hasSSHAccess = true;
+      console.log(`Servidor remoto con acceso SSH: ${server.id} (${server.name})`);
+    }
+    
     // Realizar solicitud al endpoint para iniciar la UI primero
     const uiResponse = await fetch(`${duckDBApiURL}/start-ui`, {
       method: 'POST',
@@ -111,18 +129,67 @@ export default async function handler(req, res) {
     // Aquí se llamaría a un servicio para implementar la configuración en el servidor
     // En una implementación real, esto podría comunicarse con el servidor vía SSH para configurar Nginx
     
+    // Crear un script para instalar y configurar Nginx
+    const setupScript = `#!/bin/bash
+# Script para configurar Nginx como proxy inverso para DuckDB UI
+
+# Actualizar repositorios
+apt-get update
+
+# Instalar Nginx si no está instalado
+if ! command -v nginx &> /dev/null; then
+    echo "Instalando Nginx..."
+    apt-get install -y nginx
+fi
+
+# Crear archivo de configuración
+cat > /etc/nginx/sites-available/duckdb.conf << 'EOF'
+${nginxConfig}
+EOF
+
+# Crear enlace simbólico si no existe
+if [ ! -f /etc/nginx/sites-enabled/duckdb.conf ]; then
+    ln -s /etc/nginx/sites-available/duckdb.conf /etc/nginx/sites-enabled/
+fi
+
+# Eliminar la configuración default si existe
+if [ -f /etc/nginx/sites-enabled/default ]; then
+    rm /etc/nginx/sites-enabled/default
+fi
+
+# Probar la configuración
+nginx -t
+
+# Reiniciar Nginx
+systemctl restart nginx
+
+echo "Configuración de Nginx completada para ${domain}"
+    `;
+    
+    // Si tenemos acceso SSH para un servidor remoto, podríamos ejecutar este script
+    let sshCommand = '';
+    if (hasSSHAccess) {
+      sshCommand = `ssh -p ${sshInfo.port} ${sshInfo.username}@${sshInfo.host} 'bash -s' < setup_nginx.sh`;
+    }
+    
     return res.status(200).json({
       success: true,
       connection_type: 'nginx',
       domain: domain,
       nginx_config: nginxConfig,
-      setup_instructions: [
-        "1. Instala Nginx en el servidor: sudo apt-get install -y nginx",
-        "2. Crea un archivo de configuración en /etc/nginx/sites-available/duckdb.conf",
-        "3. Pega la configuración de Nginx generada en ese archivo",
-        "4. Crea un enlace simbólico: sudo ln -s /etc/nginx/sites-available/duckdb.conf /etc/nginx/sites-enabled/",
-        "5. Prueba la configuración: sudo nginx -t",
-        "6. Reinicia Nginx: sudo systemctl restart nginx"
+      setup_script: setupScript,
+      ssh_command: sshCommand,
+      has_ssh_access: hasSSHAccess,
+      setup_instructions: !hasSSHAccess ? [
+        "1. Guarda el script de configuración como 'setup_nginx.sh'",
+        "2. Asegúrate de que el script tiene permisos de ejecución: chmod +x setup_nginx.sh",
+        "3. Ejecuta el script como root: sudo ./setup_nginx.sh",
+        "4. Verifica que Nginx está funcionando: sudo systemctl status nginx"
+      ] : [
+        "1. Guarda el script de configuración como 'setup_nginx.sh'",
+        "2. Asegúrate de que el script tiene permisos de ejecución: chmod +x setup_nginx.sh",
+        `3. Ejecuta el comando: ${sshCommand}`,
+        `4. O conéctate al servidor con: ssh -p ${sshInfo.port} ${sshInfo.username}@${sshInfo.host}`
       ],
       message: 'Configuración de proxy Nginx generada correctamente'
     });
