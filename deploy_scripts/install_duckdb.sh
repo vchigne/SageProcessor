@@ -26,30 +26,42 @@ else
     OS="Unknown"
 fi
 
-# Actualizar repositorios
-print_info "Actualizando repositorios..."
-if [[ "$OS" == *"Debian"* ]] || [[ "$OS" == *"Ubuntu"* ]] || [[ "$OS" == "Unknown" ]]; then
-    sudo apt-get update -y
-elif [[ "$OS" == *"CentOS"* ]] || [[ "$OS" == *"Red Hat"* ]]; then
-    sudo yum update -y
-elif [[ "$OS" == *"Fedora"* ]]; then
-    sudo dnf update -y
+# Nota: En este modo de instalación, asumimos que las dependencias ya están instaladas
+# y solo configuramos el servidor DuckDB
+print_info "Omitiendo actualización de repositorios (requiere sudo)..."
+
+# Verificar dependencias
+print_info "Verificando dependencias requeridas..."
+MISSING_DEPS=0
+
+# Verificar Python 3
+if ! command -v python3 &> /dev/null; then
+    print_error "Python 3 no está instalado. Es necesario instalarlo manualmente."
+    MISSING_DEPS=1
 else
-    print_info "Intentando actualizar con apt-get..."
-    sudo apt-get update -y || true
+    print_info "✓ Python 3 instalado correctamente"
 fi
 
-# Instalar dependencias
-print_info "Instalando dependencias..."
-if [[ "$OS" == *"Debian"* ]] || [[ "$OS" == *"Ubuntu"* ]] || [[ "$OS" == "Unknown" ]]; then
-    sudo apt-get install -y python3 python3-pip curl unzip
-elif [[ "$OS" == *"CentOS"* ]] || [[ "$OS" == *"Red Hat"* ]]; then
-    sudo yum install -y python3 python3-pip curl unzip
-elif [[ "$OS" == *"Fedora"* ]]; then
-    sudo dnf install -y python3 python3-pip curl unzip
+# Verificar pip3
+if ! command -v pip3 &> /dev/null; then
+    print_error "Pip3 no está instalado. Es necesario instalarlo manualmente."
+    MISSING_DEPS=1
 else
-    print_info "Intentando instalar dependencias con apt-get..."
-    sudo apt-get install -y python3 python3-pip curl unzip || true
+    print_info "✓ Pip3 instalado correctamente"
+fi
+
+# Verificar curl
+if ! command -v curl &> /dev/null; then
+    print_error "curl no está instalado. Es necesario instalarlo manualmente."
+    MISSING_DEPS=1
+else
+    print_info "✓ curl instalado correctamente"
+fi
+
+if [ $MISSING_DEPS -eq 1 ]; then
+    print_error "Faltan dependencias. Por favor, instale los paquetes requeridos manualmente con:"
+    print_info "sudo apt-get install python3 python3-pip curl unzip"
+    print_info "Continuando con la instalación en modo limitado..."
 fi
 
 # Verificar que Python está instalado
@@ -81,47 +93,11 @@ else
     print_info "Sin clave de autenticación"
 fi
 
-# Crear archivo de servicio systemd si es posible
-if [ -d /etc/systemd/system ]; then
-    print_info "Configurando servicio systemd..."
-    cat <<EOF > ~/duckdb_server/duckdb_server.service
-[Unit]
-Description=DuckDB Server
-After=network.target
+# Usar siempre el método de inicio manual por usuario en lugar de systemd
+print_info "Usando método de inicio manual (no requiere sudo)..."
 
-[Service]
-User=$USER
-WorkingDirectory=$HOME/duckdb_server
-Environment="DUCKDB_PORT=$DUCKDB_PORT"
-Environment="DUCKDB_SERVER_KEY=$DUCKDB_KEY"
-Environment="DUCKDB_DATA_DIR=$HOME/duckdb_data"
-ExecStart=/usr/bin/python3 $HOME/duckdb_server/duckdb_server.py
-Restart=always
-RestartSec=10
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-    sudo cp ~/duckdb_server/duckdb_server.service /etc/systemd/system/
-    sudo systemctl daemon-reload
-    sudo systemctl enable duckdb_server.service
-    
-    print_info "Iniciando servicio DuckDB..."
-    sudo systemctl start duckdb_server.service
-    
-    # Verificar estado del servicio
-    if sudo systemctl is-active --quiet duckdb_server.service; then
-        print_success "Servicio DuckDB iniciado correctamente"
-    else
-        print_error "Error al iniciar el servicio DuckDB"
-        sudo systemctl status duckdb_server.service
-    fi
-else
-    # Alternativa sin systemd: crear script de inicio
-    print_info "systemd no detectado, creando script de inicio manual..."
+# Crear script de inicio
+print_info "Creando script de inicio manual..."
     cat <<EOF > ~/duckdb_server/start_duckdb.sh
 #!/bin/bash
 export DUCKDB_PORT=$DUCKDB_PORT
@@ -163,7 +139,6 @@ EOF
         print_error "Error al iniciar DuckDB Server"
         cat ~/duckdb_server/duckdb_server.log
     fi
-fi
 
 print_info "Verificando que el servidor esté respondiendo..."
 sleep 5

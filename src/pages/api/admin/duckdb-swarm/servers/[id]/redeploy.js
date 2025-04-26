@@ -1,4 +1,5 @@
 // API para redesplegar un servidor DuckDB
+// Este endpoint envía una solicitud al API de DuckDB Swarm para redesplegar un servidor
 import { pool } from '../../../../../../utils/db';
 
 export default async function handler(req, res) {
@@ -12,82 +13,149 @@ export default async function handler(req, res) {
   }
 
   try {
-    // En una implementación real, aquí obtendríamos la información del servidor
-    // desde la base de datos y luego realizaríamos el redespliegue
+    // Obtener datos del servidor desde la base de datos
+    const client = await pool.connect();
     
-    // Simulamos obtener datos del servidor de la base de datos
-    const server = {
-      id: parseInt(id),
-      hostname: `server-${id}.example.com`,
-      port: 1294,
-      server_key: 'server-key-secret',
-      is_local: parseInt(id) === 1, // El servidor con ID 1 es local
-      ssh_host: `server-${id}.example.com`,
-      ssh_port: 22,
-      ssh_username: 'deployer',
-      // En una implementación real, estas credenciales estarían almacenadas de forma segura
-      ssh_password: '', // Normalmente usaríamos clave SSH en lugar de contraseña
-      ssh_key: '-----BEGIN RSA PRIVATE KEY----- (contenido truncado para seguridad) -----END RSA PRIVATE KEY-----'
-    };
-    
-    // Verificamos que el servidor no sea local
-    if (server.is_local) {
-      return res.status(400).json({ 
-        error: 'No se puede redesplegar el servidor local' 
-      });
-    }
-    
-    // Llamar al API de DuckDB Swarm para redesplegar
     try {
-      const deployResponse = await fetch('http://localhost:5001/api/servers/deploy', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          ssh_host: server.ssh_host,
-          ssh_port: server.ssh_port,
-          ssh_username: server.ssh_username,
-          ssh_password: server.ssh_password,
-          ssh_key: server.ssh_key,
-          port: server.port,
-          server_key: server.server_key,
-          redeploy: true // Indicamos que es un redespliegue
-        })
-      });
+      // Obtener información del servidor
+      const result = await client.query(`
+        SELECT 
+          id, 
+          hostname, 
+          port, 
+          server_key, 
+          is_local,
+          name,
+          status
+        FROM duckdb_servers 
+        WHERE id = $1
+      `, [id]);
       
-      if (!deployResponse.ok) {
-        const errorData = await deployResponse.json();
-        return res.status(deployResponse.status).json({
-          error: `Error al redesplegar: ${errorData.message || 'Error desconocido'}`
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'Servidor no encontrado' });
+      }
+      
+      const server = result.rows[0];
+      
+      // Obtener las credenciales SSH desde la solicitud
+      const { ssh_host, ssh_port, ssh_username, ssh_password, ssh_key } = req.body;
+      
+      // Verificar que se han proporcionado los datos necesarios
+      if (!ssh_host) {
+        return res.status(400).json({ error: 'Se requiere un host SSH para el despliegue' });
+      }
+      
+      if (!ssh_username) {
+        return res.status(400).json({ error: 'Se requiere un usuario SSH para el despliegue' });
+      }
+      
+      // Debe tener al menos contraseña o clave SSH
+      if (!ssh_password && !ssh_key) {
+        return res.status(400).json({ error: 'Se requiere una contraseña o clave SSH para el despliegue' });
+      }
+      
+      // Verificamos que el servidor no sea local
+      if (server.is_local) {
+        return res.status(400).json({ 
+          error: 'No se puede redesplegar el servidor local' 
         });
       }
       
-      const deployResult = await deployResponse.json();
+      // Asociar los datos SSH con el servidor
+      server.ssh_host = ssh_host;
+      server.ssh_port = ssh_port || 22;
+      server.ssh_username = ssh_username;
+      server.ssh_password = ssh_password || '';
+      server.ssh_key = ssh_key || '';
       
-      if (!deployResult.success) {
+      // Actualizar el estado del servidor a "deploying"
+      await client.query(`
+        UPDATE duckdb_servers
+        SET status = 'deploying', updated_at = NOW()
+        WHERE id = $1
+      `, [server.id]);
+      
+      // Llamar al API de DuckDB Swarm para redesplegar
+      try {
+        const deployResponse = await fetch('http://localhost:5001/api/servers/deploy', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            ssh_host: server.ssh_host,
+            ssh_port: server.ssh_port,
+            ssh_username: server.ssh_username,
+            ssh_password: server.ssh_password,
+            ssh_key: server.ssh_key,
+            port: server.port,
+            server_key: server.server_key,
+            redeploy: true // Indicamos que es un redespliegue
+          })
+        });
+        
+        if (!deployResponse.ok) {
+          const errorData = await deployResponse.json();
+          
+          // Actualizar el estado del servidor a "error"
+          await client.query(`
+            UPDATE duckdb_servers
+            SET status = 'error', updated_at = NOW()
+            WHERE id = $1
+          `, [server.id]);
+          
+          return res.status(deployResponse.status).json({
+            error: `Error al redesplegar: ${errorData.message || 'Error desconocido'}`
+          });
+        }
+        
+        const deployResult = await deployResponse.json();
+        
+        if (!deployResult.success) {
+          // Actualizar el estado del servidor a "error"
+          await client.query(`
+            UPDATE duckdb_servers
+            SET status = 'error', updated_at = NOW()
+            WHERE id = $1
+          `, [server.id]);
+          
+          return res.status(500).json({ 
+            error: `Error al redesplegar: ${deployResult.message || 'Error desconocido'}`
+          });
+        }
+        
+        // Actualizar el estado del servidor a "active"
+        await client.query(`
+          UPDATE duckdb_servers
+          SET status = 'active', updated_at = NOW(), last_seen = NOW()
+          WHERE id = $1
+        `, [server.id]);
+        
+        return res.status(200).json({
+          success: true,
+          message: 'Servidor redesplegado correctamente',
+          details: deployResult
+        });
+        
+      } catch (deployError) {
+        console.error('Error al conectar con el API de despliegue:', deployError);
+        
+        // Actualizar el estado del servidor a "error"
+        await client.query(`
+          UPDATE duckdb_servers
+          SET status = 'error', updated_at = NOW()
+          WHERE id = $1
+        `, [server.id]);
+        
         return res.status(500).json({ 
-          error: `Error al redesplegar: ${deployResult.message || 'Error desconocido'}`
+          error: `Error al conectar con el API de despliegue: ${deployError.message}`
         });
       }
-      
-      // Aquí actualizaríamos el estado del servidor en la base de datos
-      
-      return res.status(200).json({
-        success: true,
-        message: 'Servidor redesplegado correctamente',
-        details: deployResult
-      });
-      
-    } catch (deployError) {
-      console.error('Error al conectar con el API de despliegue:', deployError);
-      return res.status(500).json({ 
-        error: `Error al conectar con el API de despliegue: ${deployError.message}`
-      });
+    } finally {
+      client.release();
     }
-    
   } catch (error) {
     console.error('Error redeploying server:', error);
-    return res.status(500).json({ error: 'Error al redesplegar servidor' });
+    return res.status(500).json({ error: 'Error al redesplegar servidor: ' + error.message });
   }
 }

@@ -7,7 +7,15 @@ const DuckDBSwarmSimple = () => {
     clouds: false,
     installations: false,
     buckets: false,
-    redeploy: false
+    redeploy: false,
+    deploying: false
+  });
+  const [deploymentStatus, setDeploymentStatus] = useState({
+    message: '',
+    progress: 0,
+    error: '',
+    success: false,
+    logs: []
   });
   const [activeTab, setActiveTab] = useState('servers');
   const [clouds, setClouds] = useState([]);
@@ -153,6 +161,86 @@ const DuckDBSwarmSimple = () => {
     }
   }, [formData.cloud_secret_id]);
 
+  // Función para monitorear el progreso del despliegue
+  const checkDeploymentProgress = async (serverId) => {
+    try {
+      const response = await fetch(`/api/admin/duckdb-swarm/servers/${serverId}`);
+      if (!response.ok) {
+        throw new Error('Error al obtener estado del servidor');
+      }
+      
+      const data = await response.json();
+      if (data.server) {
+        const server = data.server;
+        
+        // Actualizar estado según el status del servidor
+        switch(server.status) {
+          case 'active':
+            setDeploymentStatus(prev => ({
+              ...prev,
+              message: 'Servidor desplegado correctamente',
+              progress: 100,
+              success: true,
+              logs: [...prev.logs, '[SUCCESS] Despliegue completado con éxito']
+            }));
+            
+            // Esperar 2 segundos antes de cerrar el diálogo
+            setTimeout(() => {
+              setLoading(prev => ({ ...prev, deploying: false }));
+            }, 2000);
+            return true; // Despliegue completado
+            
+          case 'error':
+            setDeploymentStatus(prev => ({
+              ...prev,
+              message: 'Error en el despliegue',
+              error: 'El servidor está en estado de error',
+              logs: [...prev.logs, '[ERROR] El servidor está en estado de error']
+            }));
+            return true; // No seguir consultando
+            
+          case 'deploying':
+            // Incrementar progreso gradualmente
+            setDeploymentStatus(prev => {
+              // Incrementar hasta un máximo de 90% (el 100% solo cuando esté activo)
+              const newProgress = Math.min(90, prev.progress + 5);
+              return {
+                ...prev,
+                progress: newProgress,
+                logs: [...prev.logs, `[INFO] Instalando dependencias... (${newProgress}%)`]
+              };
+            });
+            return false; // Seguir consultando
+            
+          case 'starting':
+            setDeploymentStatus(prev => ({
+              ...prev,
+              progress: Math.min(80, prev.progress + 3),
+              logs: [...prev.logs, '[INFO] Iniciando servicio DuckDB...']
+            }));
+            return false; // Seguir consultando
+            
+          default:
+            setDeploymentStatus(prev => ({
+              ...prev,
+              progress: Math.min(70, prev.progress + 2),
+              logs: [...prev.logs, `[INFO] Estado del servidor: ${server.status}`]
+            }));
+            return false; // Seguir consultando
+        }
+      }
+      
+      return false;
+    } catch (error) {
+      console.error('Error al verificar el progreso:', error);
+      setDeploymentStatus(prev => ({
+        ...prev,
+        logs: [...prev.logs, `[ERROR] Error al verificar el progreso: ${error.message}`]
+      }));
+      return false;
+    }
+  };
+  
   // Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -160,6 +248,18 @@ const DuckDBSwarmSimple = () => {
     console.log('Form data:', formData);
     
     try {
+      // Si se va a desplegar el servidor, mostrar el diálogo de progreso
+      if (formData.deploy_server) {
+        setLoading(prev => ({ ...prev, deploying: true }));
+        setDeploymentStatus({
+          message: 'Preparando despliegue...',
+          progress: 5,
+          error: '',
+          success: false,
+          logs: ['Iniciando proceso de despliegue...']
+        });
+      }
+      
       const response = await fetch('/api/admin/duckdb-swarm/servers', {
         method: 'POST',
         headers: {
@@ -168,35 +268,145 @@ const DuckDBSwarmSimple = () => {
         body: JSON.stringify(formData)
       });
       
+      const responseData = await response.json();
+      
       if (response.ok) {
-        alert('Servidor agregado correctamente');
-        fetchServers();
-        // Reset form
-        setFormData({
-          name: '',
-          hostname: '',
-          port: 1294,
-          server_key: '',
-          server_type: 'general',
-          is_local: false,
-          installation_id: '',
-          cloud_secret_id: '',
-          bucket_name: '',
-          ssh_host: '',
-          ssh_port: 22,
-          ssh_username: '',
-          ssh_password: '',
-          ssh_key: '',
-          deploy_server: false
-        });
-        setFormStep('basic');
+        if (formData.deploy_server) {
+          // Obtener el ID del servidor recién creado
+          const serverId = responseData.server?.id;
+          
+          if (serverId) {
+            setDeploymentStatus(prev => ({
+              ...prev,
+              message: 'Servidor creado, iniciando despliegue...',
+              progress: 15,
+              logs: [...prev.logs, `[INFO] Servidor creado con ID: ${serverId}`]
+            }));
+            
+            // Actualizar el formulario
+            setFormData({
+              name: '',
+              hostname: '',
+              port: 1294,
+              server_key: '',
+              server_type: 'general',
+              is_local: false,
+              installation_id: '',
+              cloud_secret_id: '',
+              bucket_name: '',
+              ssh_host: '',
+              ssh_port: 22,
+              ssh_username: '',
+              ssh_password: '',
+              ssh_key: '',
+              deploy_server: false
+            });
+            setFormStep('basic');
+            
+            // Iniciar monitoreo del progreso
+            const monitorInterval = setInterval(async () => {
+              const completed = await checkDeploymentProgress(serverId);
+              if (completed) {
+                clearInterval(monitorInterval);
+              }
+            }, 5000); // Verificar cada 5 segundos
+            
+            // Prevenir que el intervalo continúe indefinidamente
+            setTimeout(() => {
+              clearInterval(monitorInterval);
+              // Si después de 3 minutos no ha terminado, mostrar mensaje
+              setDeploymentStatus(prev => {
+                if (!prev.success && !prev.error) {
+                  return {
+                    ...prev,
+                    message: 'El despliegue está tomando más tiempo de lo esperado',
+                    logs: [...prev.logs, '[INFO] El despliegue continúa en segundo plano. Puede verificar el estado más tarde.']
+                  };
+                }
+                return prev;
+              });
+            }, 180000); // 3 minutos
+          } else {
+            // Si no se obtuvo el ID, mostrar éxito pero con advertencia
+            setDeploymentStatus(prev => ({
+              ...prev,
+              message: 'Servidor registrado, pero no se pudo obtener su ID',
+              progress: 100,
+              success: true,
+              logs: [...prev.logs, '[WARNING] Servidor registrado, pero no se pudo obtener su ID para monitorear el despliegue']
+            }));
+            
+            // Esperar 2 segundos antes de cerrar el diálogo
+            setTimeout(() => {
+              setLoading(prev => ({ ...prev, deploying: false }));
+              fetchServers();
+            }, 2000);
+          }
+        } else {
+          // Si no hubo despliegue, simplemente resetear
+          fetchServers();
+          // Reset form
+          setFormData({
+            name: '',
+            hostname: '',
+            port: 1294,
+            server_key: '',
+            server_type: 'general',
+            is_local: false,
+            installation_id: '',
+            cloud_secret_id: '',
+            bucket_name: '',
+            ssh_host: '',
+            ssh_port: 22,
+            ssh_username: '',
+            ssh_password: '',
+            ssh_key: '',
+            deploy_server: false
+          });
+          setFormStep('basic');
+        }
       } else {
-        const error = await response.json();
-        alert(error.error || 'Error al agregar el servidor');
+        // Manejar error en la respuesta
+        if (formData.deploy_server) {
+          setDeploymentStatus(prev => ({
+            ...prev,
+            message: 'Error en el despliegue',
+            error: responseData.error || 'Error desconocido',
+            logs: [...prev.logs, `[ERROR] ${responseData.error || 'Error desconocido'}`]
+          }));
+          
+          // Si hay detalles del error del despliegue, mostrarlos
+          if (responseData.details && responseData.details.output) {
+            const logLines = responseData.details.output.split('\n');
+            setDeploymentStatus(prev => ({
+              ...prev,
+              logs: [...prev.logs, ...logLines.map(line => `[OUTPUT] ${line}`)]
+            }));
+          }
+          
+          // No cerrar el diálogo automáticamente en caso de error
+        } else {
+          alert(responseData.error || 'Error al agregar el servidor');
+        }
       }
     } catch (error) {
       console.error('Error adding server:', error);
-      alert('Error al agregar el servidor');
+      
+      if (formData.deploy_server) {
+        setDeploymentStatus(prev => ({
+          ...prev,
+          message: 'Error en el despliegue',
+          error: error.message || 'Error desconocido',
+          logs: [...prev.logs, `[ERROR] ${error.message || 'Error desconocido'}`]
+        }));
+      } else {
+        alert('Error al agregar el servidor');
+      }
+    } finally {
+      if (!formData.deploy_server) {
+        // Solo resetear el loading si no hay despliegue (en caso de despliegue, se resetea después)
+        setLoading(prev => ({ ...prev, deploying: false }));
+      }
     }
   };
 
@@ -743,32 +953,158 @@ const DuckDBSwarmSimple = () => {
                               <button
                                 onClick={async () => {
                                   if (confirm(`¿Seguro que deseas redesplegar el servidor ${server.name || server.hostname}?`)) {
+                                    // Mostrar diálogo de progreso
+                                    setLoading(prev => ({ ...prev, deploying: true }));
+                                    setDeploymentStatus({
+                                      message: 'Preparando redespliegue...',
+                                      progress: 5,
+                                      error: '',
+                                      success: false,
+                                      logs: ['Iniciando proceso de redespliegue...']
+                                    });
+                                    
                                     try {
-                                      setLoading(prev => ({ ...prev, redeploy: true }));
-                                      // Esta sería la llamada para redesplegar (implementaremos la API)
+                                      // Obtener información actualizada del servidor para SSH
+                                      const sshFormData = {
+                                        ssh_host: '',
+                                        ssh_port: 22,
+                                        ssh_username: '',
+                                        ssh_password: '',
+                                        ssh_key: ''
+                                      };
+                                      
+                                      // Solicitar información SSH
+                                      const userSSHInput = prompt(
+                                        `Ingrese los datos SSH para el servidor ${server.name || server.hostname} en formato JSON:\n` +
+                                        '{\n' +
+                                        '  "ssh_host": "host.example.com",\n' +
+                                        '  "ssh_port": 22,\n' +
+                                        '  "ssh_username": "usuario",\n' +
+                                        '  "ssh_password": "contraseña",\n' +
+                                        '  "ssh_key": "opcional-clave-ssh"\n' +
+                                        '}'
+                                      );
+                                      
+                                      if (!userSSHInput) {
+                                        setLoading(prev => ({ ...prev, deploying: false }));
+                                        return;
+                                      }
+                                      
+                                      try {
+                                        const parsedSSH = JSON.parse(userSSHInput);
+                                        Object.assign(sshFormData, parsedSSH);
+                                      } catch (e) {
+                                        setDeploymentStatus(prev => ({
+                                          ...prev,
+                                          message: 'Error de formato JSON',
+                                          error: 'El formato JSON ingresado es inválido',
+                                          logs: [...prev.logs, '[ERROR] El formato JSON ingresado es inválido: ' + e.message]
+                                        }));
+                                        
+                                        // Esperar 3 segundos y cerrar el diálogo
+                                        setTimeout(() => {
+                                          setLoading(prev => ({ ...prev, deploying: false }));
+                                        }, 3000);
+                                        return;
+                                      }
+                                      
+                                      // Validar datos SSH
+                                      if (!sshFormData.ssh_host || !sshFormData.ssh_username || (!sshFormData.ssh_password && !sshFormData.ssh_key)) {
+                                        setDeploymentStatus(prev => ({
+                                          ...prev,
+                                          message: 'Datos SSH incompletos',
+                                          error: 'Debe proporcionar host, usuario y contraseña o clave SSH',
+                                          logs: [...prev.logs, '[ERROR] Datos SSH incompletos. Se requiere host, usuario y contraseña o clave SSH.']
+                                        }));
+                                        
+                                        // Esperar 3 segundos y cerrar el diálogo
+                                        setTimeout(() => {
+                                          setLoading(prev => ({ ...prev, deploying: false }));
+                                        }, 3000);
+                                        return;
+                                      }
+                                      
+                                      // Esta sería la llamada para redesplegar
+                                      setDeploymentStatus(prev => ({
+                                        ...prev,
+                                        message: 'Enviando solicitud al servidor...',
+                                        progress: 15,
+                                        logs: [...prev.logs, '[INFO] Enviando solicitud al servidor...']
+                                      }));
+                                      
                                       const response = await fetch(`/api/admin/duckdb-swarm/servers/${server.id}/redeploy`, {
                                         method: 'POST',
+                                        headers: {
+                                          'Content-Type': 'application/json'
+                                        },
+                                        body: JSON.stringify(sshFormData)
                                       });
                                       
+                                      const responseData = await response.json();
+                                      
                                       if (response.ok) {
-                                        alert('Servidor redesplegado correctamente');
-                                        fetchServers();
+                                        setDeploymentStatus(prev => ({
+                                          ...prev,
+                                          message: 'Solicitud de redespliegue enviada',
+                                          progress: 25,
+                                          logs: [...prev.logs, '[SUCCESS] Solicitud de redespliegue enviada correctamente']
+                                        }));
+                                        
+                                        // Iniciar monitoreo del progreso
+                                        const monitorInterval = setInterval(async () => {
+                                          const completed = await checkDeploymentProgress(server.id);
+                                          if (completed) {
+                                            clearInterval(monitorInterval);
+                                            fetchServers(); // Actualizar la lista de servidores
+                                          }
+                                        }, 5000); // Verificar cada 5 segundos
+                                        
+                                        // Prevenir que el intervalo continúe indefinidamente
+                                        setTimeout(() => {
+                                          clearInterval(monitorInterval);
+                                          // Si después de 3 minutos no ha terminado, mostrar mensaje
+                                          setDeploymentStatus(prev => {
+                                            if (!prev.success && !prev.error) {
+                                              return {
+                                                ...prev,
+                                                message: 'El redespliegue está tomando más tiempo de lo esperado',
+                                                logs: [...prev.logs, '[INFO] El redespliegue continúa en segundo plano. Puede verificar el estado más tarde.']
+                                              };
+                                            }
+                                            return prev;
+                                          });
+                                        }, 180000); // 3 minutos
                                       } else {
-                                        const data = await response.json();
-                                        alert(data.error || 'Error al redesplegar servidor');
+                                        setDeploymentStatus(prev => ({
+                                          ...prev,
+                                          message: 'Error en el redespliegue',
+                                          error: responseData.error || 'Error desconocido',
+                                          logs: [...prev.logs, `[ERROR] ${responseData.error || 'Error desconocido'}`]
+                                        }));
+                                        
+                                        // Si hay detalles del error del despliegue, mostrarlos
+                                        if (responseData.details && responseData.details.output) {
+                                          const logLines = responseData.details.output.split('\n');
+                                          setDeploymentStatus(prev => ({
+                                            ...prev,
+                                            logs: [...prev.logs, ...logLines.map(line => `[OUTPUT] ${line}`)]
+                                          }));
+                                        }
                                       }
                                     } catch (error) {
                                       console.error('Error redeploying server:', error);
-                                      alert('Error al redesplegar servidor');
-                                    } finally {
-                                      setLoading(prev => ({ ...prev, redeploy: false }));
+                                      setDeploymentStatus(prev => ({
+                                        ...prev,
+                                        message: 'Error en el redespliegue',
+                                        error: error.message || 'Error desconocido',
+                                        logs: [...prev.logs, `[ERROR] ${error.message || 'Error desconocido'}`]
+                                      }));
                                     }
                                   }
                                 }}
                                 className="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300"
-                                disabled={loading.redeploy}
                               >
-                                {loading.redeploy ? 'Redesplegando...' : 'Redesplegar'}
+                                Redesplegar
                               </button>
                             )}
                           </td>
@@ -1097,6 +1433,75 @@ const DuckDBSwarmSimple = () => {
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Modal de progreso de despliegue */}
+      {loading.deploying && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col">
+            <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white flex items-center">
+              {deploymentStatus.success ? (
+                <svg className="w-6 h-6 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              ) : deploymentStatus.error ? (
+                <svg className="w-6 h-6 text-red-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              ) : (
+                <svg className="w-6 h-6 text-blue-500 mr-2 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              )}
+              {deploymentStatus.message || "Desplegando servidor DuckDB..."}
+            </h2>
+            
+            {/* Barra de progreso */}
+            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5 mb-4">
+              <div 
+                className="bg-blue-600 h-2.5 rounded-full" 
+                style={{ width: `${deploymentStatus.progress}%` }}
+              ></div>
+            </div>
+            
+            {/* Logs de despliegue */}
+            <div className="flex-1 bg-gray-100 dark:bg-gray-900 p-4 rounded-md font-mono text-sm overflow-y-auto mb-4 max-h-96">
+              {deploymentStatus.logs.map((log, index) => (
+                <div key={index} className="mb-1">
+                  {log.includes('[INFO]') ? (
+                    <span className="text-blue-600 dark:text-blue-400">{log}</span>
+                  ) : log.includes('[SUCCESS]') ? (
+                    <span className="text-green-600 dark:text-green-400">{log}</span>
+                  ) : log.includes('[ERROR]') ? (
+                    <span className="text-red-600 dark:text-red-400">{log}</span>
+                  ) : log.includes('Error:') ? (
+                    <span className="text-red-600 dark:text-red-400">{log}</span>
+                  ) : (
+                    <span>{log}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+            
+            {/* Botones */}
+            <div className="flex justify-end space-x-3">
+              {(deploymentStatus.success || deploymentStatus.error) && (
+                <button
+                  onClick={() => setLoading(prev => ({ ...prev, deploying: false }))}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  Cerrar
+                </button>
+              )}
+              
+              {!deploymentStatus.success && !deploymentStatus.error && (
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  Por favor espere mientras se despliega el servidor...
+                </div>
+              )}
             </div>
           </div>
         </div>
