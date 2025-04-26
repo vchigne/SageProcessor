@@ -79,12 +79,15 @@ export default async function handler(req, res) {
     // Obtener información SSH directamente del servidor
     console.log(`Obteniendo información SSH para servidor ID ${serverId}`);
     
-    // Puerto local para el túnel (usamos 4213 para DuckDB UI)
+    // Puerto local para el túnel (puerto arbitrario para el cliente)
     const localPort = 4213;
+    
+    // Puerto remoto donde está ejecutándose el servidor DuckDB (1294 es el puerto por defecto)
+    const remotePort = 1294;
     
     // Recuperar la información SSH de la base de datos
     const { rows } = await pool.query(
-      'SELECT ssh_host, ssh_port, ssh_username FROM duckdb_servers WHERE id = $1',
+      'SELECT ssh_host, ssh_port, ssh_username, port FROM duckdb_servers WHERE id = $1',
       [serverId]
     );
     
@@ -98,9 +101,11 @@ export default async function handler(req, res) {
     }
     
     const sshInfo = rows[0];
+    // Usar el puerto configurado para el servidor DuckDB en lugar de un valor hardcodeado
+    const duckDBPort = sshInfo.port || remotePort;
     
     // Para pedir la contraseña al momento de ejecutar el comando, usamos -o "BatchMode no"
-    const sshCommand = `ssh -L ${localPort}:localhost:4213 -p ${sshInfo.ssh_port || 22} -o "BatchMode no" ${sshInfo.ssh_username}@${sshInfo.ssh_host}`;
+    const sshCommand = `ssh -L ${localPort}:localhost:${duckDBPort} -p ${sshInfo.ssh_port || 22} -o "BatchMode no" ${sshInfo.ssh_username}@${sshInfo.ssh_host}`;
     
     return res.status(200).json({
       success: true,
@@ -108,7 +113,7 @@ export default async function handler(req, res) {
       ssh_host: sshInfo.ssh_host,
       ssh_port: sshInfo.ssh_port || 22,
       ssh_username: sshInfo.ssh_username,
-      remote_port: 4213,
+      remote_port: duckDBPort,
       local_port: localPort,
       tunnel_command: sshCommand,
       ui_url: `http://localhost:${localPort}`,
