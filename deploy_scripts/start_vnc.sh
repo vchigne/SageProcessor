@@ -71,28 +71,64 @@ if ! command -v startxfce4 > /dev/null; then
   apt-get update && apt-get install -y xfce4 xfce4-goodies
 fi
 
+# Instalar TigerVNC específicamente si no está
+echo "$(date): Verificando instalación de TigerVNC"
+if ! command -v vncserver > /dev/null; then
+  echo "$(date): TigerVNC no está instalado, instalando..."
+  apt-get update && apt-get install -y tigervnc-standalone-server tigervnc-common
+fi
+
+# Asegurarse que el puerto 5901 no está en uso
+echo "$(date): Verificando que el puerto 5901 está disponible"
+if netstat -tuln | grep -q ":5901"; then
+  echo "$(date): Puerto 5901 ya está en uso, deteniendo procesos..."
+  fuser -k 5901/tcp || true
+  sleep 2
+fi
+
 # Iniciar servidor VNC para el usuario admin con acceso desde cualquier dirección IP
 echo "$(date): Iniciando servidor VNC como usuario admin"
 su - admin -c "touch ~/.Xauthority"
-su - admin -c "vncserver :1 -geometry $VNC_GEOMETRY -depth $VNC_DEPTH -localhost no -SecurityTypes VncAuth -rfbauth /home/admin/.vnc/passwd"
+
+# Configuración detallada para asegurar correcta inicialización
+su - admin -c "vncserver -kill :1" &>/dev/null || true
+su - admin -c "rm -f /tmp/.X1-lock /tmp/.X11-unix/X1" &>/dev/null || true
+sleep 1
+
+# Usar configuración explícita para TigerVNC
+echo "$(date): Iniciando vncserver con parámetros explícitos"
+su - admin -c "vncserver :1 -geometry $VNC_GEOMETRY -depth $VNC_DEPTH -localhost no -rfbport 5901 -SecurityTypes VncAuth -rfbauth /home/admin/.vnc/passwd"
 VNC_STATUS=$?
 
 if [ $VNC_STATUS -ne 0 ]; then
   echo "$(date): ERROR: Fallo al iniciar vncserver, código de salida: $VNC_STATUS"
   # Intentar iniciar sin algunos parámetros en caso de error
   echo "$(date): Intentando iniciar vncserver con parámetros mínimos"
-  su - admin -c "vncserver :1"
+  su - admin -c "vncserver :1 -localhost no"
   VNC_STATUS=$?
   
   if [ $VNC_STATUS -ne 0 ]; then
     echo "$(date): ERROR: Segundo intento fallido, código de salida: $VNC_STATUS"
-    exit 1
+    echo "$(date): Iniciando intento de emergencia sin parámetros"
+    su - admin -c "vncserver"
+    VNC_STATUS=$?
+    
+    if [ $VNC_STATUS -ne 0 ]; then
+      echo "$(date): FALLÓ COMPLETAMENTE: No se pudo iniciar VNC después de tres intentos"
+      exit 1
+    else
+      echo "$(date): VNC iniciado con configuración de emergencia"
+    fi
   else
     echo "$(date): VNC iniciado con éxito en el segundo intento"
   fi
 else
   echo "$(date): VNC iniciado con éxito en el primer intento"
 fi
+
+# Verificar procesos VNC
+echo "$(date): Verificando procesos VNC en ejecución:"
+ps aux | grep vnc
 
 # Crear script para iniciar DuckDB-UI para usuario root
 cat > ~/start-duckdb-ui.sh << 'EOF'
