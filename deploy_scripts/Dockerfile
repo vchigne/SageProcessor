@@ -1,10 +1,31 @@
-FROM python:3.11-slim
+FROM python:3.11-slim AS base
 
-# Instalar dependencias del sistema y entorno gráfico
+# Instalar dependencias base
 RUN apt-get update && apt-get install -y \
     curl \
     unzip \
     supervisor \
+    openssh-server \
+    net-tools \
+    procps \
+    nano \
+    iputils-ping \
+    iproute2 \
+    iptables \
+    && rm -rf /var/lib/apt/lists/*
+
+# Configurar directorio de trabajo
+WORKDIR /app
+
+FROM base AS duckdb
+
+# Instalar dependencias de Python
+RUN pip install --no-cache-dir duckdb flask flask-cors gunicorn websockify
+
+FROM duckdb AS desktop
+
+# Instalar entorno gráfico
+RUN apt-get update && apt-get install -y \
     xfce4 \
     xfce4-goodies \
     tigervnc-standalone-server \
@@ -14,14 +35,9 @@ RUN apt-get update && apt-get install -y \
     libgtk-3-0 \
     libdbus-glib-1-2 \
     xterm \
-    openssh-server \
-    net-tools \
-    procps \
-    nano \
-    iputils-ping \
-    iproute2 \
-    iptables \
     && rm -rf /var/lib/apt/lists/*
+
+FROM desktop
     
 # Asegurarse de que el puerto 5901 esté abierto
 RUN iptables -A INPUT -p tcp --dport 5901 -j ACCEPT || true
@@ -34,8 +50,7 @@ COPY duckdb_server.py .
 COPY start_vnc.sh .
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-# Instalar dependencias de Python
-RUN pip install --no-cache-dir duckdb flask flask-cors gunicorn websockify
+# Las dependencias de Python ya se instalaron en la etapa duckdb
 
 # Instalar noVNC para acceso web al VNC
 RUN mkdir -p /opt && \

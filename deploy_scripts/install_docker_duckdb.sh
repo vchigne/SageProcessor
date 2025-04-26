@@ -125,19 +125,47 @@ chmod +x $TEMP_DIR/start_vnc.sh
 # Ir al directorio temporal
 cd $TEMP_DIR
 
-# Construir la imagen de Docker
-print_info "Construyendo imagen Docker para DuckDB..."
+# Construir la imagen de Docker con feedback de progreso
+print_info "Construyendo imagen Docker para DuckDB (0%)..."
+print_info "Este proceso tiene varios pasos y puede tardar varios minutos dependiendo de la velocidad de la red y del servidor."
+
+print_info "Instalando dependencias... (10%)"
 if [ $USE_SUDO_DOCKER -eq 1 ]; then
+    sudo docker build --target base -t duckdb-server:base . || { print_error "Error en instalación base."; exit 1; }
+    print_info "Instalando DuckDB y sus extensiones... (50%)"
+    sudo docker build --target duckdb -t duckdb-server:duckdb . || { print_error "Error instalando DuckDB."; exit 1; }
+    print_info "Instalando dependencias de VNC y soporte gráfico... (80%)"
+    sudo docker build --target desktop -t duckdb-server:desktop . || { print_error "Error instalando entorno gráfico."; exit 1; }
+    print_info "Instalando dependencias finales y configurando el entorno... (90%)"
+    print_info "Este paso puede tardar varios minutos. Si parece estancado, espere al menos 10 minutos antes de cancelar."
     sudo docker build -t duckdb-server .
 else
+    docker build --target base -t duckdb-server:base . || { print_error "Error en instalación base."; exit 1; }
+    print_info "Instalando DuckDB y sus extensiones... (50%)"
+    docker build --target duckdb -t duckdb-server:duckdb . || { print_error "Error instalando DuckDB."; exit 1; }
+    print_info "Instalando dependencias de VNC y soporte gráfico... (80%)"
+    docker build --target desktop -t duckdb-server:desktop . || { print_error "Error instalando entorno gráfico."; exit 1; }
+    print_info "Instalando dependencias finales y configurando el entorno... (90%)"
+    print_info "Este paso puede tardar varios minutos. Si parece estancado, espere al menos 10 minutos antes de cancelar."
     docker build -t duckdb-server .
 fi
 
 # Verificar si la construcción fue exitosa
 if [ $? -ne 0 ]; then
     print_error "Error al construir la imagen Docker."
+    if [ $USE_SUDO_DOCKER -eq 1 ]; then
+        print_info "Mostrando últimos logs de Docker:"
+        sudo docker logs $(sudo docker ps -lq) 2>&1 | tail -n 30
+    else
+        print_info "Mostrando últimos logs de Docker:"
+        docker logs $(docker ps -lq) 2>&1 | tail -n 30
+    fi
+    print_info "Si el error ocurrió en el 90%, es posible que se deba a un timeout durante la instalación de dependencias."
+    print_info "Intente nuevamente o contacte al administrador del sistema."
     exit 1
 fi
+
+print_info "Imagen Docker construida exitosamente (100%)!"
 
 # Detener y eliminar contenedor existente si existe
 print_info "Verificando si existe un contenedor previo..."

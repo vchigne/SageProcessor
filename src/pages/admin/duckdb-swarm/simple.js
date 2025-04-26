@@ -737,6 +737,34 @@ Para instrucciones detalladas, revise la configuración generada.
       setNginxModalOpen(false);
     }
   };
+  
+  // Función para cancelar un despliegue en curso
+  const cancelDeploy = async (serverId) => {
+    try {
+      setLoading(prev => ({ ...prev, servers: true }));
+      
+      const response = await fetch(`/api/admin/duckdb-swarm/servers/${serverId}/cancel-deploy`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        alert(data.message || 'Despliegue cancelado exitosamente');
+        fetchServers(); // Actualizar lista de servidores
+      } else {
+        alert(`Error al cancelar el despliegue: ${data.error || 'Error desconocido'}`);
+      }
+    } catch (error) {
+      console.error('Error al cancelar el despliegue:', error);
+      alert(`Error al cancelar el despliegue: ${error.message}`);
+    } finally {
+      setLoading(prev => ({ ...prev, servers: false }));
+    }
+  };
 
   // Get status color based on server status
   const getStatusColor = (status) => {
@@ -745,9 +773,13 @@ Para instrucciones detalladas, revise la configuración generada.
         return 'bg-green-500';
       case 'standby':
         return 'bg-yellow-500';
+      case 'deploying':
+        return 'bg-yellow-500';
       case 'starting':
         return 'bg-blue-500';
       case 'stopped':
+        return 'bg-red-500';
+      case 'error':
         return 'bg-red-500';
       default:
         return 'bg-gray-500';
@@ -1244,7 +1276,22 @@ Para instrucciones detalladas, revise la configuración generada.
                           <td className="px-6 py-4 whitespace-nowrap">
                             <span className="flex items-center">
                               <span className={`inline-block w-3 h-3 rounded-full mr-2 ${getStatusColor(server.status)}`}></span>
-                              {server.status}
+                              <div className="flex items-center">
+                                <span>{server.status}</span>
+                                {server.status === 'deploying' && (
+                                  <button
+                                    className="ml-2 text-xs bg-red-100 hover:bg-red-200 text-red-800 py-1 px-2 rounded"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (confirm('¿Estás seguro de cancelar el despliegue? Esta acción no se puede deshacer.')) {
+                                        cancelDeploy(server.id);
+                                      }
+                                    }}
+                                  >
+                                    Cancelar
+                                  </button>
+                                )}
+                              </div>
                             </span>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-4">

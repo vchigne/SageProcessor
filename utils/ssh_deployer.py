@@ -209,11 +209,26 @@ def deploy_duckdb_via_ssh(ssh_host, ssh_port=22, ssh_username=None, ssh_password
             output = ""
             error_output = ""
             
+            # Timeout para la instalación (15 minutos en total)
+            start_time = time.time()
+            timeout_seconds = 900  # 15 minutos para permitir instalaciones en máquinas más lentas
+            
             while not stdout.channel.exit_status_ready():
+                # Verificar si hemos superado el timeout
+                if time.time() - start_time > timeout_seconds:
+                    logger.warning(f"La instalación está tardando más de {timeout_seconds/60} minutos, forzando finalización")
+                    stdout.channel.close()
+                    break
+                    
                 if stdout.channel.recv_ready():
                     chunk = stdout.channel.recv(1024).decode('utf-8', errors='replace')
                     output += chunk
                     logger.info(chunk.strip())
+                    
+                    # Si el proceso está atascado en "Instalando dependencias... (90%)",
+                    # agregar un mensaje para indicar que el proceso podría tardar más tiempo
+                    if "Instalando dependencias... (90%)" in chunk:
+                        logger.info("Instalación de dependencias al 90%, este paso puede tardar varios minutos...")
                 
                 if stderr.channel.recv_stderr_ready():
                     chunk = stderr.channel.recv_stderr(1024).decode('utf-8', errors='replace')
