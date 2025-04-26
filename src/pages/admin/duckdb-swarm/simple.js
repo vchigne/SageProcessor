@@ -432,8 +432,19 @@ const DuckDBSwarmSimple = () => {
     }
   };
 
-  // Función para iniciar la UI estándar de DuckDB
-  const startDuckDBUI = async (serverId, serverName) => {
+  // Estados para los modales de conexión
+  const [sshModalOpen, setSshModalOpen] = useState(false);
+  const [httpServerModalOpen, setHttpServerModalOpen] = useState(false);
+  const [nginxModalOpen, setNginxModalOpen] = useState(false);
+  const [currentServerInfo, setCurrentServerInfo] = useState(null);
+  const [connectionInfo, setConnectionInfo] = useState(null);
+  const [username, setUsername] = useState('admin');
+  const [password, setPassword] = useState('password');
+  const [httpPort, setHttpPort] = useState(9999);
+  const [domain, setDomain] = useState('');
+
+  // SSH Tunnel
+  const startSSHTunnel = async (serverId, serverName) => {
     try {
       setUiStatus({
         serverId,
@@ -442,7 +453,7 @@ const DuckDBSwarmSimple = () => {
         loading: true
       });
       
-      const response = await fetch('/api/admin/duckdb-swarm/start-ui', {
+      const response = await fetch(`/api/admin/duckdb-swarm/start-ssh-tunnel`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -460,140 +471,205 @@ const DuckDBSwarmSimple = () => {
           loading: false
         });
         
-        // Abrir la UI en una nueva pestaña o navegar a ella
-        if (data.ui_url) {
-          window.open(data.ui_url, '_blank');
-        } else {
-          alert('La UI de DuckDB se ha iniciado pero no se pudo obtener la URL. Verifica el servidor.');
-        }
+        // Mostrar el modal con la información de SSH
+        setCurrentServerInfo({
+          name: serverName,
+          id: serverId
+        });
+        setConnectionInfo(data);
+        setSshModalOpen(true);
       } else {
         setUiStatus({
           serverId,
           url: null,
-          error: data.error || 'Error desconocido al iniciar la UI',
+          error: data.error || 'Error desconocido al configurar túnel SSH',
           loading: false
         });
-        alert(`Error al iniciar UI de DuckDB en ${serverName}: ${data.error || 'Error desconocido'}`);
+        alert(`Error al configurar túnel SSH para ${serverName}: ${data.error || 'Error desconocido'}`);
       }
     } catch (error) {
-      console.error('Error al iniciar la UI de DuckDB:', error);
+      console.error('Error al configurar túnel SSH:', error);
       setUiStatus({
         serverId,
         url: null,
         error: error.message,
         loading: false
       });
-      alert(`Error al iniciar UI de DuckDB: ${error.message}`);
+      alert(`Error al configurar túnel SSH: ${error.message}`);
     }
   };
   
-  // Función para iniciar el notebook de DuckDB
-  const startDuckDBNotebook = async (serverId, serverName) => {
+  // HTTP Server
+  const startHTTPServer = async (serverId, serverName) => {
     try {
-      setUiStatus({
-        serverId,
-        url: null,
-        error: null,
-        loading: true
+      // Mostrar el modal para solicitar credenciales
+      setCurrentServerInfo({
+        name: serverName,
+        id: serverId
       });
-      
-      const response = await fetch('/api/admin/duckdb-swarm/start-notebook', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ serverId })
-      });
-      
-      const data = await response.json();
-      
-      if (response.ok && data.success) {
-        setUiStatus({
-          serverId,
-          url: data.ui_url,
-          error: null,
-          loading: false
-        });
-        
-        // Abrir el notebook en una nueva pestaña
-        if (data.ui_url) {
-          window.open(data.ui_url, '_blank');
-        } else {
-          alert('El notebook de DuckDB se ha iniciado pero no se pudo obtener la URL. Verifica el servidor.');
-        }
-      } else {
-        setUiStatus({
-          serverId,
-          url: null,
-          error: data.error || 'Error desconocido al iniciar el notebook',
-          loading: false
-        });
-        alert(`Error al iniciar notebook de DuckDB en ${serverName}: ${data.error || 'Error desconocido'}`);
-      }
+      setHttpServerModalOpen(true);
     } catch (error) {
-      console.error('Error al iniciar el notebook de DuckDB:', error);
-      setUiStatus({
-        serverId,
-        url: null,
-        error: error.message,
-        loading: false
-      });
-      alert(`Error al iniciar notebook de DuckDB: ${error.message}`);
+      console.error('Error al iniciar configuración HTTP:', error);
+      alert(`Error al iniciar configuración HTTP: ${error.message}`);
     }
   };
   
-  // Función para iniciar la UI regular de DuckDB
-  const startRegularDuckDBUI = async (serverId, serverName) => {
+  // Función que se ejecuta después de ingresar credenciales
+  const confirmHttpServerSetup = async () => {
     try {
       setUiStatus({
-        serverId,
+        serverId: currentServerInfo.id,
         url: null,
         error: null,
         loading: true
       });
       
-      const response = await fetch('/api/admin/duckdb-swarm/start-regular-ui', {
+      const response = await fetch(`/api/admin/duckdb-swarm/start-httpserver`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ serverId })
+        body: JSON.stringify({ 
+          serverId: currentServerInfo.id,
+          port: httpPort,
+          auth: `${username}:${password}`
+        })
       });
       
       const data = await response.json();
       
       if (response.ok && data.success) {
         setUiStatus({
-          serverId,
-          url: data.ui_url,
+          serverId: currentServerInfo.id,
+          url: data.server_url,
           error: null,
           loading: false
         });
         
-        // Abrir la UI regular en una nueva pestaña
-        if (data.ui_url) {
-          window.open(data.ui_url, '_blank');
-        } else {
-          alert('La UI regular de DuckDB se ha iniciado pero no se pudo obtener la URL. Verifica el servidor.');
-        }
+        // Actualizar la información de conexión y cerrar el modal de credenciales
+        setConnectionInfo(data);
+        setHttpServerModalOpen(false);
+        
+        // Mostrar un modal con las instrucciones
+        alert(`
+Configuración para servidor HTTP DuckDB generada correctamente.
+
+Para iniciar el servidor HTTP:
+1. Ejecute estos comandos SQL en DuckDB:
+${data.sql_commands.join('\n')}
+
+2. Una vez ejecutados, acceda a:
+${data.server_url}
+
+3. Use las credenciales:
+Usuario: ${username}
+Contraseña: ${password}
+        `);
       } else {
         setUiStatus({
-          serverId,
+          serverId: currentServerInfo.id,
           url: null,
-          error: data.error || 'Error desconocido al iniciar la UI regular',
+          error: data.error || 'Error desconocido al configurar servidor HTTP',
           loading: false
         });
-        alert(`Error al iniciar UI regular de DuckDB en ${serverName}: ${data.error || 'Error desconocido'}`);
+        alert(`Error al configurar servidor HTTP para ${currentServerInfo.name}: ${data.error || 'Error desconocido'}`);
       }
     } catch (error) {
-      console.error('Error al iniciar la UI regular de DuckDB:', error);
+      console.error('Error al configurar servidor HTTP:', error);
       setUiStatus({
-        serverId,
+        serverId: currentServerInfo.id,
         url: null,
         error: error.message,
         loading: false
       });
-      alert(`Error al iniciar UI regular de DuckDB: ${error.message}`);
+      alert(`Error al configurar servidor HTTP: ${error.message}`);
+    } finally {
+      setHttpServerModalOpen(false);
+    }
+  };
+  
+  // Nginx Proxy
+  const startNginxProxy = async (serverId, serverName) => {
+    try {
+      // Mostrar el modal para solicitar nombre de dominio
+      setCurrentServerInfo({
+        name: serverName,
+        id: serverId
+      });
+      setNginxModalOpen(true);
+    } catch (error) {
+      console.error('Error al iniciar configuración Nginx:', error);
+      alert(`Error al iniciar configuración Nginx: ${error.message}`);
+    }
+  };
+  
+  // Función que se ejecuta después de ingresar el dominio
+  const confirmNginxSetup = async () => {
+    try {
+      setUiStatus({
+        serverId: currentServerInfo.id,
+        url: null,
+        error: null,
+        loading: true
+      });
+      
+      const response = await fetch(`/api/admin/duckdb-swarm/start-nginx-proxy`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ 
+          serverId: currentServerInfo.id,
+          domain: domain
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok && data.success) {
+        setUiStatus({
+          serverId: currentServerInfo.id,
+          url: `http://${domain}`,
+          error: null,
+          loading: false
+        });
+        
+        // Actualizar la información de conexión y cerrar el modal de dominio
+        setConnectionInfo(data);
+        setNginxModalOpen(false);
+        
+        // Mostrar la configuración en un alert por simplicidad
+        alert(`
+Configuración de Nginx generada correctamente.
+
+Configuración HTTP:
+${data.nginx_config}
+
+Configuración HTTPS:
+${data.nginx_ssl_config}
+
+Para instrucciones detalladas, revise la configuración generada.
+        `);
+      } else {
+        setUiStatus({
+          serverId: currentServerInfo.id,
+          url: null,
+          error: data.error || 'Error desconocido al generar configuración Nginx',
+          loading: false
+        });
+        alert(`Error al generar configuración Nginx para ${currentServerInfo.name}: ${data.error || 'Error desconocido'}`);
+      }
+    } catch (error) {
+      console.error('Error al generar configuración Nginx:', error);
+      setUiStatus({
+        serverId: currentServerInfo.id,
+        url: null,
+        error: error.message,
+        loading: false
+      });
+      alert(`Error al generar configuración Nginx: ${error.message}`);
+    } finally {
+      setNginxModalOpen(false);
     }
   };
 
@@ -1108,53 +1184,82 @@ const DuckDBSwarmSimple = () => {
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-4">
                             {server.status === 'active' && (
-                              <>
-                              <button
-                                onClick={() => startDuckDBNotebook(server.id, server.name || server.hostname)}
-                                disabled={uiStatus.loading && uiStatus.serverId === server.id}
-                                className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 inline-flex items-center"
-                              >
-                                {uiStatus.loading && uiStatus.serverId === server.id ? (
-                                  <>
-                                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                    </svg>
-                                    Iniciando...
-                                  </>
-                                ) : (
-                                  <>
-                                    <svg className="h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                                    </svg>
-                                    Notebook
-                                  </>
-                                )}
-                              </button>
-                              
-                              <button
-                                onClick={() => startRegularDuckDBUI(server.id, server.name || server.hostname)}
-                                disabled={uiStatus.loading && uiStatus.serverId === server.id}
-                                className="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300 inline-flex items-center ml-3"
-                              >
-                                {uiStatus.loading && uiStatus.serverId === server.id ? (
-                                  <>
-                                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                    </svg>
-                                    Iniciando...
-                                  </>
-                                ) : (
-                                  <>
-                                    <svg className="h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                                    </svg>
-                                    UI Regular
-                                  </>
-                                )}
-                              </button>
-                              </>
+                              <div className="flex flex-wrap gap-2">
+                                {/* SSH Tunnel */}
+                                <button
+                                  onClick={() => startSSHTunnel(server.id, server.name || server.hostname)}
+                                  disabled={uiStatus.loading && uiStatus.serverId === server.id}
+                                  className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 inline-flex items-center"
+                                  title="Acceder mediante túnel SSH (más seguro)"
+                                >
+                                  {uiStatus.loading && uiStatus.serverId === server.id ? (
+                                    <>
+                                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                      </svg>
+                                      Iniciando...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <svg className="h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                      </svg>
+                                      SSH Tunnel
+                                    </>
+                                  )}
+                                </button>
+                                
+                                {/* HTTP Server */}
+                                <button
+                                  onClick={() => startHTTPServer(server.id, server.name || server.hostname)}
+                                  disabled={uiStatus.loading && uiStatus.serverId === server.id}
+                                  className="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300 inline-flex items-center ml-2"
+                                  title="Acceder mediante servidor HTTP (extensión httpserver)"
+                                >
+                                  {uiStatus.loading && uiStatus.serverId === server.id ? (
+                                    <>
+                                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                      </svg>
+                                      Iniciando...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <svg className="h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
+                                      </svg>
+                                      HTTP Server
+                                    </>
+                                  )}
+                                </button>
+                                
+                                {/* Nginx Proxy */}
+                                <button
+                                  onClick={() => startNginxProxy(server.id, server.name || server.hostname)}
+                                  disabled={uiStatus.loading && uiStatus.serverId === server.id}
+                                  className="text-purple-600 hover:text-purple-900 dark:text-purple-400 dark:hover:text-purple-300 inline-flex items-center ml-2"
+                                  title="Configurar Nginx como proxy inverso (para equipos)"
+                                >
+                                  {uiStatus.loading && uiStatus.serverId === server.id ? (
+                                    <>
+                                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                      </svg>
+                                      Iniciando...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <svg className="h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+                                      </svg>
+                                      Nginx Proxy
+                                    </>
+                                  )}
+                                </button>
+                              </div>
                             )}
                             
                             <button
@@ -1755,6 +1860,254 @@ const DuckDBSwarmSimple = () => {
                   Por favor espere mientras se despliega el servidor...
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Modal para SSH Tunnel */}
+      {sshModalOpen && connectionInfo && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                  Conexión SSH a {currentServerInfo?.name || 'servidor'}
+                </h2>
+                <button 
+                  onClick={() => setSshModalOpen(false)}
+                  className="text-gray-400 hover:text-gray-500 focus:outline-none"
+                >
+                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              
+              <div className="space-y-4">
+                <div className="p-4 bg-blue-50 dark:bg-blue-900 rounded-lg">
+                  <p className="text-blue-800 dark:text-blue-200 font-medium mb-2">
+                    Siga estas instrucciones para conectarse a la UI de DuckDB mediante SSH:
+                  </p>
+                  <ol className="list-decimal pl-5 space-y-2 text-blue-700 dark:text-blue-300">
+                    {connectionInfo.instructions.map((instruction, index) => (
+                      <li key={index}>{instruction}</li>
+                    ))}
+                  </ol>
+                </div>
+                
+                <div className="relative">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Comando SSH para túnel
+                  </label>
+                  <div className="mt-1 relative rounded-md shadow-sm">
+                    <pre className="p-3 bg-gray-50 dark:bg-gray-900 rounded border border-gray-300 dark:border-gray-700 font-mono text-sm text-gray-800 dark:text-gray-200 overflow-x-auto">
+                      {connectionInfo.tunnel_command}
+                    </pre>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(connectionInfo.tunnel_command);
+                        alert('Comando copiado al portapapeles');
+                      }}
+                      className="absolute right-2 top-2 p-2 bg-gray-200 dark:bg-gray-700 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600"
+                      title="Copiar al portapapeles"
+                    >
+                      <svg className="h-4 w-4 text-gray-600 dark:text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-12a2 2 0 00-2-2h-2M8 5a2 2 0 002 2h4a2 2 0 002-2M8 5a2 2 0 012-2h4a2 2 0 012 2" />
+                      </svg>
+                    </button>
+                  </div>
+                  <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                    Copie y pegue este comando en su terminal para crear un túnel SSH seguro.
+                  </p>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    URL de acceso (después de establecer el túnel)
+                  </label>
+                  <div className="mt-1 relative rounded-md shadow-sm">
+                    <input
+                      type="text"
+                      readOnly
+                      value={connectionInfo.ui_url}
+                      className="block w-full pr-10 sm:text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-white rounded-md"
+                    />
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(connectionInfo.ui_url);
+                        alert('URL copiada al portapapeles');
+                      }}
+                      className="absolute inset-y-0 right-0 px-3 flex items-center bg-gray-100 dark:bg-gray-700 rounded-r-md"
+                      title="Copiar al portapapeles"
+                    >
+                      <svg className="h-4 w-4 text-gray-600 dark:text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-12a2 2 0 00-2-2h-2M8 5a2 2 0 002 2h4a2 2 0 002-2M8 5a2 2 0 012-2h4a2 2 0 012 2" />
+                      </svg>
+                    </button>
+                  </div>
+                  <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                    Una vez establecido el túnel SSH, abra esta URL en su navegador para acceder a la UI de DuckDB.
+                  </p>
+                </div>
+              </div>
+              
+              <div className="mt-6 flex justify-end space-x-3">
+                <button
+                  onClick={() => setSshModalOpen(false)}
+                  className="px-4 py-2 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none"
+                >
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Modal para HTTP Server */}
+      {httpServerModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                  Configurar Servidor HTTP de DuckDB
+                </h2>
+                <button 
+                  onClick={() => setHttpServerModalOpen(false)}
+                  className="text-gray-400 hover:text-gray-500 focus:outline-none"
+                >
+                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              
+              <div className="space-y-4">
+                <div className="p-3 bg-yellow-50 dark:bg-yellow-900 rounded-lg">
+                  <p className="text-yellow-800 dark:text-yellow-200 text-sm">
+                    Esta opción configura la extensión httpserver de DuckDB para proporcionar acceso remoto. Requiere que especifique credenciales de autenticación.
+                  </p>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Puerto
+                  </label>
+                  <input
+                    type="number"
+                    value={httpPort}
+                    onChange={(e) => setHttpPort(parseInt(e.target.value) || 9999)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white"
+                    min="1024"
+                    max="65535"
+                  />
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Puerto en el que se ejecutará el servidor HTTP (recomendado: 9999)
+                  </p>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Nombre de Usuario
+                  </label>
+                  <input
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Contraseña
+                  </label>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white"
+                  />
+                </div>
+              </div>
+              
+              <div className="mt-6 flex justify-end space-x-3">
+                <button
+                  onClick={() => setHttpServerModalOpen(false)}
+                  className="px-4 py-2 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={confirmHttpServerSetup}
+                  className="px-4 py-2 bg-green-600 text-white rounded-md shadow-sm hover:bg-green-700 focus:outline-none"
+                >
+                  Configurar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Modal para Nginx Proxy */}
+      {nginxModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                  Configurar Proxy Nginx
+                </h2>
+                <button 
+                  onClick={() => setNginxModalOpen(false)}
+                  className="text-gray-400 hover:text-gray-500 focus:outline-none"
+                >
+                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              
+              <div className="space-y-4">
+                <div className="p-3 bg-purple-50 dark:bg-purple-900 rounded-lg">
+                  <p className="text-purple-800 dark:text-purple-200 text-sm">
+                    Esta opción genera configuración para Nginx como proxy inverso para la UI de DuckDB, ideal para equipos que necesitan acceso remoto con un dominio personalizado.
+                  </p>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Nombre de Dominio
+                  </label>
+                  <input
+                    type="text"
+                    value={domain}
+                    onChange={(e) => setDomain(e.target.value)}
+                    placeholder="duckdb.midominio.com"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white"
+                  />
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Dominio que apunta al servidor donde se ejecuta DuckDB
+                  </p>
+                </div>
+              </div>
+              
+              <div className="mt-6 flex justify-end space-x-3">
+                <button
+                  onClick={() => setNginxModalOpen(false)}
+                  className="px-4 py-2 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={confirmNginxSetup}
+                  className="px-4 py-2 bg-purple-600 text-white rounded-md shadow-sm hover:bg-purple-700 focus:outline-none"
+                >
+                  Generar Configuración
+                </button>
+              </div>
             </div>
           </div>
         </div>

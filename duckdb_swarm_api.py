@@ -28,6 +28,11 @@ Este script proporciona una API REST completa para:
    - Generación y publicación de reportes
    - Configuración de fuentes de datos
 
+6. Múltiples métodos de conexión a DuckDB
+   - SSH Port Forwarding para acceso seguro
+   - Proxy inverso Nginx para equipos
+   - Extensión httpserver para API HTTP nativa
+
 Se puede integrar con la plataforma SAGE existente
 """
 import os
@@ -39,7 +44,11 @@ import random
 import requests
 import datetime
 import logging
-from flask import Flask, request, jsonify
+import subprocess
+import threading
+import tempfile
+import shutil
+from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 from utils.ssh_deployer import deploy_duckdb_via_ssh, check_connection
 
@@ -47,7 +56,6 @@ from utils.ssh_deployer import deploy_duckdb_via_ssh, check_connection
 logging.basicConfig(level=logging.INFO, 
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger('duckdb_swarm_api')
-from flask_cors import CORS
 
 # Crear la aplicación Flask
 app = Flask(__name__)
@@ -55,6 +63,10 @@ CORS(app)  # Habilitar CORS para todas las rutas
 
 # Configuración
 DUCKDB_PATH = 'duckdb_data/duckdb_swarm.db'
+# Puerto predeterminado para la interfaz web de DuckDB
+DUCKDB_UI_PORT = 4213
+# Diccionario para llevar un registro de las sesiones activas de la UI de DuckDB
+duckdb_ui_sessions = {}
 
 def get_duckdb_connection():
     """Obtiene una conexión a la base de datos DuckDB"""
@@ -2558,6 +2570,316 @@ def execute_dev_query():
                 conn.close()
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+# ==============================
+# Métodos de conexión reales a DuckDB
+# ==============================
+
+@app.route('/api/servers/<server_id>/ssh-tunnel', methods=['POST'])
+def start_ssh_tunnel(server_id):
+    """Inicia un túnel SSH para acceder a la UI de DuckDB de forma segura"""
+    conn = get_duckdb_connection()
+    if not conn:
+        return jsonify({'error': 'No se pudo conectar a DuckDB'}), 500
+    
+    try:
+        # Obtener información del servidor
+        server = conn.execute("""
+            SELECT 
+                id, name, host, port, status,
+                ssh_host, ssh_port, ssh_username, ssh_password
+            FROM servers
+            WHERE id = ?
+        """, [server_id]).fetchone()
+        
+        if not server:
+            return jsonify({'error': f'Servidor con ID {server_id} no encontrado'}), 404
+        
+        # Verificar que el servidor está activo
+        if server[4] != 'active':
+            return jsonify({
+                'error': f'El servidor debe estar activo para iniciar un túnel SSH. Estado actual: {server[4]}'
+            }), 400
+        
+        # Verificar información SSH
+        ssh_host = server[5]
+        ssh_port = server[6] or 22
+        ssh_username = server[7]
+        
+        if not ssh_host or not ssh_username:
+            return jsonify({
+                'error': 'Información SSH incompleta para este servidor'
+            }), 400
+        
+        # Generar información para el túnel SSH
+        # En una implementación real, podríamos iniciar el túnel desde el servidor
+        # o proporcionar instrucciones detalladas para el cliente
+        
+        tunnel_info = {
+            'success': True,
+            'connection_type': 'ssh_tunnel',
+            'ssh_host': ssh_host,
+            'ssh_port': ssh_port,
+            'ssh_username': ssh_username,
+            'remote_port': DUCKDB_UI_PORT,  # Puerto donde corre la UI de DuckDB (4213)
+            'local_port': DUCKDB_UI_PORT,   # Puerto recomendado localmente
+            'tunnel_command': f'ssh -L {DUCKDB_UI_PORT}:localhost:{DUCKDB_UI_PORT} {ssh_username}@{ssh_host} -p {ssh_port}',
+            'ui_url': f'http://localhost:{DUCKDB_UI_PORT}',
+            'message': 'Información para túnel SSH generada correctamente',
+            'instructions': [
+                'Para conectar a la UI de DuckDB mediante SSH, siga estos pasos:',
+                '1. Abra una terminal en su máquina local',
+                f'2. Ejecute el comando: ssh -L {DUCKDB_UI_PORT}:localhost:{DUCKDB_UI_PORT} {ssh_username}@{ssh_host} -p {ssh_port}',
+                '3. Una vez establecida la conexión SSH, abra un navegador',
+                f'4. Acceda a http://localhost:{DUCKDB_UI_PORT} para usar la UI de DuckDB'
+            ]
+        }
+        
+        # Registrar el uso de SSH tunnel
+        current_time = datetime.datetime.now().isoformat()
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS connection_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                server_id TEXT NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT,
+                connection_type TEXT NOT NULL,
+                status TEXT DEFAULT 'active'
+            )
+        """)
+        
+        conn.execute("""
+            INSERT INTO connection_sessions (server_id, start_time, connection_type)
+            VALUES (?, ?, 'ssh_tunnel')
+        """, [server_id, current_time])
+        
+        return jsonify(tunnel_info)
+    except Exception as e:
+        logger.error(f"Error al iniciar túnel SSH: {str(e)}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
+
+@app.route('/api/servers/<server_id>/httpserver', methods=['POST'])
+def start_http_server(server_id):
+    """Inicia la extensión httpserver de DuckDB para acceder a través de HTTP"""
+    conn = get_duckdb_connection()
+    if not conn:
+        return jsonify({'error': 'No se pudo conectar a DuckDB'}), 500
+    
+    try:
+        # Obtener datos del request
+        data = request.json or {}
+        port = data.get('port', 9999)
+        auth = data.get('auth', 'admin:admin')  # username:password
+        
+        # Validar auth
+        if ':' not in auth:
+            return jsonify({'error': 'El formato de autenticación debe ser "usuario:contraseña"'}), 400
+        
+        # Obtener información del servidor
+        server = conn.execute("""
+            SELECT id, name, host, port, status
+            FROM servers
+            WHERE id = ?
+        """, [server_id]).fetchone()
+        
+        if not server:
+            return jsonify({'error': f'Servidor con ID {server_id} no encontrado'}), 404
+        
+        # Verificar que el servidor está activo
+        if server[4] != 'active':
+            return jsonify({
+                'error': f'El servidor debe estar activo para iniciar httpserver. Estado actual: {server[4]}'
+            }), 400
+        
+        # En una implementación real, enviaríamos comandos al servidor para:
+        # 1. Instalar la extensión httpserver si no está instalada
+        # 2. Cargar la extensión
+        # 3. Iniciar el servidor HTTP
+        
+        # Simulamos una respuesta exitosa
+        sql_commands = [
+            "INSTALL httpserver;",
+            "LOAD httpserver;",
+            f"SELECT httpserve_start('0.0.0.0', {port}, '{auth}');"
+        ]
+        
+        # Info para el cliente 
+        httpserver_info = {
+            'success': True,
+            'connection_type': 'httpserver',
+            'hostname': server[2],  # host
+            'port': port,
+            'server_url': f'http://{server[2]}:{port}',
+            'auth_required': True,
+            'sql_commands': sql_commands,
+            'message': 'Configuración para DuckDB httpserver generada correctamente',
+            'instructions': [
+                'Para iniciar el servidor HTTP de DuckDB, ejecute los siguientes comandos SQL:',
+                'INSTALL httpserver;',
+                'LOAD httpserver;',
+                f'SELECT httpserve_start(\'0.0.0.0\', {port}, \'{auth}\');',
+                '',
+                'Una vez ejecutados, acceda a:',
+                f'http://{server[2]}:{port}'
+            ]
+        }
+        
+        # Registrar el uso de httpserver
+        current_time = datetime.datetime.now().isoformat()
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS connection_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                server_id TEXT NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT,
+                connection_type TEXT NOT NULL,
+                status TEXT DEFAULT 'active'
+            )
+        """)
+        
+        conn.execute("""
+            INSERT INTO connection_sessions (server_id, start_time, connection_type)
+            VALUES (?, ?, 'httpserver')
+        """, [server_id, current_time])
+        
+        return jsonify(httpserver_info)
+    except Exception as e:
+        logger.error(f"Error al iniciar httpserver: {str(e)}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
+
+@app.route('/api/servers/<server_id>/nginx-proxy', methods=['POST'])
+def setup_nginx_proxy(server_id):
+    """Genera configuración para acceder a DuckDB a través de un proxy Nginx"""
+    conn = get_duckdb_connection()
+    if not conn:
+        return jsonify({'error': 'No se pudo conectar a DuckDB'}), 500
+    
+    try:
+        # Obtener datos del request
+        data = request.json or {}
+        domain = data.get('domain', '')
+        
+        if not domain:
+            return jsonify({'error': 'Se requiere un nombre de dominio para configurar Nginx'}), 400
+        
+        # Obtener información del servidor
+        server = conn.execute("""
+            SELECT id, name, host, port, status
+            FROM servers
+            WHERE id = ?
+        """, [server_id]).fetchone()
+        
+        if not server:
+            return jsonify({'error': f'Servidor con ID {server_id} no encontrado'}), 404
+        
+        # Verificar que el servidor está activo
+        if server[4] != 'active':
+            return jsonify({
+                'error': f'El servidor debe estar activo para configurar Nginx. Estado actual: {server[4]}'
+            }), 400
+        
+        # Generar configuración de Nginx
+        nginx_config = f"""server {{
+    listen 80;
+    server_name {domain};
+
+    location / {{
+        proxy_pass http://localhost:{DUCKDB_UI_PORT};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }}
+}}"""
+        
+        # Para HTTPS, también generar configuración con SSL
+        nginx_ssl_config = f"""server {{
+    listen 443 ssl;
+    server_name {domain};
+    
+    ssl_certificate /etc/letsencrypt/live/{domain}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/{domain}/privkey.pem;
+    
+    location / {{
+        proxy_pass http://localhost:{DUCKDB_UI_PORT};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }}
+}}
+
+server {{
+    listen 80;
+    server_name {domain};
+    return 301 https://$host$request_uri;
+}}"""
+
+        # Info para el cliente
+        nginx_info = {
+            'success': True,
+            'connection_type': 'nginx_proxy',
+            'domain': domain,
+            'nginx_config': nginx_config,
+            'nginx_ssl_config': nginx_ssl_config,
+            'message': 'Configuración de Nginx generada correctamente',
+            'instructions': [
+                'Para configurar Nginx como proxy inverso para DuckDB:',
+                '',
+                '1. Instale Nginx:',
+                '   sudo apt update && sudo apt install -y nginx',
+                '',
+                '2. Cree un archivo de configuración:',
+                f'   sudo nano /etc/nginx/sites-available/{domain}.conf',
+                '',
+                '3. Pegue la configuración generada',
+                '',
+                '4. Active el sitio:',
+                f'   sudo ln -s /etc/nginx/sites-available/{domain}.conf /etc/nginx/sites-enabled/',
+                '',
+                '5. Verifique la configuración:',
+                '   sudo nginx -t',
+                '',
+                '6. Reinicie Nginx:',
+                '   sudo systemctl restart nginx',
+                '',
+                '7. Para HTTPS, instale certbot:',
+                '   sudo apt install -y certbot python3-certbot-nginx',
+                '   sudo certbot --nginx -d ' + domain
+            ]
+        }
+        
+        # Registrar el uso de nginx proxy
+        current_time = datetime.datetime.now().isoformat()
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS connection_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                server_id TEXT NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT,
+                connection_type TEXT NOT NULL,
+                status TEXT DEFAULT 'active'
+            )
+        """)
+        
+        conn.execute("""
+            INSERT INTO connection_sessions (server_id, start_time, connection_type)
+            VALUES (?, ?, 'nginx_proxy')
+        """, [server_id, current_time])
+        
+        return jsonify(nginx_info)
+    except Exception as e:
+        logger.error(f"Error al generar configuración de Nginx: {str(e)}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
 
 # Iniciar el servidor
 if __name__ == '__main__':
