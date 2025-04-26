@@ -505,10 +505,15 @@ const DuckDBSwarmSimple = () => {
   
   const startVNCSession = async (serverId, serverName) => {
     try {
-      // Verificar si el servidor tiene VNC habilitado
+      // Verificar que el servidor existe y no es local
       const server = servers.find(s => s.id === serverId);
-      if (!server || !server.vnc_enabled) {
-        alert(`El servidor ${serverName} no tiene VNC habilitado.`);
+      if (!server) {
+        alert(`No se encontró el servidor ${serverName}.`);
+        return;
+      }
+      
+      if (server.is_local) {
+        alert(`El servidor local no tiene acceso VNC.`);
         return;
       }
       
@@ -519,13 +524,24 @@ const DuckDBSwarmSimple = () => {
         loading: true
       });
       
+      // Información VNC por defecto para servidores remotos
+      const defaultVncInfo = {
+        host: server.hostname,
+        port: 5901,
+        username: 'duckdb',
+        password: 'duckdbpass',
+        url: `http://${server.hostname}:5901/vnc.html?autoconnect=true&password=duckdbpass`
+      };
+      
       // Mostrar el modal con la información de VNC
       setCurrentServerInfo({
         name: serverName,
         id: serverId,
         hostname: server.hostname
       });
-      setVncInfo(server.vnc_info);
+      
+      // Usar la información VNC del servidor si existe, o la predeterminada
+      setVncInfo(server.vnc_info || defaultVncInfo);
       setVncModalOpen(true);
       
       setUiStatus({
@@ -1233,8 +1249,8 @@ Para instrucciones detalladas, revise la configuración generada.
                           <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-4">
                             {server.status === 'active' && (
                               <div className="flex flex-wrap gap-2">
-                                {/* VNC Access */}
-                                {server.vnc_enabled && (
+                                {/* VNC Access - Solo para servidores no locales */}
+                                {!server.is_local && (
                                   <button
                                     onClick={() => startVNCSession(server.id, server.name || server.hostname)}
                                     disabled={uiStatus.loading && uiStatus.serverId === server.id}
