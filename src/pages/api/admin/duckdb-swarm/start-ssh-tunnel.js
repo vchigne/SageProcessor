@@ -119,12 +119,20 @@ export default async function handler(req, res) {
       ui_url: `http://localhost:${localPort}`,
       message: 'Información para túnel SSH generada correctamente',
       instructions: [
-        'Para conectar a la UI de DuckDB mediante SSH, siga estos pasos:',
+        'Para conectar a la API de DuckDB mediante SSH, siga estos pasos:',
         '1. Abra una terminal en su máquina local',
         `2. Ejecute el comando: ${sshCommand}`,
         '3. Introduzca la contraseña SSH cuando se le solicite',
         '4. Una vez establecida la conexión SSH, abra un navegador',
-        `5. Acceda a http://localhost:${localPort} para usar la UI de DuckDB`
+        `5. Pruebe la conexión accediendo a http://localhost:${localPort}/health`,
+        '6. Para ejecutar consultas, use http://localhost:${localPort}/query?q=SELECT+1'
+      ],
+      api_endpoints: [
+        { "path": "/health", "description": "Verificar estado del servidor" },
+        { "path": "/query?q=SELECT+1", "description": "Ejecutar consulta de prueba" },
+        { "path": "/info", "description": "Obtener información del servidor" },
+        { "path": "/metrics", "description": "Obtener métricas del servidor" },
+        { "path": "/databases", "description": "Listar bases de datos" }
       ]
     });
   } catch (error) {
