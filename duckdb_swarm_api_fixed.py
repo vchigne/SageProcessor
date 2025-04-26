@@ -453,6 +453,21 @@ def repair_vnc(server_id):
         else:
             # Intentar usar el script existente si la transferencia falla
             repair_command = f"if [ -f /deploy_scripts/fix_vnc.sh ]; then chmod +x /deploy_scripts/fix_vnc.sh && sudo /deploy_scripts/fix_vnc.sh {server_info['api_key']}; elif [ -f /fix_vnc.sh ]; then chmod +x /fix_vnc.sh && sudo /fix_vnc.sh {server_info['api_key']}; else echo \"Script fix_vnc.sh no encontrado\"; fi"
+            
+            # Si la transferencia falló por autenticación, intentar otro método
+            if "Authentication failed" in transfer_result.get('message', ''):
+                # Retornar mensaje más informativo cuando falla autenticación
+                return jsonify({
+                    'success': False,
+                    'message': f"Error de autenticación SSH para el servidor {server_info['name']} ({server_info['host']})",
+                    'error': "No se pudo conectar al servidor mediante SSH. Verifique las credenciales.",
+                    'details': {
+                        'host': server_info['host'],
+                        'ssh_port': server_info['ssh_port'],
+                        'ssh_user': server_info['ssh_user'],
+                        'auth_error': transfer_result.get('message', 'Error de autenticación')
+                    }
+                }), 401
         
         repair_result = ssh_deployer.execute_command(
             server_info['host'],
@@ -462,6 +477,20 @@ def repair_vnc(server_id):
             ssh_password,
             ssh_key
         )
+        
+        # Verificar si falló la autenticación
+        if not repair_result['success'] and "Authentication failed" in repair_result.get('message', ''):
+            return jsonify({
+                'success': False,
+                'message': f"Error de autenticación SSH para el servidor {server_info['name']} ({server_info['host']})",
+                'error': "No se pudo conectar al servidor mediante SSH. Verifique las credenciales.",
+                'details': {
+                    'host': server_info['host'],
+                    'ssh_port': server_info['ssh_port'],
+                    'ssh_user': server_info['ssh_user'],
+                    'auth_error': repair_result.get('message', 'Error de autenticación')
+                }
+            }), 401
         
         if repair_result['success']:
             # Verificar si la reparación fue exitosa
