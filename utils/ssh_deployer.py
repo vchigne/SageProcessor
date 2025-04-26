@@ -174,10 +174,21 @@ def deploy_duckdb_via_ssh(ssh_host, ssh_port=22, ssh_username=None, ssh_password
             sftp.put(start_vnc_path, remote_start_vnc_path)
             sftp.put(supervisord_path, remote_supervisord_path)
             
+            # Transferir script de arreglo VNC
+            fix_vnc_path = os.path.join(DEPLOY_DIR, 'fix_vnc.sh')
+            remote_fix_vnc_path = 'duckdb_server/fix_vnc.sh'
+            if os.path.exists(fix_vnc_path):
+                logger.info(f"Transfiriendo script de arreglo VNC a {ssh_host}")
+                sftp.put(fix_vnc_path, remote_fix_vnc_path)
+            else:
+                logger.warning("No se encontró el script fix_vnc.sh, se omitirá la transferencia")
+            
             # Dar permisos de ejecución a los scripts de instalación
             logger.info("Dando permisos de ejecución a los scripts de instalación")
             # Usar un canal separado con keepalive activado para mejor tolerancia
             chmod_cmd = f"chmod +x {remote_install_path} {remote_docker_install_path} {remote_start_vnc_path}"
+            if os.path.exists(fix_vnc_path):
+                chmod_cmd += f" {remote_fix_vnc_path}"
             stdin, stdout, stderr = client.exec_command(
                 chmod_cmd,
                 get_pty=True,
@@ -258,6 +269,27 @@ def deploy_duckdb_via_ssh(ssh_host, ssh_port=22, ssh_username=None, ssh_password
                     'output': output,
                     'error': error_output
                 }
+            
+            # Ejecutar el script de arreglo VNC si existe
+            if os.path.exists(fix_vnc_path):
+                logger.info("Ejecutando script de arreglo VNC en el contenedor...")
+                vnc_fix_cmd = f"docker exec duckdb-server /bin/bash -c 'if [ -f /fix_vnc.sh ]; then chmod +x /fix_vnc.sh && /fix_vnc.sh; else echo \"Script fix_vnc.sh no encontrado\"; fi'"
+                stdin, stdout, stderr = client.exec_command(
+                    vnc_fix_cmd,
+                    get_pty=True,
+                    timeout=120  # 2 minutos para el script de arreglo
+                )
+                channel = stdout.channel
+                channel.settimeout(120)
+                
+                # Leer salida del script de arreglo VNC
+                while stdout.channel.recv_ready():
+                    chunk = stdout.channel.recv(1024).decode('utf-8', errors='replace')
+                    logger.info(chunk.strip())
+                
+                exit_status = stdout.channel.recv_exit_status()
+                if exit_status != 0:
+                    logger.warning(f"Script de arreglo VNC terminó con código {exit_status}, pero continuamos con la verificación")
             
             # Verificar que el servidor está en ejecución
             time.sleep(5)  # Esperar a que el servidor inicie
