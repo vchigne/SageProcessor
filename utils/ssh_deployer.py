@@ -18,6 +18,18 @@ logger = logging.getLogger('ssh_deployer')
 # Ruta a los scripts de despliegue
 DEPLOY_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'deploy_scripts')
 
+class KnownHostsPolicy(paramiko.MissingHostKeyPolicy):
+    """
+    Política personalizada para manejar claves de host desconocidas
+    Muestra un mensaje y añade automáticamente la clave
+    """
+    def missing_host_key(self, client, hostname, key):
+        logger.warning(f"Host desconocido: {hostname}. Añadiendo automáticamente la clave.")
+        client._host_keys.add(hostname, key.get_name(), key)
+        # Si tuviéramos un archivo de known_hosts, podríamos guardarlo:
+        # if client._host_keys_filename is not None:
+        #    client.save_host_keys(client._host_keys_filename)
+
 def deploy_duckdb_via_ssh(ssh_host, ssh_port=22, ssh_username=None, ssh_password=None, 
                           ssh_key=None, duckdb_port=1294, server_key=None):
     """
@@ -38,7 +50,16 @@ def deploy_duckdb_via_ssh(ssh_host, ssh_port=22, ssh_username=None, ssh_password
     try:
         # Inicializar cliente SSH
         client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        
+        # Manejo especial para la política de verificación de claves
+        # Primero intentamos cargar claves conocidas del sistema, si existen
+        try:
+            client.load_system_host_keys()
+        except Exception as e:
+            logger.warning(f"No se pudieron cargar las claves del sistema: {str(e)}")
+        
+        # Configuramos una política personalizada para hosts desconocidos
+        client.set_missing_host_key_policy(KnownHostsPolicy())
         
         # Archivo temporal para clave privada si se proporciona
         key_file = None
@@ -66,7 +87,9 @@ def deploy_duckdb_via_ssh(ssh_host, ssh_port=22, ssh_username=None, ssh_password
                     port=ssh_port,
                     username=ssh_username,
                     pkey=pkey,
-                    timeout=30
+                    timeout=30,
+                    look_for_keys=False,
+                    allow_agent=False
                 )
             else:
                 # Conectar con contraseña
@@ -75,7 +98,9 @@ def deploy_duckdb_via_ssh(ssh_host, ssh_port=22, ssh_username=None, ssh_password
                     port=ssh_port,
                     username=ssh_username,
                     password=ssh_password,
-                    timeout=30
+                    timeout=30,
+                    look_for_keys=False,
+                    allow_agent=False
                 )
             
             # Verificar que la conexión está activa
@@ -224,7 +249,16 @@ def check_connection(ssh_host, ssh_port=22, ssh_username=None, ssh_password=None
     try:
         # Inicializar cliente SSH
         client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        
+        # Manejo especial para la política de verificación de claves
+        # Primero intentamos cargar claves conocidas del sistema, si existen
+        try:
+            client.load_system_host_keys()
+        except Exception as e:
+            logger.warning(f"No se pudieron cargar las claves del sistema: {str(e)}")
+        
+        # Configuramos una política personalizada para hosts desconocidos
+        client.set_missing_host_key_policy(KnownHostsPolicy())
         
         # Archivo temporal para clave privada si se proporciona
         key_file = None
@@ -246,7 +280,9 @@ def check_connection(ssh_host, ssh_port=22, ssh_username=None, ssh_password=None
                     port=ssh_port,
                     username=ssh_username,
                     pkey=pkey,
-                    timeout=10
+                    timeout=10,
+                    look_for_keys=False,
+                    allow_agent=False
                 )
             else:
                 # Conectar con contraseña
@@ -255,7 +291,9 @@ def check_connection(ssh_host, ssh_port=22, ssh_username=None, ssh_password=None
                     port=ssh_port,
                     username=ssh_username,
                     password=ssh_password,
-                    timeout=10
+                    timeout=10,
+                    look_for_keys=False,
+                    allow_agent=False
                 )
             
             # Verificar que la conexión está activa
@@ -280,5 +318,9 @@ def check_connection(ssh_host, ssh_port=22, ssh_username=None, ssh_password=None
             # Cerrar la conexión SSH
             client.close()
             
+    except paramiko.SSHException as e:
+        # Errores específicos de SSH
+        return {'success': False, 'message': f"Error de conexión SSH: {str(e)}"}
     except Exception as e:
+        # Otros errores
         return {'success': False, 'message': f"Error de conexión: {str(e)}"}

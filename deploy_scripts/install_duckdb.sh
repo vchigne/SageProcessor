@@ -72,7 +72,27 @@ fi
 
 # Instalar Python packages
 print_info "Instalando paquetes de Python..."
-pip3 install --user duckdb flask flask-cors
+if command -v pip3 &> /dev/null; then
+    pip3 install --user duckdb flask flask-cors || {
+        print_error "Error al instalar paquetes Python con pip3. Intentando con pip..."
+        if command -v pip &> /dev/null; then
+            pip install --user duckdb flask flask-cors || {
+                print_error "Error al instalar paquetes Python con pip. El servidor podría no funcionar correctamente."
+            }
+        else
+            print_error "No se encontró pip. Instalación de paquetes fallida."
+        fi
+    }
+elif command -v pip &> /dev/null; then
+    print_info "pip3 no encontrado, usando pip..."
+    pip install --user duckdb flask flask-cors || {
+        print_error "Error al instalar paquetes Python con pip. El servidor podría no funcionar correctamente."
+    }
+else
+    print_error "No se encontró pip ni pip3. No se pueden instalar las dependencias de Python."
+    print_info "Es necesario instalar manualmente: duckdb, flask, flask-cors"
+    print_info "Por ejemplo: python3 -m pip install --user duckdb flask flask-cors"
+fi
 
 # Crear directorios
 print_info "Creando directorios..."
