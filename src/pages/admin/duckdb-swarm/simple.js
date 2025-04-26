@@ -1361,7 +1361,7 @@ Para instrucciones detalladas, revise la configuración generada.
                             </span>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-4">
-                            {server.status === 'active' && (
+                            {(server.status === 'active' || server.status === 'error') && (
                               <div className="flex flex-wrap gap-2">
                                 {/* VNC Access - Solo para servidores no locales */}
                                 {!server.is_local && (
