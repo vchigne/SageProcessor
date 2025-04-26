@@ -130,9 +130,15 @@ export default async function handler(req, res) {
       api_endpoints: [
         { "path": "/health", "description": "Verificar estado del servidor" },
         { "path": "/query?q=SELECT+1", "description": "Ejecutar consulta de prueba" },
+        { "path": "/api/query?q=SELECT+1", "description": "Ejecutar consulta de prueba (con prefijo /api)" },
+        { "path": "/execute?query=SELECT+1", "description": "Ejecutar consulta (método alternativo)" },
+        { "path": "/api/execute?query=SELECT+1", "description": "Ejecutar consulta (con prefijo /api)" },
         { "path": "/info", "description": "Obtener información del servidor" },
+        { "path": "/api/info", "description": "Obtener información del servidor (con prefijo /api)" },
         { "path": "/metrics", "description": "Obtener métricas del servidor" },
-        { "path": "/databases", "description": "Listar bases de datos" }
+        { "path": "/api/metrics", "description": "Obtener métricas del servidor (con prefijo /api)" },
+        { "path": "/databases", "description": "Listar bases de datos" },
+        { "path": "/api/databases", "description": "Listar bases de datos (con prefijo /api)" }
       ]
     });
   } catch (error) {
