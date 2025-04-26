@@ -1,25 +1,32 @@
 // Endpoint para reparar los servicios VNC en un servidor DuckDB
+// Prioriza el método systemd sobre el antiguo basado en Docker
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ success: false, error: 'Method not allowed, use POST' });
   }
 
-  const { id } = req.query;
+  const { id, method } = req.query;
   
   if (!id) {
     return res.status(400).json({ success: false, error: 'Missing server ID' });
   }
 
   try {
-    console.log(`Iniciando reparación VNC para servidor ${id}...`);
+    // Determinar método de reparación (priorizar systemd)
+    const repairMethod = method || 'systemd';
+    console.log(`Iniciando reparación VNC para servidor ${id} usando método ${repairMethod}...`);
     
     // Configurar un timeout más largo (5 minutos = 300000 ms)
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 300000);
     
+    // Construir URL base y parámetros según el método elegido
+    const baseUrl = `http://localhost:5001/api/servers/${id}/vnc/repair`;
+    const url = repairMethod !== 'auto' ? `${baseUrl}?method=${repairMethod}` : baseUrl;
+    
     // Llamar al API de DuckDB Swarm para reparar VNC con timeout extendido
-    const response = await fetch(`http://localhost:5001/api/servers/${id}/vnc/repair`, {
+    const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       signal: controller.signal
@@ -38,7 +45,7 @@ export default async function handler(req, res) {
     
     return res.status(200).json({
       success: true,
-      message: 'Reparación VNC iniciada correctamente',
+      message: `Reparación VNC (${repairMethod}) iniciada correctamente`,
       vnc_active: data.vnc_active,
       novnc_active: data.novnc_active,
       details: data.details,

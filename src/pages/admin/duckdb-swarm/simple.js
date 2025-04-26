@@ -502,58 +502,70 @@ const DuckDBSwarmSimple = () => {
   // VNC Access
   const [vncModalOpen, setVncModalOpen] = useState(false);
   const [vncInfo, setVncInfo] = useState(null);
-  const [repairing, setRepairing] = useState(false);
+  const [redeploying, setRedeploying] = useState(false);
   
-  // Reparar VNC
-  const repairVNC = async (serverId, serverName) => {
+  // Redeployment completo del servidor (systemd) en lugar de reparación parcial
+  const redeployServer = async (serverId, serverName) => {
     try {
-      setRepairing(true);
+      setRedeploying(true);
       
       // Verificar que el servidor existe y no es local
       const server = servers.find(s => s.id === serverId);
       if (!server) {
         alert(`No se encontró el servidor ${serverName}.`);
-        setRepairing(false);
+        setRedeploying(false);
         return;
       }
       
       if (server.is_local) {
-        alert(`El servidor local no tiene acceso VNC.`);
-        setRepairing(false);
+        alert(`El servidor local no se puede redesplegar.`);
+        setRedeploying(false);
         return;
       }
       
-      const response = await fetch(`/api/admin/duckdb-swarm/servers/${serverId}/repair-vnc`, {
+      // Confirmar acción con el usuario
+      if (!confirm(`¿Está seguro de que desea redesplegar completamente el servidor ${serverName}?\n\nEsto reinstalará todos los servicios systemd y reiniciará el servidor DuckDB.`)) {
+        setRedeploying(false);
+        return;
+      }
+      
+      // Usar el endpoint de deploy-server
+      const response = await fetch(`/api/admin/duckdb-swarm/servers/${serverId}/deploy`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
-        }
+        },
+        body: JSON.stringify({
+          force: true, // Forzar redespliegue aunque ya esté desplegado
+          method: 'systemd' // Usar exclusivamente systemd
+        })
       });
       
       const data = await response.json();
       
       if (response.ok && data.success) {
-        alert(`Reparación VNC iniciada para ${serverName}. ${data.message || ''}`);
+        alert(`Redespliegue iniciado para ${serverName}. ${data.message || ''}`);
         
-        // Esperar 3 segundos antes de intentar actualizar la información VNC
+        // Esperar 3 segundos antes de intentar actualizar
         setTimeout(() => {
           fetchServers(); // Refrescar lista de servidores
-          
-          // Si el modal VNC está abierto para este servidor, actualizar info
-          if (vncModalOpen && currentServerInfo && currentServerInfo.id === serverId) {
-            startVNCSession(serverId, serverName);
-          }
-          
-          setRepairing(false);
+          setRedeploying(false);
         }, 3000);
       } else {
-        alert(`Error al reparar VNC: ${data.error || 'Error desconocido'}`);
-        setRepairing(false);
+        console.error('Error al iniciar redespliegue:', data.error || 'Error desconocido');
+        if (response.status === 504) {
+          // Timeout específico
+          alert(`El redespliegue está tomando más tiempo del esperado. El proceso continúa en segundo plano. Intente verificar el estado más tarde.`);
+        } else {
+          // Otros errores
+          alert(`Error al redesplegar servidor: ${data.error || 'Error desconocido'}`);
+        }
+        setRedeploying(false);
       }
     } catch (error) {
-      console.error('Error al reparar VNC:', error);
-      alert(`Error al reparar VNC: ${error.message}`);
-      setRepairing(false);
+      console.error('Error al redesplegar servidor:', error);
+      alert(`Error al redesplegar servidor: ${error.message}`);
+      setRedeploying(false);
     }
   };
   
@@ -1378,27 +1390,27 @@ Para instrucciones detalladas, revise la configuración generada.
                                       )}
                                     </button>
                                     
-                                    {/* Botón Reparar VNC */}
+                                    {/* Botón de Redespliegue */}
                                     <button
-                                      onClick={() => repairVNC(server.id, server.name || server.hostname)}
-                                      disabled={repairing}
-                                      className="text-yellow-600 hover:text-yellow-900 dark:text-yellow-400 dark:hover:text-yellow-300 inline-flex items-center ml-2"
-                                      title="Reparar servicios VNC si hay problemas de conexión"
+                                      onClick={() => redeployServer(server.id, server.name || server.hostname)}
+                                      disabled={redeploying}
+                                      className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-300 inline-flex items-center ml-2"
+                                      title="Redesplegar completamente el servidor (reinstalación systemd)"
                                     >
-                                      {repairing ? (
+                                      {redeploying ? (
                                         <>
                                           <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                           </svg>
-                                          Reparando...
+                                          Redesplegando...
                                         </>
                                       ) : (
                                         <>
-                                          <svg className="h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                                           </svg>
-                                          Reparar VNC
+                                          Redesplegar
                                         </>
                                       )}
                                     </button>

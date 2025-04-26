@@ -260,20 +260,47 @@ def deploy_server():
             logger.warning(f"Solicitud de despliegue sin datos suficientes: {data}")
             return jsonify({'error': 'Se requiere ID del servidor o datos de conexión SSH'}), 400
         
-        # Importar el módulo deployer
+        # Importar el módulo deployer (primero intentar systemd, luego fallback a método antiguo)
         sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        import utils.ssh_deployer as ssh_deployer
         
-        # Desplegar el servidor
-        result = ssh_deployer.deploy_duckdb_via_ssh(
-            ssh_host=server_info['host'],
-            ssh_port=server_info['ssh_port'],
-            ssh_username=server_info['ssh_user'],
-            ssh_password=server_info['ssh_password'],
-            ssh_key=server_info['ssh_key'],
-            duckdb_port=server_info['port'],
-            server_key=server_info['api_key']
-        )
+        # Intentar usar el deployer systemd primero
+        try:
+            import utils.ssh_deployer_systemd as ssh_deployer_systemd
+            
+            # Intentar el despliegue con systemd
+            result = ssh_deployer_systemd.deploy_duckdb_via_ssh(
+                ssh_host=server_info['host'],
+                ssh_port=server_info['ssh_port'],
+                ssh_username=server_info['ssh_user'],
+                ssh_password=server_info['ssh_password'],
+                ssh_key=server_info['ssh_key'],
+                duckdb_port=server_info['port'],
+                server_key=server_info['api_key']
+            )
+            
+            # Si fue exitoso o al menos llegó a iniciar el despliegue, utilizar ese resultado
+            if result and 'success' in result:
+                logger.info(f"Despliegue systemd exitoso para {server_info['host']}")
+                # Continuar con el resultado
+            else:
+                # Si no hay resultado o falló, intentar con método antiguo
+                raise Exception("Método systemd no devolvió resultado válido")
+                
+        except Exception as e:
+            # Fallback a método antiguo basado en Docker
+            logger.warning(f"Error en despliegue systemd, usando método Docker antiguo: {str(e)}")
+            import utils.ssh_deployer as ssh_deployer
+            
+            # Desplegar el servidor con método antiguo
+            result = ssh_deployer.deploy_duckdb_via_ssh(
+                ssh_host=server_info['host'],
+                ssh_port=server_info['ssh_port'],
+                ssh_username=server_info['ssh_user'],
+                ssh_password=server_info['ssh_password'],
+                ssh_key=server_info['ssh_key'],
+                duckdb_port=server_info['port'],
+                server_key=server_info['api_key']
+            )
         
         if result['success']:
             # Actualizar estado del servidor en la base de datos si tiene id válido
@@ -342,25 +369,50 @@ def check_vnc_status(server_id):
         ssh_key = server[7]
         ssh_password = server[8]
         
-        # Verificar servicios VNC usando el módulo SSH
-        import utils.ssh_deployer as ssh_deployer
-        check_result = ssh_deployer.execute_command(
-            server_info['host'],
-            "ss -ltn | grep -E ':(5901|6080)' || echo 'No VNC services found'",
-            server_info['ssh_port'],
-            server_info['ssh_user'],
-            ssh_password,
-            ssh_key
-        )
+        # Verificar servicios VNC usando el módulo SSH (intentar primero systemd)
+        try:
+            import utils.ssh_deployer_systemd as ssh_deployer_systemd
+            
+            # Comando para verificar puertos en ambos tipos de instalación (Docker o systemd)
+            check_command = "ss -ltn | grep -E ':(5901|6080|6082)' || echo 'No VNC services found'"
+            
+            check_result = ssh_deployer_systemd.execute_command(
+                server_info['host'],
+                check_command,
+                server_info['ssh_port'],
+                server_info['ssh_user'],
+                ssh_password,
+                ssh_key
+            )
+        except Exception as e:
+            # Fallback a método antiguo
+            logger.warning(f"Error usando método systemd para verificar VNC, usando método antiguo: {str(e)}")
+            import utils.ssh_deployer as ssh_deployer
+            
+            check_result = ssh_deployer.execute_command(
+                server_info['host'],
+                "ss -ltn | grep -E ':(5901|6080|6082)' || echo 'No VNC services found'",
+                server_info['ssh_port'],
+                server_info['ssh_user'],
+                ssh_password,
+                ssh_key
+            )
         
         if check_result['success']:
             # Analizar respuesta para ver si VNC y noVNC están activos
             output = check_result['output']
             vnc_active = ":5901" in output
-            novnc_active = ":6080" in output
+            # Verificar ambos puertos posibles para noVNC (6080 para Docker, 6082 para systemd)
+            novnc_active = ":6080" in output or ":6082" in output
+            # Determinar qué puerto se está usando para noVNC
+            novnc_port = 6082 if ":6082" in output else 6080
             
             # Verificar logs si hay problemas
             if not vnc_active or not novnc_active:
+                # Importar ssh_deployer si no se ha importado antes
+                if 'ssh_deployer' not in locals() and 'ssh_deployer' not in globals():
+                    import utils.ssh_deployer as ssh_deployer
+                    
                 log_check = ssh_deployer.execute_command(
                     server_info['host'],
                     "tail -n 20 /var/log/vnc-startup.log 2>/dev/null || echo 'Log file not found'",
@@ -379,9 +431,9 @@ def check_vnc_status(server_id):
                 'novnc_active': novnc_active,
                 'details': {
                     'vnc_port': 5901,
-                    'novnc_port': 6080,
+                    'novnc_port': novnc_port,
                     'vnc_url': f"vnc://{server_info['host']}:5901",
-                    'novnc_url': f"http://{server_info['host']}:6080/vnc.html"
+                    'novnc_url': f"http://{server_info['host']}:{novnc_port}" + ("/vnc.html" if novnc_port == 6082 else "")
                 },
                 'logs': logs
             })
@@ -402,89 +454,124 @@ def check_vnc_status(server_id):
 @app.route('/api/servers/<server_id>/vnc/repair', methods=['POST'])
 def repair_vnc(server_id):
     """Intenta reparar el servicio VNC en un servidor"""
+    if request.method != 'POST':
+        return jsonify({"error": "Method not allowed, use POST"}), 405
+
     try:
-        # Primero obtener los detalles del servidor
+        # Obtener conexión a la base de datos
         conn = get_duckdb_connection()
-        server = conn.execute("""
-            SELECT id, name, host, port, api_key, ssh_user, ssh_port, ssh_key, ssh_password
-            FROM servers
-            WHERE id = ?
-        """, [server_id]).fetchone()
+        
+        # Obtener información del servidor
+        server = conn.execute(
+            "SELECT id, name, host, port, api_key, ssh_user, ssh_port, ssh_key, ssh_password " +
+            "FROM servers WHERE id = ?",
+            [server_id]
+        ).fetchone()
         
         if not server:
-            return jsonify({'error': 'Servidor no encontrado'}), 404
-        
-        server_info = {
-            'id': server[0],
-            'name': server[1],
-            'host': server[2],
-            'port': server[3],
-            'api_key': server[4],
-            'ssh_user': server[5],
-            'ssh_port': server[6],
-            'ssh_key': server[7],
-            'ssh_password': server[8]
-        }
+            return jsonify({"error": f"Servidor con ID {server_id} no encontrado"}), 404
+            
+        # Extraer información del servidor
+        server_id, server_name, hostname, api_port, api_key, ssh_user, ssh_port, ssh_key, ssh_password = server
         
         # Verificar si el servidor tiene SSH configurado
-        if not server_info['ssh_user'] or not server_info['host']:
+        if not ssh_user or not hostname:
             return jsonify({'error': 'Servidor no tiene configuración SSH completa'}), 400
-        # Ejecutar script de reparación VNC
-        import utils.ssh_deployer as ssh_deployer
+        
+        # Importar el módulo SSH para realizar operaciones remotas
+        import sys
+        import os
+        utils_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'utils')
+        sys.path.append(utils_path)
+        
+        # Intentar primero usar el deployer systemd, si falla usar el antiguo
+        try:
+            from utils.ssh_deployer_systemd import repair_vnc_systemd
+            
+            # Llamar a la función de reparación systemd
+            result = repair_vnc_systemd(
+                ssh_host=hostname,
+                ssh_port=ssh_port,
+                ssh_username=ssh_user,
+                ssh_password=ssh_password,
+                ssh_key=ssh_key
+            )
+            
+            # Si fue exitoso o al menos logró conectarse, usar el resultado
+            if result and ('success' in result or 'message' in result):
+                return jsonify({
+                    "success": result.get('success', False),
+                    "message": result.get('message', 'Reparación VNC ejecutada'),
+                    "vnc_active": result.get('vnc_active', False),
+                    "novnc_active": result.get('novnc_active', False),
+                    "repair_output": result.get('status_output', ''),
+                    "details": result.get('details', {
+                        "vnc_port": 5901,
+                        "novnc_port": 6082,
+                        "vnc_url": f"vnc://{hostname}:5901",
+                        "novnc_url": f"http://{hostname}:6082/vnc.html"
+                    })
+                })
+        except Exception as e:
+            # Si hay un error importando o ejecutando la función systemd, usar el método antiguo
+            logger.warning(f"Error usando método systemd para reparar VNC, probando método antiguo: {str(e)}")
+            
+        # Método antiguo basado en scripts específicos para cada tipo de instalación
+        from utils.ssh_deployer import execute_command, transfer_file
         
         # Primero transferir el script actualizado si es necesario
         script_path = "/home/runner/workspace/deploy_scripts/fix_vnc.sh"
-        transfer_result = ssh_deployer.transfer_file(
-            server_info['host'],
+        transfer_result = transfer_file(
+            hostname,
             script_path,
             "/tmp/fix_vnc.sh",
-            server_info['ssh_port'],
-            server_info['ssh_user'],
-            server_info['ssh_password'],
-            server_info['ssh_key']
+            ssh_port,
+            ssh_user,
+            ssh_password,
+            ssh_key
         )
         
         # Preparar el comando para ejecutar el script (con la API key como contraseña)
         if transfer_result['success']:
-            repair_command = f"chmod +x /tmp/fix_vnc.sh && sudo /tmp/fix_vnc.sh {server_info['api_key']}"
+            repair_command = f"chmod +x /tmp/fix_vnc.sh && sudo /tmp/fix_vnc.sh {api_key}"
         else:
             # Intentar usar el script existente si la transferencia falla
-            repair_command = f"if [ -f /deploy_scripts/fix_vnc.sh ]; then chmod +x /deploy_scripts/fix_vnc.sh && sudo /deploy_scripts/fix_vnc.sh {server_info['api_key']}; elif [ -f /fix_vnc.sh ]; then chmod +x /fix_vnc.sh && sudo /fix_vnc.sh {server_info['api_key']}; else echo \"Script fix_vnc.sh no encontrado\"; fi"
+            repair_command = f"if [ -f /deploy_scripts/fix_vnc.sh ]; then chmod +x /deploy_scripts/fix_vnc.sh && sudo /deploy_scripts/fix_vnc.sh {api_key}; elif [ -f /fix_vnc.sh ]; then chmod +x /fix_vnc.sh && sudo /fix_vnc.sh {api_key}; else echo \"Script fix_vnc.sh no encontrado\"; fi"
             
             # Si la transferencia falló por autenticación, intentar otro método
             if "Authentication failed" in transfer_result.get('message', ''):
                 # Retornar mensaje más informativo cuando falla autenticación
                 return jsonify({
                     'success': False,
-                    'message': f"Error de autenticación SSH para el servidor {server_info['name']} ({server_info['host']})",
+                    'message': f"Error de autenticación SSH para el servidor {server_name} ({hostname})",
                     'error': "No se pudo conectar al servidor mediante SSH. Verifique las credenciales.",
                     'details': {
-                        'host': server_info['host'],
-                        'ssh_port': server_info['ssh_port'],
-                        'ssh_user': server_info['ssh_user'],
+                        'host': hostname,
+                        'ssh_port': ssh_port,
+                        'ssh_user': ssh_user,
                         'auth_error': transfer_result.get('message', 'Error de autenticación')
                     }
                 }), 401
         
-        repair_result = ssh_deployer.execute_command(
-            server_info['host'],
+        repair_result = execute_command(
+            hostname,
             repair_command,
-            server_info['ssh_port'],
-            server_info['ssh_user'],
-            server_info['ssh_password'],
-            server_info['ssh_key']
+            ssh_port,
+            ssh_user,
+            ssh_password,
+            ssh_key
         )
         
         # Verificar si falló la autenticación
         if not repair_result['success'] and "Authentication failed" in repair_result.get('message', ''):
             return jsonify({
                 'success': False,
-                'message': f"Error de autenticación SSH para el servidor {server_info['name']} ({server_info['host']})",
+                'message': f"Error de autenticación SSH para el servidor {server_name} ({hostname})",
                 'error': "No se pudo conectar al servidor mediante SSH. Verifique las credenciales.",
                 'details': {
-                    'host': server_info['host'],
-                    'ssh_port': server_info['ssh_port'],
-                    'ssh_user': server_info['ssh_user'],
+                    'host': hostname,
+                    'ssh_port': ssh_port,
+                    'ssh_user': ssh_user,
                     'auth_error': repair_result.get('message', 'Error de autenticación')
                 }
             }), 401
@@ -493,20 +580,21 @@ def repair_vnc(server_id):
             # Verificar si la reparación fue exitosa
             time.sleep(5)  # Dar tiempo a que los servicios inicien
             
-            check_command = "ss -ltn | grep -E ':(5901|6080)' || echo 'No VNC services found'"
-            check_result = ssh_deployer.execute_command(
-                server_info['host'],
+            check_command = "ss -ltn | grep -E ':(5901|6080|6082)' || echo 'No VNC services found'"
+            check_result = execute_command(
+                hostname,
                 check_command,
-                server_info['ssh_port'],
-                server_info['ssh_user'],
-                server_info['ssh_password'],
-                server_info['ssh_key']
+                ssh_port,
+                ssh_user,
+                ssh_password,
+                ssh_key
             )
             
             if check_result['success']:
                 output = check_result['output']
                 vnc_active = ":5901" in output
-                novnc_active = ":6080" in output
+                # Verificar ambos puertos posibles para noVNC
+                novnc_active = ":6080" in output or ":6082" in output
                 
                 return jsonify({
                     'success': True,
@@ -516,9 +604,9 @@ def repair_vnc(server_id):
                     'repair_output': repair_result['output'],
                     'details': {
                         'vnc_port': 5901,
-                        'novnc_port': 6080,
-                        'vnc_url': f"vnc://{server_info['host']}:5901",
-                        'novnc_url': f"http://{server_info['host']}:6080/vnc.html"
+                        'novnc_port': 6082 if ":6082" in output else 6080,
+                        'vnc_url': f"vnc://{hostname}:5901",
+                        'novnc_url': f"http://{hostname}:" + ("6082/vnc.html" if ":6082" in output else "6080")
                     }
                 })
             else:
