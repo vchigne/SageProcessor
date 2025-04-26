@@ -82,26 +82,47 @@ def deploy_duckdb_via_ssh(ssh_host, ssh_port=22, ssh_username=None, ssh_password
                 
                 # Conectar con clave privada
                 pkey = paramiko.RSAKey.from_private_key_file(key_file.name)
+                # Configurar opciones para conexiones más robustas
+                # Algunas versiones de Paramiko no soportan transport_params directamente
+                disabled_algorithms = {'pubkeys': ['rsa-sha2-256', 'rsa-sha2-512']}
                 client.connect(
                     hostname=ssh_host,
                     port=ssh_port,
                     username=ssh_username,
                     pkey=pkey,
-                    timeout=30,
+                    timeout=30,  # Tiempo de espera para conectar
                     look_for_keys=False,
-                    allow_agent=False
+                    allow_agent=False,
+                    banner_timeout=60,  # Mayor tiempo de espera para el banner
+                    auth_timeout=30,  # Tiempo de espera para la autenticación
+                    disabled_algorithms=disabled_algorithms
                 )
+                
+                # Configurar timeout del transporte
+                transport = client.get_transport()
+                if transport:
+                    transport.set_keepalive(5)  # Enviar keepalive cada 5 segundos
             else:
                 # Conectar con contraseña
+                # Configurar opciones para conexiones más robustas
+                disabled_algorithms = {'pubkeys': ['rsa-sha2-256', 'rsa-sha2-512']}
                 client.connect(
                     hostname=ssh_host,
                     port=ssh_port,
                     username=ssh_username,
                     password=ssh_password,
-                    timeout=30,
+                    timeout=30,  # Tiempo de espera para conectar
                     look_for_keys=False,
-                    allow_agent=False
+                    allow_agent=False,
+                    banner_timeout=60,  # Mayor tiempo de espera para el banner
+                    auth_timeout=30,  # Tiempo de espera para la autenticación
+                    disabled_algorithms=disabled_algorithms
                 )
+                
+                # Configurar keepalive en el transporte
+                transport = client.get_transport()
+                if transport:
+                    transport.set_keepalive(5)  # Enviar keepalive cada 5 segundos
             
             # Verificar que la conexión está activa
             transport = client.get_transport()
@@ -139,7 +160,15 @@ def deploy_duckdb_via_ssh(ssh_host, ssh_port=22, ssh_username=None, ssh_password
             
             # Dar permisos de ejecución al script de instalación
             logger.info("Dando permisos de ejecución al script de instalación")
-            stdin, stdout, stderr = client.exec_command(f"chmod +x {remote_install_path}")
+            # Usar un canal separado con keepalive activado para mejor tolerancia
+            stdin, stdout, stderr = client.exec_command(
+                f"chmod +x {remote_install_path}",
+                get_pty=True,
+                timeout=30
+            )
+            # Configurar keepalive en el canal
+            channel = stdout.channel
+            channel.settimeout(30)  # 30 segundos de timeout para operaciones del canal
             exit_status = stdout.channel.recv_exit_status()
             
             if exit_status != 0:
@@ -151,7 +180,13 @@ def deploy_duckdb_via_ssh(ssh_host, ssh_port=22, ssh_username=None, ssh_password
             logger.info(f"Ejecutando script de instalación con puerto {duckdb_port} y clave {'configurada' if server_key else 'no configurada'}")
             
             cmd = f"cd ~/duckdb_server && ./install_duckdb.sh {duckdb_port} '{server_key if server_key else ''}'"
-            stdin, stdout, stderr = client.exec_command(cmd)
+            stdin, stdout, stderr = client.exec_command(
+                cmd,
+                get_pty=True,
+                timeout=120  # Mayor tiempo de espera para la instalación
+            )
+            channel = stdout.channel
+            channel.settimeout(120)  # 120 segundos de timeout para operaciones del canal
             
             # Leer la salida en tiempo real
             output = ""
@@ -196,8 +231,14 @@ def deploy_duckdb_via_ssh(ssh_host, ssh_port=22, ssh_username=None, ssh_password
             time.sleep(5)  # Esperar a que el servidor inicie
             
             logger.info("Verificando que el servidor DuckDB está en ejecución")
-            cmd = f"curl -s http://localhost:{duckdb_port}/health"
-            stdin, stdout, stderr = client.exec_command(cmd)
+            cmd = f"curl -s --connect-timeout 10 --max-time 15 http://localhost:{duckdb_port}/health"
+            stdin, stdout, stderr = client.exec_command(
+                cmd,
+                get_pty=True,
+                timeout=30
+            )
+            channel = stdout.channel
+            channel.settimeout(30)
             response = stdout.read().decode().strip()
             error = stderr.read().decode().strip()
             exit_status = stdout.channel.recv_exit_status()
@@ -275,26 +316,46 @@ def check_connection(ssh_host, ssh_port=22, ssh_username=None, ssh_password=None
                 
                 # Conectar con clave privada
                 pkey = paramiko.RSAKey.from_private_key_file(key_file.name)
+                # Configurar opciones para conexiones más robustas
+                disabled_algorithms = {'pubkeys': ['rsa-sha2-256', 'rsa-sha2-512']}
                 client.connect(
                     hostname=ssh_host,
                     port=ssh_port,
                     username=ssh_username,
                     pkey=pkey,
-                    timeout=10,
+                    timeout=20,  # Tiempo de espera para conectar
                     look_for_keys=False,
-                    allow_agent=False
+                    allow_agent=False,
+                    banner_timeout=30,  # Mayor tiempo de espera para el banner
+                    auth_timeout=20,  # Tiempo de espera para la autenticación
+                    disabled_algorithms=disabled_algorithms
                 )
+                
+                # Configurar keepalive en el transporte
+                transport = client.get_transport()
+                if transport:
+                    transport.set_keepalive(5)  # Enviar keepalive cada 5 segundos
             else:
                 # Conectar con contraseña
+                # Configurar opciones para conexiones más robustas
+                disabled_algorithms = {'pubkeys': ['rsa-sha2-256', 'rsa-sha2-512']}
                 client.connect(
                     hostname=ssh_host,
                     port=ssh_port,
                     username=ssh_username,
                     password=ssh_password,
-                    timeout=10,
+                    timeout=20,  # Tiempo de espera para conectar
                     look_for_keys=False,
-                    allow_agent=False
+                    allow_agent=False,
+                    banner_timeout=30,  # Mayor tiempo de espera para el banner
+                    auth_timeout=20,  # Tiempo de espera para la autenticación
+                    disabled_algorithms=disabled_algorithms
                 )
+                
+                # Configurar keepalive en el transporte
+                transport = client.get_transport()
+                if transport:
+                    transport.set_keepalive(5)  # Enviar keepalive cada 5 segundos
             
             # Verificar que la conexión está activa
             transport = client.get_transport()
@@ -302,7 +363,13 @@ def check_connection(ssh_host, ssh_port=22, ssh_username=None, ssh_password=None
                 return {'success': False, 'message': 'No se pudo establecer la conexión SSH'}
             
             # Ejecutar un comando simple para verificar
-            stdin, stdout, stderr = client.exec_command("echo 'Test connection successful'")
+            stdin, stdout, stderr = client.exec_command(
+                "echo 'Test connection successful'",
+                get_pty=True,
+                timeout=15
+            )
+            channel = stdout.channel
+            channel.settimeout(15)
             output = stdout.read().decode().strip()
             
             if output == 'Test connection successful':
