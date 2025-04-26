@@ -124,21 +124,22 @@ export default async function handler(req, res) {
         `2. Ejecute el comando: ${sshCommand}`,
         '3. Introduzca la contraseña SSH cuando se le solicite',
         '4. Una vez establecida la conexión SSH, abra un navegador',
-        `5. Pruebe la conexión accediendo a http://localhost:${localPort}/health`,
-        '6. Para ejecutar consultas, use http://localhost:${localPort}/query?q=SELECT+1'
+        `5. Pruebe la conexión accediendo a http://localhost:${localPort}/health?api_key=krx32aFF`,
+        '6. Para ejecutar consultas, use http://localhost:${localPort}/query?q=SELECT+1&api_key=krx32aFF'
       ],
+      api_key: "krx32aFF",
       api_endpoints: [
-        { "path": "/health", "description": "Verificar estado del servidor" },
-        { "path": "/query?q=SELECT+1", "description": "Ejecutar consulta de prueba" },
-        { "path": "/api/query?q=SELECT+1", "description": "Ejecutar consulta de prueba (con prefijo /api)" },
-        { "path": "/execute?query=SELECT+1", "description": "Ejecutar consulta (método alternativo)" },
-        { "path": "/api/execute?query=SELECT+1", "description": "Ejecutar consulta (con prefijo /api)" },
-        { "path": "/info", "description": "Obtener información del servidor" },
-        { "path": "/api/info", "description": "Obtener información del servidor (con prefijo /api)" },
-        { "path": "/metrics", "description": "Obtener métricas del servidor" },
-        { "path": "/api/metrics", "description": "Obtener métricas del servidor (con prefijo /api)" },
-        { "path": "/databases", "description": "Listar bases de datos" },
-        { "path": "/api/databases", "description": "Listar bases de datos (con prefijo /api)" }
+        { "path": "/health?api_key=krx32aFF", "description": "Verificar estado del servidor" },
+        { "path": "/query?q=SELECT+1+AS+test&api_key=krx32aFF", "description": "Ejecutar consulta de prueba" },
+        { "path": "/api/query?q=SELECT+1+AS+test&api_key=krx32aFF", "description": "Ejecutar consulta de prueba (con prefijo /api)" },
+        { "path": "/execute?query=SELECT+1+AS+test&api_key=krx32aFF", "description": "Ejecutar consulta (método alternativo)" },
+        { "path": "/api/execute?query=SELECT+1+AS+test&api_key=krx32aFF", "description": "Ejecutar consulta (con prefijo /api)" },
+        { "path": "/info?api_key=krx32aFF", "description": "Obtener información del servidor" },
+        { "path": "/api/info?api_key=krx32aFF", "description": "Obtener información del servidor (con prefijo /api)" },
+        { "path": "/metrics?api_key=krx32aFF", "description": "Obtener métricas del servidor" },
+        { "path": "/api/metrics?api_key=krx32aFF", "description": "Obtener métricas del servidor (con prefijo /api)" },
+        { "path": "/databases?api_key=krx32aFF", "description": "Listar bases de datos" },
+        { "path": "/api/databases?api_key=krx32aFF", "description": "Listar bases de datos (con prefijo /api)" }
       ]
     });
   } catch (error) {
