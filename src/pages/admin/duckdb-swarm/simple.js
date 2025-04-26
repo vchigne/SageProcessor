@@ -529,7 +529,32 @@ const DuckDBSwarmSimple = () => {
         return;
       }
       
-      // Usar el endpoint de deploy-server
+      // Verificar si el servidor tiene credenciales SSH
+      console.log("Información del servidor para redespliegue:", {
+        id: server.id,
+        hostname: server.hostname,
+        ssh_host: server.ssh_host,
+        ssh_username: server.ssh_username,
+        // No imprimimos las contraseñas o claves por seguridad
+        has_ssh_password: !!server.ssh_password,
+        has_ssh_key: !!server.ssh_key
+      });
+      
+      // Si el servidor no tiene credenciales SSH completas, pedir al usuario que proporcione las mínimas necesarias
+      const ssh_host = server.ssh_host || prompt('Ingrese el host SSH (hostname o IP)', server.hostname);
+      const ssh_port = server.ssh_port || parseInt(prompt('Ingrese el puerto SSH', '22'));
+      const ssh_username = server.ssh_username || prompt('Ingrese el usuario SSH', 'root');
+      const ssh_password = server.ssh_password || prompt('Ingrese la contraseña SSH (dejar en blanco si usa clave privada)');
+      const useKey = !ssh_password && (!server.ssh_key || confirm('¿Desea proporcionar una clave SSH privada?'));
+      const ssh_key = useKey ? prompt('Ingrese la clave SSH privada completa') : server.ssh_key;
+      
+      if (!ssh_host || !ssh_username || (!ssh_password && !ssh_key)) {
+        alert('Se requieren credenciales SSH para redesplegar el servidor');
+        setRedeploying(false);
+        return;
+      }
+      
+      // Usar el endpoint de deploy
       const response = await fetch(`/api/admin/duckdb-swarm/servers/${serverId}/deploy`, {
         method: 'POST',
         headers: {
@@ -537,7 +562,12 @@ const DuckDBSwarmSimple = () => {
         },
         body: JSON.stringify({
           force: true, // Forzar redespliegue aunque ya esté desplegado
-          method: 'systemd' // Usar exclusivamente systemd
+          method: 'systemd', // Usar exclusivamente systemd
+          ssh_host,
+          ssh_port,
+          ssh_username,
+          ssh_password,
+          ssh_key
         })
       });
       
