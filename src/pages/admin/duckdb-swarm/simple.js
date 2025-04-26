@@ -1448,7 +1448,8 @@ Para instrucciones detalladas, revise la configuración generada.
                               Editar
                             </button>
                             
-                            {!server.is_local && (
+                            {/* Eliminado el botón duplicado de redespliegue, usamos solo el de la acción principal */}
+                            {false && !server.is_local && (
                               <button
                                 onClick={async () => {
                                   if (confirm(`¿Seguro que deseas redesplegar el servidor ${server.name || server.hostname}?`)) {
