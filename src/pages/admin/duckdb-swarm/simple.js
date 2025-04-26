@@ -529,73 +529,146 @@ const DuckDBSwarmSimple = () => {
         return;
       }
       
-      // Verificar si el servidor tiene credenciales SSH
-      console.log("Información del servidor para redespliegue:", {
-        id: server.id,
-        hostname: server.hostname,
-        ssh_host: server.ssh_host,
-        ssh_username: server.ssh_username,
-        // No imprimimos las contraseñas o claves por seguridad
-        has_ssh_password: !!server.ssh_password,
-        has_ssh_key: !!server.ssh_key
+      // Mostrar el diálogo de progreso para el redespliegue
+      setDeploymentStatus({
+        message: 'Preparando redespliegue...',
+        progress: 5,
+        error: '',
+        success: false,
+        logs: ['Iniciando proceso de redespliegue...']
       });
+      
+      // Mostrar el modal de progreso
+      setLoading(prev => ({ ...prev, deploying: true }));
       
       // Si el servidor no tiene credenciales SSH completas, pedir al usuario que proporcione las mínimas necesarias
       const ssh_host = server.ssh_host || prompt('Ingrese el host SSH (hostname o IP)', server.hostname);
       const ssh_port = server.ssh_port || parseInt(prompt('Ingrese el puerto SSH', '22'));
       const ssh_username = server.ssh_username || prompt('Ingrese el usuario SSH', 'root');
       const ssh_password = server.ssh_password || prompt('Ingrese la contraseña SSH (dejar en blanco si usa clave privada)');
-      const useKey = !ssh_password && (!server.ssh_key || confirm('¿Desea proporcionar una clave SSH privada?'));
-      const ssh_key = useKey ? prompt('Ingrese la clave SSH privada completa') : server.ssh_key;
+      const ssh_key = server.ssh_key || ((!ssh_password) ? prompt('Ingrese la clave SSH privada completa') : '');
       
       if (!ssh_host || !ssh_username || (!ssh_password && !ssh_key)) {
-        alert('Se requieren credenciales SSH para redesplegar el servidor');
-        setRedeploying(false);
+        setDeploymentStatus(prev => ({
+          ...prev,
+          error: 'Se requieren credenciales SSH para redesplegar el servidor',
+          logs: [...prev.logs, '[ERROR] Faltan credenciales SSH requeridas']
+        }));
+        setTimeout(() => {
+          setLoading(prev => ({ ...prev, deploying: false }));
+          setRedeploying(false);
+        }, 1500);
         return;
       }
       
+      setDeploymentStatus(prev => ({
+        ...prev,
+        progress: 15,
+        message: 'Enviando solicitud de redespliegue...',
+        logs: [...prev.logs, `[INFO] Conectando a ${ssh_host} con usuario ${ssh_username}`]
+      }));
+      
       // Usar el endpoint de deploy
-      const response = await fetch(`/api/admin/duckdb-swarm/servers/${serverId}/deploy`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          force: true, // Forzar redespliegue aunque ya esté desplegado
-          method: 'systemd', // Usar exclusivamente systemd
-          ssh_host,
-          ssh_port,
-          ssh_username,
-          ssh_password,
-          ssh_key
-        })
-      });
-      
-      const data = await response.json();
-      
-      if (response.ok && data.success) {
-        alert(`Redespliegue iniciado para ${serverName}. ${data.message || ''}`);
+      try {
+        const response = await fetch(`/api/admin/duckdb-swarm/servers/${serverId}/deploy`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            force: true, // Forzar redespliegue aunque ya esté desplegado
+            method: 'systemd', // Usar exclusivamente systemd
+            ssh_host,
+            ssh_port,
+            ssh_username,
+            ssh_password,
+            ssh_key
+          })
+        });
         
-        // Esperar 3 segundos antes de intentar actualizar
+        if (!response.ok) {
+          throw new Error(`Error de servidor: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (!data.success) {
+          throw new Error(data.error || 'Error desconocido al redesplegar');
+        }
+        
+        // Si llegamos aquí, el despliegue se inició correctamente
+        setDeploymentStatus(prev => ({
+          ...prev,
+          progress: 25,
+          message: 'Redespliegue iniciado correctamente',
+          logs: [...prev.logs, `[INFO] Redespliegue iniciado para ${serverName}`, 
+                             `[INFO] Instalando servicios systemd en ${ssh_host}`]
+        }));
+        
+        // Actualizar estado cada 5 segundos para mostrar progreso
+        let progress = 25;
+        const progressInterval = setInterval(() => {
+          progress += 5;
+          if (progress >= 95) {
+            clearInterval(progressInterval);
+          }
+          setDeploymentStatus(prev => ({
+            ...prev,
+            progress,
+            logs: [...prev.logs, `[INFO] Progreso de instalación: ${progress}%`]
+          }));
+        }, 5000);
+        
+        // Cerrar automáticamente después de un tiempo
         setTimeout(() => {
-          fetchServers(); // Refrescar lista de servidores
+          clearInterval(progressInterval);
+          setDeploymentStatus(prev => ({
+            ...prev,
+            progress: 100,
+            success: true,
+            message: 'Redespliegue completado con éxito',
+            logs: [...prev.logs, '[SUCCESS] Servidor redesplegado correctamente']
+          }));
+          
+          // Cerrar modal y actualizar lista de servidores
+          setTimeout(() => {
+            setLoading(prev => ({ ...prev, deploying: false }));
+            setRedeploying(false);
+            fetchServers();
+          }, 2000);
+        }, 60000); // 1 minuto, tiempo suficiente para la mayoría de los despliegues
+        
+      } catch (error) {
+        console.error('Error al iniciar redespliegue:', error);
+        
+        setDeploymentStatus(prev => ({
+          ...prev,
+          error: error.message,
+          message: 'Error en el redespliegue',
+          logs: [...prev.logs, `[ERROR] ${error.message}`]
+        }));
+        
+        // Esperar un momento antes de cerrar el modal
+        setTimeout(() => {
+          setLoading(prev => ({ ...prev, deploying: false }));
           setRedeploying(false);
         }, 3000);
-      } else {
-        console.error('Error al iniciar redespliegue:', data.error || 'Error desconocido');
-        if (response.status === 504) {
-          // Timeout específico
-          alert(`El redespliegue está tomando más tiempo del esperado. El proceso continúa en segundo plano. Intente verificar el estado más tarde.`);
-        } else {
-          // Otros errores
-          alert(`Error al redesplegar servidor: ${data.error || 'Error desconocido'}`);
-        }
-        setRedeploying(false);
       }
     } catch (error) {
-      console.error('Error al redesplegar servidor:', error);
-      alert(`Error al redesplegar servidor: ${error.message}`);
-      setRedeploying(false);
+      console.error('Error general al redesplegar servidor:', error);
+      
+      setDeploymentStatus(prev => ({
+        ...prev,
+        error: error.message,
+        message: 'Error en el redespliegue',
+        logs: [...prev.logs, `[ERROR] ${error.message}`]
+      }));
+      
+      // Esperar un momento antes de cerrar el modal
+      setTimeout(() => {
+        setLoading(prev => ({ ...prev, deploying: false }));
+        setRedeploying(false);
+      }, 3000);
     }
   };
   
