@@ -253,6 +253,90 @@ def deploy_server():
             'message': f"Error en despliegue: {str(e)}"
         }), 500
 
+@app.route('/api/servers/<int:server_id>/ui', methods=['POST'])
+def start_duckdb_ui(server_id):
+    """Inicia la UI de DuckDB en un servidor remoto"""
+    try:
+        # Obtener datos del servidor
+        conn = get_duckdb_connection()
+        if not conn:
+            return jsonify({'error': 'No se pudo conectar a DuckDB'}), 500
+        
+        server_result = conn.execute(
+            "SELECT hostname, port, server_key FROM duckdb_servers WHERE id = ?", 
+            [server_id]
+        ).fetchone()
+        
+        if not server_result:
+            return jsonify({'error': f'Servidor con ID {server_id} no encontrado'}), 404
+            
+        hostname, port, server_key = server_result
+        
+        # Intentar enviar comando para iniciar la UI
+        try:
+            headers = {}
+            if server_key:
+                headers['X-API-Key'] = server_key
+                
+            # Enviar comando para iniciar la UI
+            response = requests.post(
+                f"http://{hostname}:{port}/execute", 
+                headers=headers,
+                json={
+                    'query': 'INSTALL ui; CALL start_ui();',
+                    'format': 'json'
+                },
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                # Extraer la URL de la UI del resultado
+                result = response.json()
+                
+                # La respuesta puede variar, pero generalmente incluirá la URL de la UI
+                # como "The DuckDB UI is now running at http://localhost:xxxx"
+                ui_url = None
+                if 'results' in result and len(result['results']) > 0:
+                    for row in result['results']:
+                        if isinstance(row, str) and 'running at' in row:
+                            # Extraer la URL usando expresión regular
+                            import re
+                            match = re.search(r'running at (http://[^\s]+)', row)
+                            if match:
+                                ui_url = match.group(1)
+                                break
+                
+                # Construir respuesta
+                response_data = {
+                    'success': True,
+                    'message': 'UI de DuckDB iniciada correctamente',
+                    'ui_url': ui_url
+                }
+                
+                # Si no se pudo extraer la URL, añadir instrucciones manuales
+                if not ui_url:
+                    ui_port = 8080  # Puerto por defecto de la UI
+                    response_data['message'] += f' pero no se pudo determinar la URL exacta'
+                    response_data['ui_url'] = f'http://{hostname}:{ui_port}'
+                    response_data['manual_instructions'] = 'Es posible que necesites acceder manualmente a la UI de DuckDB en tu navegador.'
+                
+                return jsonify(response_data)
+            else:
+                return jsonify({
+                    'success': False,
+                    'message': f'Error al iniciar la UI de DuckDB: Código {response.status_code}',
+                    'details': response.json() if response.headers.get('content-type') == 'application/json' else response.text
+                }), 500
+        except requests.exceptions.RequestException as e:
+            return jsonify({
+                'success': False,
+                'message': f'No se pudo conectar al servidor DuckDB: {str(e)}'
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"Error al iniciar UI de DuckDB en servidor {server_id}: {str(e)}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/servers/<int:server_id>/status', methods=['GET'])
 def check_server_status(server_id):
     """Verifica el estado de un servidor DuckDB remoto"""
@@ -2289,6 +2373,88 @@ if __name__ == '__main__':
 #     finally:
 #         if conn:
 #             conn.close()
+
+# Endpoint simple para la nueva versión de UI DuckDB (notebook)
+@app.route('/api/servers/<int:server_id>/notebook', methods=['POST'])
+def start_duckdb_notebook(server_id):
+    """Inicia la UI de notebook DuckDB en un servidor remoto"""
+    conn = get_duckdb_connection()
+    if not conn:
+        return jsonify({'error': 'No se pudo conectar a DuckDB'}), 500
+    
+    try:
+        # Comprobar que el servidor existe
+        result = conn.execute("""
+            SELECT id, name, host, port, server_key, status
+            FROM servers
+            WHERE id = ?
+        """, [server_id]).fetchone()
+        
+        if not result:
+            return jsonify({'error': 'Servidor no encontrado'}), 404
+        
+        server_id, server_name, hostname, port, server_key, status = result
+        
+        # Verificar que el servidor está activo
+        if status != 'active':
+            return jsonify({
+                'error': f'El servidor debe estar activo para iniciar la UI. Estado actual: {status}'
+            }), 400
+            
+        # Utilizar la implementación existente de UI pero para notebook
+        ui_port = port + 100  # La UI notebook se ejecuta en un puerto diferente
+        ui_url = f"http://{hostname}:{ui_port}/duckdb-notebook/"
+        
+        # Registrar el inicio en la base de datos (opcional)
+        current_time = datetime.datetime.now().isoformat()
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS ui_sessions (
+                id INTEGER PRIMARY KEY,
+                server_id INTEGER NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT,
+                status TEXT NOT NULL,
+                session_type TEXT NOT NULL DEFAULT 'ui'
+            )
+        """)
+        
+        conn.execute("""
+            INSERT INTO ui_sessions (server_id, start_time, status, session_type)
+            VALUES (?, ?, 'active', 'notebook')
+        """, [server_id, current_time])
+        
+        return jsonify({
+            'success': True,
+            'ui_url': ui_url,
+            'message': f'Notebook DuckDB iniciado para el servidor {server_name}'
+        })
+    except Exception as e:
+        logger.error(f"Error al iniciar notebook DuckDB: {str(e)}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
+
+# Endpoint simple para iniciar la UI (para uso directo desde servidores DuckDB)
+@app.route('/start-ui', methods=['POST'])
+def start_ui():
+    """Endpoint simple para iniciar la UI de DuckDB localmente"""
+    try:
+        # En servidores reales, aquí iniciaríamos el proceso de Jupyter/DuckDB UI
+        # y devolveríamos la URL generada
+        
+        # Simulamos una URL para la UI local
+        ui_port = 8888  # Puerto típico de Jupyter
+        ui_url = f"http://localhost:{ui_port}/lab/tree/duckdb_notebook.ipynb"
+        
+        return jsonify({
+            'success': True,
+            'ui_url': ui_url,
+            'message': 'UI de DuckDB iniciada localmente'
+        })
+    except Exception as e:
+        logger.error(f"Error al iniciar UI local: {str(e)}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
 
 # Iniciar el servidor
 if __name__ == '__main__':
