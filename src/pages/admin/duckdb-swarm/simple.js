@@ -531,7 +531,7 @@ const DuckDBSwarmSimple = () => {
         port: 5901,
         username: 'admin',
         password: server.server_key || 'duckdbpass',
-        url: `http://${server.hostname}:5901/vnc.html?autoconnect=true&password=${server.server_key || 'duckdbpass'}`
+        url: `http://${server.hostname}:6080/vnc.html?autoconnect=true&password=${server.server_key || 'duckdbpass'}`
       };
       
       // Mostrar el modal con la información de VNC
@@ -2024,30 +2024,48 @@ Para instrucciones detalladas, revise la configuración generada.
               <div className="space-y-4">
                 <div className="p-3 bg-purple-50 dark:bg-purple-900 rounded-lg">
                   <p className="text-purple-800 dark:text-purple-200 text-sm">
-                    Acceda al entorno gráfico completo del servidor DuckDB mediante VNC.
+                    Acceda al entorno gráfico completo del servidor DuckDB a través de su navegador o con un cliente VNC.
                   </p>
                 </div>
                 
-                <div>
-                  <h3 className="text-md font-semibold text-gray-700 dark:text-gray-300">Detalles de conexión VNC:</h3>
-                  <div className="mt-2 bg-gray-100 dark:bg-gray-700 p-3 rounded-md">
-                    <p className="text-sm font-mono">
-                      <strong>Host:</strong> {currentServerInfo.hostname}<br />
-                      <strong>Puerto VNC:</strong> {vncInfo?.port || 5901}<br />
-                      <strong>Usuario:</strong> {vncInfo?.username || 'duckdb'}<br />
-                      <strong>Contraseña:</strong> {vncInfo?.password || 'duckdbpass'}<br />
-                      {vncInfo?.url && (
-                        <>
-                          <strong>URL de acceso web:</strong> <a href={vncInfo.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{vncInfo.url}</a>
-                        </>
-                      )}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Opción 1: noVNC (Acceso Web) */}
+                  <div className="border border-green-200 dark:border-green-800 rounded-lg p-4 bg-green-50 dark:bg-green-900/30">
+                    <h3 className="text-md font-semibold text-green-700 dark:text-green-300 mb-2">Opción 1: Acceso Web (Recomendado)</h3>
+                    <p className="text-sm text-green-600 dark:text-green-400 mb-3">
+                      Accede directamente desde tu navegador sin necesidad de instalar software adicional.
                     </p>
+                    <div className="flex justify-center">
+                      <a 
+                        href={`http://${currentServerInfo.hostname}:6080/vnc.html?autoconnect=true&password=${vncInfo?.password || 'duckdbpass'}`}
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-colors duration-200"
+                      >
+                        Abrir noVNC en Navegador
+                      </a>
+                    </div>
+                  </div>
+                  
+                  {/* Opción 2: Cliente VNC Nativo */}
+                  <div className="border border-blue-200 dark:border-blue-800 rounded-lg p-4 bg-blue-50 dark:bg-blue-900/30">
+                    <h3 className="text-md font-semibold text-blue-700 dark:text-blue-300 mb-2">Opción 2: Cliente VNC Nativo</h3>
+                    <p className="text-sm text-blue-600 dark:text-blue-400 mb-3">
+                      Conéctate con tu cliente VNC preferido usando estos datos:
+                    </p>
+                    <div className="text-xs font-mono bg-white dark:bg-gray-800 p-2 rounded border border-gray-200 dark:border-gray-700">
+                      <p><strong>Host:</strong> {currentServerInfo.hostname}</p>
+                      <p><strong>Puerto:</strong> {vncInfo?.port || 5901}</p>
+                      <p><strong>Usuario:</strong> {vncInfo?.username || 'admin'}</p>
+                      <p><strong>Contraseña:</strong> {vncInfo?.password || 'duckdbpass'}</p>
+                    </div>
                   </div>
                 </div>
                 
-                <div className="p-3 bg-blue-50 dark:bg-blue-900 rounded-lg">
+                <div className="p-3 bg-blue-50 dark:bg-blue-900 rounded-lg mt-4">
                   <p className="text-blue-800 dark:text-blue-200 text-sm">
-                    Puede conectarse utilizando cualquier cliente VNC con los datos proporcionados o utilizar el acceso web si está disponible.
+                    <strong>Nota:</strong> Si experimenta problemas de conexión, pruebe primero con la opción de acceso web (noVNC).
+                    Una vez dentro, ejecute <code>~/start-duckdb-ui.sh</code> para iniciar la interfaz DuckDB.
                   </p>
                 </div>
               </div>

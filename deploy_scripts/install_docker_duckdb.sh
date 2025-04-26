@@ -156,6 +156,7 @@ if [ $USE_SUDO_DOCKER -eq 1 ]; then
         --name duckdb-server \
         -p $DUCKDB_PORT:1294 \
         -p 5901:5901 \
+        -p 6080:6080 \
         -p 2222:22 \
         -v ~/duckdb_data:/data \
         -e DUCKDB_SERVER_KEY="$DUCKDB_KEY" \
@@ -168,6 +169,7 @@ else
         --name duckdb-server \
         -p $DUCKDB_PORT:1294 \
         -p 5901:5901 \
+        -p 6080:6080 \
         -p 2222:22 \
         -v ~/duckdb_data:/data \
         -e DUCKDB_SERVER_KEY="$DUCKDB_KEY" \
@@ -277,6 +279,7 @@ print_success "¡Instalación de DuckDB Server con Docker y VNC completada exito
 print_info "Servicios disponibles:"
 print_info "  API DuckDB: http://localhost:$DUCKDB_PORT"
 print_info "  VNC Server: localhost:5901 (password: la clave del API configurada)"
+print_info "  noVNC (Web VNC): http://localhost:6080/vnc.html (password: la clave del API configurada)"
 print_info "  SSH Server: ssh -p 2222 admin@localhost (password: la clave del API configurada)"
 print_info ""
 print_info "Datos almacenados en: ~/duckdb_data"

@@ -15,7 +15,16 @@ RUN apt-get update && apt-get install -y \
     libdbus-glib-1-2 \
     xterm \
     openssh-server \
+    net-tools \
+    procps \
+    nano \
+    iputils-ping \
+    iproute2 \
+    iptables \
     && rm -rf /var/lib/apt/lists/*
+    
+# Asegurarse de que el puerto 5901 esté abierto
+RUN iptables -A INPUT -p tcp --dport 5901 -j ACCEPT || true
 
 # Configurar directorio de trabajo
 WORKDIR /app
@@ -26,7 +35,16 @@ COPY start_vnc.sh .
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 # Instalar dependencias de Python
-RUN pip install --no-cache-dir duckdb flask flask-cors gunicorn
+RUN pip install --no-cache-dir duckdb flask flask-cors gunicorn websockify
+
+# Instalar noVNC para acceso web al VNC
+RUN mkdir -p /opt && \
+    cd /opt && \
+    curl -L -o novnc.zip https://github.com/novnc/noVNC/archive/refs/tags/v1.4.0.zip && \
+    unzip novnc.zip && \
+    mv noVNC-1.4.0 novnc && \
+    cd novnc && \
+    ln -s vnc.html index.html
 
 # Variables de entorno
 ENV DUCKDB_PORT=1294
@@ -54,14 +72,23 @@ RUN mkdir -p /root/.vnc && \
     chmod 600 /home/admin/.vnc/passwd && \
     echo '#!/bin/bash\nxrdb $HOME/.Xresources\nstartxfce4 &' > /home/admin/.vnc/xstartup && \
     chmod +x /home/admin/.vnc/xstartup && \
-    chown -R admin:admin /home/admin/.vnc
+    chown -R admin:admin /home/admin/.vnc && \
+    # Configurar TigerVNC para permitir conexiones remotas
+    mkdir -p /etc/tigervnc && \
+    echo "no-remote-connections=0" > /etc/tigervnc/vncserver-config-defaults && \
+    echo "localhost=no" >> /etc/tigervnc/vncserver-config-defaults && \
+    # Crear acceso directo en el escritorio
+    mkdir -p /home/admin/Desktop && \
+    echo '[Desktop Entry]\nVersion=1.0\nType=Application\nName=DuckDB UI\nComment=Iniciar interfaz gráfica de DuckDB\nExec=/home/admin/start-duckdb-ui.sh\nIcon=terminal\nPath=/home/admin\nTerminal=false\nStartupNotify=false' > /home/admin/Desktop/duckdb-ui.desktop && \
+    chmod +x /home/admin/Desktop/duckdb-ui.desktop && \
+    chown -R admin:admin /home/admin/Desktop
 
 # Configurar SSH
 RUN echo 'root:duckdb' | chpasswd && \
     sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
 
 # Exponer puertos
-EXPOSE 1294 5901 22
+EXPOSE 1294 5901 6080 22
 
 # Dar permisos ejecutables a los scripts
 RUN chmod +x start_vnc.sh

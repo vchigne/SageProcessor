@@ -119,23 +119,27 @@ def list_servers():
             if vnc_enabled:
                 if bool(row[7]):  # Es servidor local
                     # Para servidor local, usamos localhost
-                    vnc_url = "http://localhost:5901/vnc.html?autoconnect=true&password=duckdbpass"
+                    vnc_url = "http://localhost:6080/vnc.html?autoconnect=true&password=duckdbpass"
                     vnc_info = {
                         'host': 'localhost',
                         'port': 5901,
-                        'username': 'duckdb',
+                        'username': 'admin',
                         'password': 'duckdbpass',
-                        'url': vnc_url
+                        'url': vnc_url,
+                        'novnc_url': "http://localhost:6080/vnc.html?autoconnect=true&password=duckdbpass",
+                        'vnc_direct': "localhost:5901"
                     }
                 else:
                     # Para servidores remotos
-                    vnc_url = f"http://{row[2]}:5901/vnc.html?autoconnect=true&password=duckdbpass"
+                    vnc_url = f"http://{row[2]}:6080/vnc.html?autoconnect=true&password=duckdbpass"
                     vnc_info = {
                         'host': row[2],
                         'port': 5901,
-                        'username': 'duckdb',
+                        'username': 'admin',
                         'password': 'duckdbpass',
-                        'url': vnc_url
+                        'url': vnc_url,
+                        'novnc_url': f"http://{row[2]}:6080/vnc.html?autoconnect=true&password=duckdbpass",
+                        'vnc_direct': f"{row[2]}:5901"
                     }
             
             server_data = {
@@ -210,9 +214,11 @@ def add_server():
         vnc_info = {
             'host': hostname,
             'port': 5901,
-            'username': 'duckdb',
+            'username': 'admin',
             'password': 'duckdbpass',
-            'url': f"http://{hostname}:5901/vnc.html?autoconnect=true&password=duckdbpass"
+            'url': f"http://{hostname}:6080/vnc.html?autoconnect=true&password=duckdbpass",
+            'novnc_url': f"http://{hostname}:6080/vnc.html?autoconnect=true&password=duckdbpass",
+            'vnc_direct': f"{hostname}:5901"
         }
         
         return jsonify({
@@ -292,8 +298,13 @@ def deploy_server():
             vnc_info = {}
             if 'details' in result:
                 vnc_info = {
-                    'vnc_server': result['details'].get('vnc_server', f"{ssh_host}:5901"),
-                    'vnc_password': result['details'].get('vnc_password', 'duckdb'),
+                    'host': ssh_host,
+                    'port': 5901,
+                    'username': 'admin',
+                    'password': server_key or 'duckdbpass',
+                    'url': f"http://{ssh_host}:6080/vnc.html?autoconnect=true&password={server_key or 'duckdbpass'}",
+                    'novnc_url': f"http://{ssh_host}:6080/vnc.html?autoconnect=true&password={server_key or 'duckdbpass'}",
+                    'vnc_direct': f"{ssh_host}:5901",
                     'ssh_server': result['details'].get('ssh_server', f"{ssh_host}:2222"),
                     'ssh_password': result['details'].get('ssh_password', 'duckdb')
                 }
