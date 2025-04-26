@@ -45,9 +45,6 @@ args = "DuckDB Swarm API"
 name = "DuckDB Swarm API"
 author = "agent"
 
-[workflows.workflow.metadata]
-agentRequireRestartOnSave = false
-
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "cd /home/runner/workspace && python duckdb_swarm_api_fixed.py"

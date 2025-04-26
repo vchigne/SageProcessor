@@ -191,40 +191,74 @@ def deploy_server():
         if not data:
             return jsonify({'error': 'No se proporcionaron datos'}), 400
         
-        server_id = data.get('server_id')
+        # Variable para almacenar si se debe cerrar una conexión a BD
+        conn = None
         
-        if not server_id:
-            return jsonify({'error': 'Se requiere ID del servidor'}), 400
-        
-        # Obtener información del servidor
-        conn = get_duckdb_connection()
-        if not conn:
-            return jsonify({'error': 'No se pudo conectar a DuckDB'}), 500
-        
-        server = conn.execute("""
-            SELECT id, name, host, port, api_key, ssh_user, ssh_port, ssh_key, ssh_password
-            FROM servers
-            WHERE id = ?
-        """, [server_id]).fetchone()
-        
-        if not server:
-            return jsonify({'error': f'No se encontró el servidor con ID {server_id}'}), 404
-        
-        server_info = {
-            'id': server[0],
-            'name': server[1],
-            'host': server[2],
-            'port': server[3],
-            'api_key': server[4],
-            'ssh_user': server[5],
-            'ssh_port': server[6],
-            'ssh_key': server[7],
-            'ssh_password': server[8]
-        }
-        
-        # Verificar si tiene información SSH
-        if not server_info['ssh_user'] or not server_info['host']:
-            return jsonify({'error': 'El servidor no tiene configuración SSH completa'}), 400
+        # Compatibilidad con ambas versiones de la API
+        # 1. Verificar si se envían datos directos (como lo hace la UI en redeploy.js)
+        if 'ssh_host' in data and 'ssh_username' in data:
+            # Modo redeploy directo desde la UI
+            server_info = {
+                'id': data.get('server_id', 0),  # Puede ser 0 para nuevo despliegue
+                'name': data.get('name', 'Servidor DuckDB'),
+                'host': data.get('ssh_host'),
+                'port': data.get('port', 8000),
+                'api_key': data.get('server_key', ''),
+                'ssh_user': data.get('ssh_username'),
+                'ssh_port': data.get('ssh_port', 22),
+                'ssh_key': data.get('ssh_key', ''),
+                'ssh_password': data.get('ssh_password', '')
+            }
+            
+            # Registrar actividad en logs para diagnóstico
+            logger.info(f"Solicitud directa de despliegue para {server_info['host']} con usuario {server_info['ssh_user']}")
+            
+            # Verificar datos mínimos necesarios
+            if not server_info['host'] or not server_info['ssh_user']:
+                return jsonify({'error': 'Se requiere host y usuario SSH para el despliegue'}), 400
+            
+            # Debe tener al menos contraseña o clave SSH
+            if not server_info['ssh_password'] and not server_info['ssh_key']:
+                return jsonify({'error': 'Se requiere una contraseña o clave SSH para el despliegue'}), 400
+                
+        # 2. O si se envía un server_id para obtener la info de la base de datos
+        elif 'server_id' in data:
+            server_id = data.get('server_id')
+            logger.info(f"Solicitud de despliegue para servidor con ID {server_id}")
+            
+            # Obtener información del servidor
+            conn = get_duckdb_connection()
+            if not conn:
+                return jsonify({'error': 'No se pudo conectar a DuckDB'}), 500
+            
+            server = conn.execute("""
+                SELECT id, name, host, port, api_key, ssh_user, ssh_port, ssh_key, ssh_password
+                FROM servers
+                WHERE id = ?
+            """, [server_id]).fetchone()
+            
+            if not server:
+                return jsonify({'error': f'No se encontró el servidor con ID {server_id}'}), 404
+            
+            server_info = {
+                'id': server[0],
+                'name': server[1],
+                'host': server[2],
+                'port': server[3],
+                'api_key': server[4],
+                'ssh_user': server[5],
+                'ssh_port': server[6],
+                'ssh_key': server[7],
+                'ssh_password': server[8]
+            }
+            
+            # Verificar si tiene información SSH
+            if not server_info['ssh_user'] or not server_info['host']:
+                return jsonify({'error': 'El servidor no tiene configuración SSH completa'}), 400
+        else:
+            # Log para diagnóstico
+            logger.warning(f"Solicitud de despliegue sin datos suficientes: {data}")
+            return jsonify({'error': 'Se requiere ID del servidor o datos de conexión SSH'}), 400
         
         # Importar el módulo deployer
         sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -242,24 +276,30 @@ def deploy_server():
         )
         
         if result['success']:
-            # Actualizar estado del servidor en la base de datos
-            conn.execute("""
-                UPDATE servers
-                SET status = 'active', updated_at = ?
-                WHERE id = ?
-            """, [datetime.datetime.now().isoformat(), server_id])
+            # Actualizar estado del servidor en la base de datos si tiene id válido
+            if server_info['id'] > 0:
+                try:
+                    conn = get_duckdb_connection()
+                    if conn:
+                        conn.execute("""
+                            UPDATE servers
+                            SET status = 'active', updated_at = ?
+                            WHERE id = ?
+                        """, [datetime.datetime.now().isoformat(), server_info['id']])
+                except Exception as e:
+                    logger.warning(f"Error al actualizar estado del servidor: {e}")
             
             return jsonify({
                 'success': True,
                 'message': f'Servidor {server_info["name"]} desplegado correctamente',
                 'details': result['details'] if 'details' in result else {},
-                'server_id': server_id
+                'server_id': server_info['id']
             })
         else:
             return jsonify({
                 'success': False,
                 'message': result['message'],
-                'server_id': server_id
+                'server_id': server_info['id']
             })
     
     except Exception as e:

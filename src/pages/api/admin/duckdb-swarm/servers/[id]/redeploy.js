@@ -77,6 +77,17 @@ export default async function handler(req, res) {
       
       // Llamar al API de DuckDB Swarm para redesplegar
       try {
+        console.log("Enviando datos al API:", JSON.stringify({
+          ssh_host: server.ssh_host,
+          ssh_port: server.ssh_port,
+          ssh_username: server.ssh_username,
+          ssh_password: "***", // No mostramos la contraseña en logs
+          ssh_key: server.ssh_key ? "***" : "", // No mostramos la clave en logs
+          port: server.port,
+          server_key: server.server_key,
+          redeploy: true // Indicamos que es un redespliegue
+        }));
+        
         const deployResponse = await fetch('http://localhost:5001/api/servers/deploy', {
           method: 'POST',
           headers: {
