@@ -525,12 +525,13 @@ const DuckDBSwarmSimple = () => {
       });
       
       // Información VNC por defecto para servidores remotos
+      // Usar el usuario 'admin' y la clave del API
       const defaultVncInfo = {
         host: server.hostname,
         port: 5901,
-        username: 'duckdb',
-        password: 'duckdbpass',
-        url: `http://${server.hostname}:5901/vnc.html?autoconnect=true&password=duckdbpass`
+        username: 'admin',
+        password: server.server_key || 'duckdbpass',
+        url: `http://${server.hostname}:5901/vnc.html?autoconnect=true&password=${server.server_key || 'duckdbpass'}`
       };
       
       // Mostrar el modal con la información de VNC

@@ -124,12 +124,17 @@ export default async function handler(req, res) {
           });
         }
         
-        // Actualizar el estado del servidor a "active"
-        await client.query(`
-          UPDATE duckdb_servers
-          SET status = 'active', updated_at = NOW(), last_seen = NOW()
-          WHERE id = $1
-        `, [server.id]);
+        // Actualizar el estado del servidor a "active" con manejo de errores mejorado
+        try {
+          await client.query(`
+            UPDATE duckdb_servers
+            SET status = 'active', updated_at = NOW(), last_seen = NOW()
+            WHERE id = $1
+          `, [server.id]);
+        } catch (dbError) {
+          console.error('Error al actualizar estado del servidor a "active":', dbError);
+          // No bloqueamos la respuesta por errores de BD
+        }
         
         return res.status(200).json({
           success: true,
@@ -140,12 +145,17 @@ export default async function handler(req, res) {
       } catch (deployError) {
         console.error('Error al conectar con el API de despliegue:', deployError);
         
-        // Actualizar el estado del servidor a "error"
-        await client.query(`
-          UPDATE duckdb_servers
-          SET status = 'error', updated_at = NOW()
-          WHERE id = $1
-        `, [server.id]);
+        // Actualizar el estado del servidor a "error" con manejo de errores mejorado
+        try {
+          await client.query(`
+            UPDATE duckdb_servers
+            SET status = 'error', updated_at = NOW()
+            WHERE id = $1
+          `, [server.id]);
+        } catch (dbError) {
+          console.error('Error al actualizar estado del servidor a "error":', dbError);
+          // No bloqueamos la respuesta por errores de BD
+        }
         
         return res.status(500).json({ 
           error: `Error al conectar con el API de despliegue: ${deployError.message}`
