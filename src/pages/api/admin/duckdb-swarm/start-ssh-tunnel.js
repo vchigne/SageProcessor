@@ -29,6 +29,7 @@ async function getServer(serverId) {
         hostname: server.hostname,
         port: server.port,
         status: server.status,
+        is_local: server.is_local || false,
         server_key: server.api_key || ''
       };
     }
@@ -60,6 +61,14 @@ export default async function handler(req, res) {
       return res.status(404).json({ success: false, error: 'Servidor no encontrado' });
     }
 
+    // Verificar si el servidor es local
+    if (server.is_local) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'No se puede establecer un túnel SSH para un servidor local' 
+      });
+    }
+
     if (server.status !== 'active') {
       return res.status(400).json({ 
         success: false, 
@@ -67,33 +76,51 @@ export default async function handler(req, res) {
       });
     }
     
-    // Obtener información de SSH desde la base de datos
+    // Obtener información SSH directamente del servidor
+    console.log(`Obteniendo información SSH para servidor ID ${serverId}`);
+    
+    // Puerto local para el túnel (usamos 4213 para DuckDB UI)
+    const localPort = 4213;
+    
+    // Recuperar la información SSH de la base de datos
     const { rows } = await pool.query(
       'SELECT ssh_host, ssh_port, ssh_username FROM duckdb_servers WHERE id = $1',
       [serverId]
     );
     
-    const sshInfo = rows[0];
+    console.log("Datos SSH recuperados:", rows);
     
-    if (!sshInfo || !sshInfo.ssh_host || !sshInfo.ssh_username) {
+    if (!rows || rows.length === 0 || !rows[0].ssh_host || !rows[0].ssh_username) {
       return res.status(400).json({
         success: false,
         error: 'Información SSH incompleta para este servidor'
       });
     }
     
-    // Para una conexión SSH real se necesitaría implementar un servicio de túnel SSH
-    // Aquí devolvemos la información para que el cliente ejecute el comando localmente
+    const sshInfo = rows[0];
     
-    // Puerto local para el túnel (usamos 4213 para DuckDB UI)
-    const localPort = 4213;
+    // Para pedir la contraseña al momento de ejecutar el comando, usamos -o "BatchMode no"
+    const sshCommand = `ssh -L ${localPort}:localhost:4213 -p ${sshInfo.ssh_port || 22} -o "BatchMode no" ${sshInfo.ssh_username}@${sshInfo.ssh_host}`;
     
     return res.status(200).json({
       success: true,
-      connection_type: 'ssh',
-      tunnel_command: `ssh -L ${localPort}:localhost:4213 ${sshInfo.ssh_username}@${sshInfo.ssh_host} -p ${sshInfo.ssh_port || 22}`,
+      connection_type: 'ssh_tunnel',
+      ssh_host: sshInfo.ssh_host,
+      ssh_port: sshInfo.ssh_port || 22,
+      ssh_username: sshInfo.ssh_username,
+      remote_port: 4213,
+      local_port: localPort,
+      tunnel_command: sshCommand,
       ui_url: `http://localhost:${localPort}`,
-      message: 'Información para túnel SSH generada correctamente'
+      message: 'Información para túnel SSH generada correctamente',
+      instructions: [
+        'Para conectar a la UI de DuckDB mediante SSH, siga estos pasos:',
+        '1. Abra una terminal en su máquina local',
+        `2. Ejecute el comando: ${sshCommand}`,
+        '3. Introduzca la contraseña SSH cuando se le solicite',
+        '4. Una vez establecida la conexión SSH, abra un navegador',
+        `5. Acceda a http://localhost:${localPort} para usar la UI de DuckDB`
+      ]
     });
   } catch (error) {
     console.error('Error al generar información de túnel SSH:', error);
