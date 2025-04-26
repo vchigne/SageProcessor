@@ -151,18 +151,26 @@ def deploy_duckdb_via_ssh(ssh_host, ssh_port=22, ssh_username=None, ssh_password
             logger.info(f"Transfiriendo servidor DuckDB a {ssh_host}:{remote_server_path}")
             sftp.put(server_script_path, remote_server_path)
             
-            # Transferir e instalar el script de instalación
+            # Transferir scripts de instalación (tanto el estándar como el de Docker)
             install_script_path = os.path.join(DEPLOY_DIR, 'install_duckdb.sh')
+            docker_install_script_path = os.path.join(DEPLOY_DIR, 'install_docker_duckdb.sh')
+            dockerfile_path = os.path.join(DEPLOY_DIR, 'Dockerfile')
+            
             remote_install_path = 'duckdb_server/install_duckdb.sh'
+            remote_docker_install_path = 'duckdb_server/install_docker_duckdb.sh'
+            remote_dockerfile_path = 'duckdb_server/Dockerfile'
             
-            logger.info(f"Transfiriendo script de instalación a {ssh_host}:{remote_install_path}")
+            logger.info(f"Transfiriendo scripts de instalación a {ssh_host}")
             sftp.put(install_script_path, remote_install_path)
+            sftp.put(docker_install_script_path, remote_docker_install_path)
+            sftp.put(dockerfile_path, remote_dockerfile_path)
             
-            # Dar permisos de ejecución al script de instalación
-            logger.info("Dando permisos de ejecución al script de instalación")
+            # Dar permisos de ejecución a los scripts de instalación
+            logger.info("Dando permisos de ejecución a los scripts de instalación")
             # Usar un canal separado con keepalive activado para mejor tolerancia
+            chmod_cmd = f"chmod +x {remote_install_path} {remote_docker_install_path}"
             stdin, stdout, stderr = client.exec_command(
-                f"chmod +x {remote_install_path}",
+                chmod_cmd,
                 get_pty=True,
                 timeout=30
             )
@@ -176,17 +184,17 @@ def deploy_duckdb_via_ssh(ssh_host, ssh_port=22, ssh_username=None, ssh_password
                 logger.error(f"Error al dar permisos de ejecución: {err_msg}")
                 return {'success': False, 'message': f"Error al dar permisos de ejecución: {err_msg}"}
             
-            # Ejecutar el script de instalación
-            logger.info(f"Ejecutando script de instalación con puerto {duckdb_port} y clave {'configurada' if server_key else 'no configurada'}")
+            # Ejecutar el script de instalación Docker (por defecto)
+            logger.info(f"Ejecutando script de instalación Docker con puerto {duckdb_port} y clave {'configurada' if server_key else 'no configurada'}")
             
-            cmd = f"cd ~/duckdb_server && ./install_duckdb.sh {duckdb_port} '{server_key if server_key else ''}'"
+            cmd = f"cd ~/duckdb_server && ./install_docker_duckdb.sh {duckdb_port} '{server_key if server_key else ''}'"
             stdin, stdout, stderr = client.exec_command(
                 cmd,
                 get_pty=True,
-                timeout=120  # Mayor tiempo de espera para la instalación
+                timeout=300  # 5 minutos de timeout para instalación Docker
             )
             channel = stdout.channel
-            channel.settimeout(120)  # 120 segundos de timeout para operaciones del canal
+            channel.settimeout(300)  # 5 minutos de timeout para operaciones del canal
             
             # Leer la salida en tiempo real
             output = ""

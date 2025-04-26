@@ -28,7 +28,19 @@ fi
 
 # Nota: En este modo de instalación, asumimos que las dependencias ya están instaladas
 # y solo configuramos el servidor DuckDB
-print_info "Omitiendo actualización de repositorios (requiere sudo)..."
+# Verificar si tenemos permisos de sudo
+HAS_SUDO=0
+if command -v sudo &> /dev/null; then
+    # Verificar si podemos usar sudo sin contraseña
+    if sudo -n true 2>/dev/null; then
+        print_info "Permisos de sudo disponibles, se intentarán instalar las dependencias automáticamente."
+        HAS_SUDO=1
+    else
+        print_info "Sudo requiere contraseña, omitiendo actualización automática de dependencias."
+    fi
+else
+    print_info "Comando sudo no disponible, omitiendo actualización automática de dependencias."
+fi
 
 # Verificar dependencias
 print_info "Verificando dependencias requeridas..."
@@ -36,31 +48,74 @@ MISSING_DEPS=0
 
 # Verificar Python 3
 if ! command -v python3 &> /dev/null; then
-    print_error "Python 3 no está instalado. Es necesario instalarlo manualmente."
+    print_error "Python 3 no está instalado."
     MISSING_DEPS=1
+    
+    if [ $HAS_SUDO -eq 1 ]; then
+        print_info "Intentando instalar Python 3 automáticamente..."
+        if sudo apt-get update -y && sudo apt-get install -y python3; then
+            print_success "Python 3 instalado correctamente"
+            MISSING_DEPS=0
+        else
+            print_error "No se pudo instalar Python 3 automáticamente."
+        fi
+    else
+        print_info "Es necesario instalar Python 3 manualmente: sudo apt-get install python3"
+    fi
 else
     print_info "✓ Python 3 instalado correctamente"
 fi
 
 # Verificar pip3
 if ! command -v pip3 &> /dev/null; then
-    print_error "Pip3 no está instalado. Es necesario instalarlo manualmente."
+    print_error "Pip3 no está instalado."
     MISSING_DEPS=1
+    
+    if [ $HAS_SUDO -eq 1 ]; then
+        print_info "Intentando instalar pip3 automáticamente..."
+        if sudo apt-get update -y && sudo apt-get install -y python3-pip; then
+            print_success "pip3 instalado correctamente"
+            MISSING_DEPS=0
+        else
+            print_error "No se pudo instalar pip3 automáticamente."
+        fi
+    else
+        print_info "Es necesario instalar pip3 manualmente: sudo apt-get install python3-pip"
+        
+        # Intentar usar python3 para instalar pip (método alternativo)
+        print_info "Intentando instalar pip con ensurepip..."
+        if python3 -m ensurepip --user &>/dev/null; then
+            print_success "pip instalado con ensurepip"
+            export PATH="$HOME/.local/bin:$PATH"
+        fi
+    fi
 else
     print_info "✓ Pip3 instalado correctamente"
 fi
 
 # Verificar curl
 if ! command -v curl &> /dev/null; then
-    print_error "curl no está instalado. Es necesario instalarlo manualmente."
+    print_error "curl no está instalado."
     MISSING_DEPS=1
+    
+    if [ $HAS_SUDO -eq 1 ]; then
+        print_info "Intentando instalar curl automáticamente..."
+        if sudo apt-get update -y && sudo apt-get install -y curl; then
+            print_success "curl instalado correctamente"
+            MISSING_DEPS=0
+        else
+            print_error "No se pudo instalar curl automáticamente."
+        fi
+    else
+        print_info "Es necesario instalar curl manualmente: sudo apt-get install curl"
+    fi
 else
     print_info "✓ curl instalado correctamente"
 fi
 
 if [ $MISSING_DEPS -eq 1 ]; then
-    print_error "Faltan dependencias. Por favor, instale los paquetes requeridos manualmente con:"
-    print_info "sudo apt-get install python3 python3-pip curl unzip"
+    print_error "Faltan algunas dependencias. Para instalarlas manualmente, use:"
+    print_info "sudo apt-get update && sudo apt-get install -y python3 python3-pip curl unzip"
     print_info "Continuando con la instalación en modo limitado..."
 fi
 
@@ -72,26 +127,79 @@ fi
 
 # Instalar Python packages
 print_info "Instalando paquetes de Python..."
-if command -v pip3 &> /dev/null; then
-    pip3 install --user duckdb flask flask-cors || {
-        print_error "Error al instalar paquetes Python con pip3. Intentando con pip..."
-        if command -v pip &> /dev/null; then
-            pip install --user duckdb flask flask-cors || {
-                print_error "Error al instalar paquetes Python con pip. El servidor podría no funcionar correctamente."
-            }
+
+# Primero verificar si python3 -m pip funciona (más confiable que pip/pip3 directamente)
+PYTHON_PIP_WORKS=0
+if python3 -m pip --version &>/dev/null; then
+    print_info "Usando python3 -m pip para instalar dependencias..."
+    python3 -m pip install --user --upgrade pip &>/dev/null
+    
+    # Agregar ruta de usuario a PATH para encontrar las herramientas instaladas
+    export PATH="$HOME/.local/bin:$PATH"
+    
+    if python3 -m pip install --user duckdb flask flask-cors; then
+        print_success "Paquetes instalados correctamente con python3 -m pip"
+        PYTHON_PIP_WORKS=1
+    else
+        print_error "Error al instalar con python3 -m pip"
+    fi
+fi
+
+# Si python3 -m pip no funcionó, intentar con pip3 o pip
+if [ $PYTHON_PIP_WORKS -eq 0 ]; then
+    if command -v pip3 &> /dev/null; then
+        print_info "Usando pip3 para instalar dependencias..."
+        if pip3 install --user duckdb flask flask-cors; then
+            print_success "Paquetes instalados correctamente con pip3"
         else
-            print_error "No se encontró pip. Instalación de paquetes fallida."
+            print_error "Error al instalar con pip3, intentando con pip..."
+            if command -v pip &> /dev/null; then
+                if pip install --user duckdb flask flask-cors; then
+                    print_success "Paquetes instalados correctamente con pip"
+                else
+                    print_error "Error al instalar paquetes Python. El servidor podría no funcionar correctamente."
+                fi
+            else
+                print_error "No se encontró pip. Instalación de paquetes fallida."
+            fi
         fi
-    }
-elif command -v pip &> /dev/null; then
-    print_info "pip3 no encontrado, usando pip..."
-    pip install --user duckdb flask flask-cors || {
-        print_error "Error al instalar paquetes Python con pip. El servidor podría no funcionar correctamente."
-    }
-else
-    print_error "No se encontró pip ni pip3. No se pueden instalar las dependencias de Python."
+    elif command -v pip &> /dev/null; then
+        print_info "pip3 no encontrado, usando pip..."
+        if pip install --user duckdb flask flask-cors; then
+            print_success "Paquetes instalados correctamente con pip"
+        else
+            print_error "Error al instalar paquetes Python. El servidor podría no funcionar correctamente."
+        fi
+    else
+        # Último recurso: intentar instalar pip con ensurepip si no se ha intentado antes
+        if ! python3 -m ensurepip --user &>/dev/null; then
+            print_error "No se pudo instalar pip con ensurepip."
+        else
+            print_success "pip instalado con ensurepip, intentando instalar dependencias..."
+            export PATH="$HOME/.local/bin:$PATH"
+            python3 -m pip install --user duckdb flask flask-cors || print_error "La instalación de dependencias ha fallado"
+        fi
+    fi
+fi
+
+# Verificar si duckdb se instaló correctamente
+if ! python3 -c "import duckdb" &>/dev/null; then
+    print_error "El módulo 'duckdb' no se instaló correctamente."
     print_info "Es necesario instalar manualmente: duckdb, flask, flask-cors"
     print_info "Por ejemplo: python3 -m pip install --user duckdb flask flask-cors"
+    
+    # Mensaje de instalación manual para el usuario
+    MANUAL_INSTALL_NEEDED=1
+    print_info "=== INSTRUCCIONES PARA INSTALACIÓN MANUAL ==="
+    print_info "1. Conéctese al servidor con SSH"
+    print_info "2. Ejecute estos comandos:"
+    print_info "   sudo apt-get update"
+    print_info "   sudo apt-get install -y python3-pip"
+    print_info "   pip3 install --user duckdb flask flask-cors"
+    print_info "3. Vuelva a intentar el despliegue desde la plataforma SAGE"
+    print_info "==========================================="
+else
+    print_success "Módulo 'duckdb' instalado correctamente"
 fi
 
 # Crear directorios
@@ -162,25 +270,93 @@ EOF
 
 print_info "Verificando que el servidor esté respondiendo..."
 sleep 5
-curl -s http://localhost:$DUCKDB_PORT/health || echo "Error: No se pudo conectar al servidor"
 
-# Comprobar si realmente se instaló correctamente
-if [ -f ~/duckdb_server/duckdb_server.pid ] && pgrep -f "python3 .*duckdb_server.py" > /dev/null; then
-    print_success "¡Instalación de DuckDB Server completada!"
+# Usar curl con timeout para evitar esperas largas
+HEALTH_RESPONSE=$(curl -s --connect-timeout 5 --max-time 10 http://localhost:$DUCKDB_PORT/health)
+CURL_STATUS=$?
+
+if [ $CURL_STATUS -ne 0 ]; then
+    print_error "No se pudo conectar al servidor (código $CURL_STATUS)"
+elif [ -z "$HEALTH_RESPONSE" ]; then
+    print_error "El servidor no devolvió respuesta"
+else
+    print_success "Servidor respondió: $HEALTH_RESPONSE"
+fi
+
+# Verificar proceso en ejecución
+PID_RUNNING=0
+if [ -f ~/duckdb_server/duckdb_server.pid ]; then
+    PID=$(cat ~/duckdb_server/duckdb_server.pid)
+    if ps -p $PID > /dev/null; then
+        print_info "Proceso DuckDB en ejecución con PID $PID"
+        PID_RUNNING=1
+    else
+        print_error "El proceso con PID $PID no está en ejecución"
+    fi
+fi
+
+# Verificar por nombre de proceso si el PID no se encontró
+if [ $PID_RUNNING -eq 0 ]; then
+    if pgrep -f "python3 .*duckdb_server.py" > /dev/null; then
+        PID=$(pgrep -f "python3 .*duckdb_server.py")
+        print_info "Proceso DuckDB en ejecución con PID $PID (sin archivo PID)"
+        PID_RUNNING=1
+    else
+        print_error "No se encontró ningún proceso DuckDB en ejecución"
+    fi
+fi
+
+# Verificar logs en busca de errores específicos
+SERVER_LOG=~/duckdb_server/duckdb_server.log
+if [ -f "$SERVER_LOG" ]; then
+    print_info "Analizando logs en busca de errores..."
+    
+    # Verificar error de módulo duckdb
+    if grep -q "No module named 'duckdb'" "$SERVER_LOG"; then
+        print_error "El servidor falló porque falta el módulo 'duckdb'."
+        MODULE_ERROR="duckdb"
+    elif grep -q "No module named 'flask'" "$SERVER_LOG"; then
+        print_error "El servidor falló porque falta el módulo 'flask'."
+        MODULE_ERROR="flask"
+    elif grep -q "No module named 'flask_cors'" "$SERVER_LOG"; then
+        print_error "El servidor falló porque falta el módulo 'flask_cors'."
+        MODULE_ERROR="flask-cors"
+    fi
+    
+    # Mostrar las últimas 5 líneas del log para diagnóstico
+    print_info "Últimas líneas del log:"
+    tail -n 5 "$SERVER_LOG" | while read -r line; do
+        echo "    $line"
+    done
+else
+    print_error "No se encontró archivo de log en $SERVER_LOG"
+fi
+
+# Determinar si la instalación fue exitosa
+if [ $PID_RUNNING -eq 1 ] && [ $CURL_STATUS -eq 0 ] && [ -n "$HEALTH_RESPONSE" ]; then
+    print_success "¡Instalación de DuckDB Server completada exitosamente!"
     INSTALL_SUCCESS=1
 else
-    if grep -q "No module named 'duckdb'" ~/duckdb_server/duckdb_server.log 2>/dev/null; then
-        print_error "La instalación falló porque falta el módulo 'duckdb'."
-        print_info "Por favor, ejecute los siguientes comandos para instalar las dependencias necesarias:"
-        print_info "sudo apt-get update"
-        print_info "sudo apt-get install -y python3-pip"
-        print_info "pip3 install --user duckdb flask flask-cors"
-        print_info "Después, intente nuevamente el despliegue."
-        INSTALL_SUCCESS=0
-    else
-        print_error "La instalación falló por un error desconocido. Revise los logs para más detalles."
-        INSTALL_SUCCESS=0
+    print_error "La instalación no fue completada correctamente."
+    INSTALL_SUCCESS=0
+    
+    # Proporcionar instrucciones específicas según el error encontrado
+    print_info "=== INSTRUCCIONES PARA SOLUCIONAR PROBLEMAS ==="
+    if [ -n "$MODULE_ERROR" ]; then
+        print_info "Problema: Falta el módulo '$MODULE_ERROR'. Ejecute estos comandos:"
+        print_info "    sudo apt-get update"
+        print_info "    sudo apt-get install -y python3-pip"
+        print_info "    python3 -m pip install --user duckdb flask flask-cors"
+    elif [ $PID_RUNNING -eq 0 ]; then
+        print_info "Problema: El servidor no pudo iniciarse. Verifique los logs para más detalles."
+        print_info "    cat ~/duckdb_server/duckdb_server.log"
+    elif [ $CURL_STATUS -ne 0 ]; then
+        print_info "Problema: No se pudo establecer conexión con el servidor. Verifique:"
+        print_info "    1. Si hay un firewall bloqueando el puerto $DUCKDB_PORT"
+        print_info "    2. Si otra aplicación está usando el puerto $DUCKDB_PORT"
+        print_info "    3. Si el servidor tiene errores (cat ~/duckdb_server/duckdb_server.log)"
     fi
+    print_info "============================================="
 fi
 echo ""
 echo "Para verificar el estado del servidor:"
