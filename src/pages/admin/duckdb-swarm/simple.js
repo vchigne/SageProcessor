@@ -502,6 +502,60 @@ const DuckDBSwarmSimple = () => {
   // VNC Access
   const [vncModalOpen, setVncModalOpen] = useState(false);
   const [vncInfo, setVncInfo] = useState(null);
+  const [repairing, setRepairing] = useState(false);
+  
+  // Reparar VNC
+  const repairVNC = async (serverId, serverName) => {
+    try {
+      setRepairing(true);
+      
+      // Verificar que el servidor existe y no es local
+      const server = servers.find(s => s.id === serverId);
+      if (!server) {
+        alert(`No se encontró el servidor ${serverName}.`);
+        setRepairing(false);
+        return;
+      }
+      
+      if (server.is_local) {
+        alert(`El servidor local no tiene acceso VNC.`);
+        setRepairing(false);
+        return;
+      }
+      
+      const response = await fetch(`/api/admin/duckdb-swarm/servers/${serverId}/repair-vnc`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok && data.success) {
+        alert(`Reparación VNC iniciada para ${serverName}. ${data.message || ''}`);
+        
+        // Esperar 3 segundos antes de intentar actualizar la información VNC
+        setTimeout(() => {
+          fetchServers(); // Refrescar lista de servidores
+          
+          // Si el modal VNC está abierto para este servidor, actualizar info
+          if (vncModalOpen && currentServerInfo && currentServerInfo.id === serverId) {
+            startVNCSession(serverId, serverName);
+          }
+          
+          setRepairing(false);
+        }, 3000);
+      } else {
+        alert(`Error al reparar VNC: ${data.error || 'Error desconocido'}`);
+        setRepairing(false);
+      }
+    } catch (error) {
+      console.error('Error al reparar VNC:', error);
+      alert(`Error al reparar VNC: ${error.message}`);
+      setRepairing(false);
+    }
+  };
   
   const startVNCSession = async (serverId, serverName) => {
     try {
@@ -1299,29 +1353,56 @@ Para instrucciones detalladas, revise la configuración generada.
                               <div className="flex flex-wrap gap-2">
                                 {/* VNC Access - Solo para servidores no locales */}
                                 {!server.is_local && (
-                                  <button
-                                    onClick={() => startVNCSession(server.id, server.name || server.hostname)}
-                                    disabled={uiStatus.loading && uiStatus.serverId === server.id}
-                                    className="text-purple-600 hover:text-purple-900 dark:text-purple-400 dark:hover:text-purple-300 inline-flex items-center"
-                                    title="Acceder al entorno gráfico mediante VNC"
-                                  >
-                                    {uiStatus.loading && uiStatus.serverId === server.id ? (
-                                      <>
-                                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                        </svg>
-                                        Iniciando...
-                                      </>
-                                    ) : (
-                                      <>
-                                        <svg className="h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                                        </svg>
-                                        Acceso VNC
-                                      </>
-                                    )}
-                                  </button>
+                                  <>
+                                    <button
+                                      onClick={() => startVNCSession(server.id, server.name || server.hostname)}
+                                      disabled={uiStatus.loading && uiStatus.serverId === server.id}
+                                      className="text-purple-600 hover:text-purple-900 dark:text-purple-400 dark:hover:text-purple-300 inline-flex items-center"
+                                      title="Acceder al entorno gráfico mediante VNC"
+                                    >
+                                      {uiStatus.loading && uiStatus.serverId === server.id ? (
+                                        <>
+                                          <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                          </svg>
+                                          Iniciando...
+                                        </>
+                                      ) : (
+                                        <>
+                                          <svg className="h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                          </svg>
+                                          Acceso VNC
+                                        </>
+                                      )}
+                                    </button>
+                                    
+                                    {/* Botón Reparar VNC */}
+                                    <button
+                                      onClick={() => repairVNC(server.id, server.name || server.hostname)}
+                                      disabled={repairing}
+                                      className="text-yellow-600 hover:text-yellow-900 dark:text-yellow-400 dark:hover:text-yellow-300 inline-flex items-center ml-2"
+                                      title="Reparar servicios VNC si hay problemas de conexión"
+                                    >
+                                      {repairing ? (
+                                        <>
+                                          <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                          </svg>
+                                          Reparando...
+                                        </>
+                                      ) : (
+                                        <>
+                                          <svg className="h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                                          </svg>
+                                          Reparar VNC
+                                        </>
+                                      )}
+                                    </button>
+                                  </>
                                 )}
                               </div>
                             )}
