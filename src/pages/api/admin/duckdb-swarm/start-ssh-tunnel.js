@@ -129,17 +129,29 @@ export default async function handler(req, res) {
       ],
       api_key: "krx32aFF",
       api_endpoints: [
+        // Ruta que ya sabemos que funciona
         { "path": "/health?api_key=krx32aFF", "description": "Verificar estado del servidor" },
-        { "path": "/query?q=SELECT+1+AS+test&api_key=krx32aFF", "description": "Ejecutar consulta de prueba" },
-        { "path": "/api/query?q=SELECT+1+AS+test&api_key=krx32aFF", "description": "Ejecutar consulta de prueba (con prefijo /api)" },
-        { "path": "/execute?query=SELECT+1+AS+test&api_key=krx32aFF", "description": "Ejecutar consulta (método alternativo)" },
-        { "path": "/api/execute?query=SELECT+1+AS+test&api_key=krx32aFF", "description": "Ejecutar consulta (con prefijo /api)" },
-        { "path": "/info?api_key=krx32aFF", "description": "Obtener información del servidor" },
-        { "path": "/api/info?api_key=krx32aFF", "description": "Obtener información del servidor (con prefijo /api)" },
-        { "path": "/metrics?api_key=krx32aFF", "description": "Obtener métricas del servidor" },
-        { "path": "/api/metrics?api_key=krx32aFF", "description": "Obtener métricas del servidor (con prefijo /api)" },
-        { "path": "/databases?api_key=krx32aFF", "description": "Listar bases de datos" },
-        { "path": "/api/databases?api_key=krx32aFF", "description": "Listar bases de datos (con prefijo /api)" }
+        
+        // Prueba de consultas con diferentes patrones
+        { "path": "/api/v1/query?q=SELECT+1+AS+test&api_key=krx32aFF", "description": "Consulta con prefijo /api/v1" },
+        { "path": "/v1/query?q=SELECT+1+AS+test&api_key=krx32aFF", "description": "Consulta con prefijo /v1" },
+        { "path": "/api/sql?q=SELECT+1+AS+test&api_key=krx32aFF", "description": "Consulta a través de /api/sql" },
+        { "path": "/sql?q=SELECT+1+AS+test&api_key=krx32aFF", "description": "Consulta a través de /sql" },
+        { "path": "/run?q=SELECT+1+AS+test&api_key=krx32aFF", "description": "Consulta a través de /run" },
+        
+        // Pruebas POST (estas requieren usar curl o similar en la terminal)
+        { "path": "/query (POST con q=SELECT 1 AS test y api_key=krx32aFF)", "description": "Consulta vía POST a /query" },
+        { "path": "/api/query (POST con q=SELECT 1 AS test y api_key=krx32aFF)", "description": "Consulta vía POST a /api/query" },
+        
+        // Rutas de información del servidor
+        { "path": "/status?api_key=krx32aFF", "description": "Estado del servidor" },
+        { "path": "/version?api_key=krx32aFF", "description": "Versión del servidor" },
+        { "path": "/info?api_key=krx32aFF", "description": "Información del servidor" },
+        
+        // Rutas para listar objetos
+        { "path": "/tables?api_key=krx32aFF", "description": "Listar tablas" },
+        { "path": "/schemas?api_key=krx32aFF", "description": "Listar esquemas" },
+        { "path": "/databases?api_key=krx32aFF", "description": "Listar bases de datos" }
       ]
     });
   } catch (error) {
