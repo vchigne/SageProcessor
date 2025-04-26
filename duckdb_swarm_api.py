@@ -253,6 +253,59 @@ def deploy_server():
             'message': f"Error en despliegue: {str(e)}"
         }), 500
 
+@app.route('/api/servers/<int:server_id>/status', methods=['GET'])
+def check_server_status(server_id):
+    """Verifica el estado de un servidor DuckDB remoto"""
+    try:
+        # Obtener datos del servidor
+        conn = get_duckdb_connection()
+        if not conn:
+            return jsonify({'error': 'No se pudo conectar a DuckDB'}), 500
+        
+        server_result = conn.execute(
+            "SELECT hostname, port, server_key FROM duckdb_servers WHERE id = ?", 
+            [server_id]
+        ).fetchone()
+        
+        if not server_result:
+            return jsonify({'error': f'Servidor con ID {server_id} no encontrado'}), 404
+            
+        hostname, port, server_key = server_result
+        
+        # Intentar conectar al servidor remoto
+        try:
+            headers = {}
+            if server_key:
+                headers['X-API-Key'] = server_key
+                
+            # Verificar la salud del servidor remoto
+            response = requests.get(f"http://{hostname}:{port}/health", 
+                                   headers=headers, 
+                                   timeout=5)
+            
+            if response.status_code == 200:
+                # El servidor está activo
+                return jsonify({
+                    'status': 'active',
+                    'details': response.json()
+                })
+            else:
+                # El servidor responde pero con error
+                return jsonify({
+                    'status': 'error',
+                    'details': {'error': f'Código de estado: {response.status_code}'}
+                })
+        except requests.exceptions.RequestException as e:
+            # No se pudo conectar al servidor
+            return jsonify({
+                'status': 'unreachable',
+                'details': {'error': str(e)}
+            })
+            
+    except Exception as e:
+        logger.error(f"Error al verificar estado del servidor {server_id}: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/servers/<int:server_id>', methods=['DELETE'])
 def delete_server(server_id):
     """Elimina un servidor DuckDB"""

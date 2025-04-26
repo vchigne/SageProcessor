@@ -93,6 +93,9 @@ export default async function handler(req, res) {
           ssh_password,
           ssh_key
         } = req.body;
+        
+        // Variable para controlar si el despliegue fue exitoso
+        let deploy_successful = false;
 
         // Validación simple
         if (!hostname) {
@@ -158,7 +161,9 @@ export default async function handler(req, res) {
               });
             }
             
+            // Variable para indicar que el despliegue fue exitoso y se debe cambiar el estado a 'active'
             console.log('DuckDB desplegado exitosamente:', deployResult);
+            deploy_successful = true;
           } catch (deployError) {
             console.error('Error al conectar con el API de despliegue:', deployError);
             return res.status(500).json({ 
@@ -184,7 +189,7 @@ export default async function handler(req, res) {
             server_key || '', 
             server_type || 'general', 
             !!is_local, 
-            'starting', 
+            deploy_successful ? 'active' : 'starting', 
             cloud_secret_id, 
             bucket_name, 
             installation_id || ''

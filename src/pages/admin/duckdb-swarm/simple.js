@@ -164,14 +164,26 @@ const DuckDBSwarmSimple = () => {
   // Función para monitorear el progreso del despliegue
   const checkDeploymentProgress = async (serverId) => {
     try {
-      const response = await fetch(`/api/admin/duckdb-swarm/servers/${serverId}`);
+      // Usar el nuevo endpoint que verifica y actualiza el estado del servidor
+      const response = await fetch(`/api/admin/duckdb-swarm/server-status/${serverId}`);
       if (!response.ok) {
         throw new Error('Error al obtener estado del servidor');
       }
       
       const data = await response.json();
-      if (data.server) {
-        const server = data.server;
+      const server = data.server;
+      const statusInfo = data.statusInfo || {};
+      
+      if (server) {
+        // Actualizar logs con información de la API de DuckDB si está disponible
+        let newLogs = [];
+        if (statusInfo.status === 'active') {
+          newLogs.push('[INFO] Conexión con el servidor DuckDB establecida');
+        } else if (statusInfo.status === 'error') {
+          newLogs.push(`[WARN] Error en la conexión: ${statusInfo.details?.error || 'Error desconocido'}`);
+        } else if (statusInfo.status === 'unreachable') {
+          newLogs.push('[INFO] Servidor en proceso de inicialización...');
+        }
         
         // Actualizar estado según el status del servidor
         switch(server.status) {
@@ -181,8 +193,11 @@ const DuckDBSwarmSimple = () => {
               message: 'Servidor desplegado correctamente',
               progress: 100,
               success: true,
-              logs: [...prev.logs, '[SUCCESS] Despliegue completado con éxito']
+              logs: [...prev.logs, ...newLogs, '[SUCCESS] Despliegue completado con éxito']
             }));
+            
+            // Refrescar lista de servidores
+            fetchServers();
             
             // Esperar 2 segundos antes de cerrar el diálogo
             setTimeout(() => {
@@ -195,7 +210,7 @@ const DuckDBSwarmSimple = () => {
               ...prev,
               message: 'Error en el despliegue',
               error: 'El servidor está en estado de error',
-              logs: [...prev.logs, '[ERROR] El servidor está en estado de error']
+              logs: [...prev.logs, ...newLogs, '[ERROR] El servidor está en estado de error']
             }));
             return true; // No seguir consultando
             
@@ -207,7 +222,7 @@ const DuckDBSwarmSimple = () => {
               return {
                 ...prev,
                 progress: newProgress,
-                logs: [...prev.logs, `[INFO] Instalando dependencias... (${newProgress}%)`]
+                logs: [...prev.logs, ...newLogs, `[INFO] Instalando dependencias... (${newProgress}%)`]
               };
             });
             return false; // Seguir consultando
@@ -216,7 +231,7 @@ const DuckDBSwarmSimple = () => {
             setDeploymentStatus(prev => ({
               ...prev,
               progress: Math.min(80, prev.progress + 3),
-              logs: [...prev.logs, '[INFO] Iniciando servicio DuckDB...']
+              logs: [...prev.logs, ...newLogs, '[INFO] Iniciando servicio DuckDB...']
             }));
             return false; // Seguir consultando
             
@@ -224,7 +239,7 @@ const DuckDBSwarmSimple = () => {
             setDeploymentStatus(prev => ({
               ...prev,
               progress: Math.min(70, prev.progress + 2),
-              logs: [...prev.logs, `[INFO] Estado del servidor: ${server.status}`]
+              logs: [...prev.logs, ...newLogs, `[INFO] Estado del servidor: ${server.status}`]
             }));
             return false; // Seguir consultando
         }
