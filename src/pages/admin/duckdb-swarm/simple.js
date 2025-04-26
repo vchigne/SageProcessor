@@ -532,7 +532,8 @@ const DuckDBSwarmSimple = () => {
         body: JSON.stringify({ 
           serverId: currentServerInfo.id,
           port: httpPort,
-          auth: `${username}:${password}`
+          username: username,
+          password: password
         })
       });
       
