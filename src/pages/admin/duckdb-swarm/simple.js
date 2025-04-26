@@ -432,7 +432,7 @@ const DuckDBSwarmSimple = () => {
     }
   };
 
-  // Función para iniciar la UI de DuckDB
+  // Función para iniciar el notebook (UI analítica) de DuckDB
   const startDuckDBUI = async (serverId, serverName) => {
     try {
       setUiStatus({
@@ -464,26 +464,81 @@ const DuckDBSwarmSimple = () => {
         if (data.ui_url) {
           window.open(data.ui_url, '_blank');
         } else {
-          alert('La UI de DuckDB se ha iniciado pero no se pudo obtener la URL. Verifica el servidor.');
+          alert('El notebook de DuckDB se ha iniciado pero no se pudo obtener la URL. Verifica el servidor.');
         }
       } else {
         setUiStatus({
           serverId,
           url: null,
-          error: data.error || 'Error desconocido al iniciar la UI',
+          error: data.error || 'Error desconocido al iniciar el notebook',
           loading: false
         });
-        alert(`Error al iniciar UI de DuckDB en ${serverName}: ${data.error || 'Error desconocido'}`);
+        alert(`Error al iniciar notebook de DuckDB en ${serverName}: ${data.error || 'Error desconocido'}`);
       }
     } catch (error) {
-      console.error('Error al iniciar la UI de DuckDB:', error);
+      console.error('Error al iniciar el notebook de DuckDB:', error);
       setUiStatus({
         serverId,
         url: null,
         error: error.message,
         loading: false
       });
-      alert(`Error al iniciar UI de DuckDB: ${error.message}`);
+      alert(`Error al iniciar notebook de DuckDB: ${error.message}`);
+    }
+  };
+  
+  // Función para iniciar la UI regular de DuckDB
+  const startRegularDuckDBUI = async (serverId, serverName) => {
+    try {
+      setUiStatus({
+        serverId,
+        url: null,
+        error: null,
+        loading: true
+      });
+      
+      const response = await fetch('/api/admin/duckdb-swarm/start-regular-ui', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ serverId })
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok && data.success) {
+        setUiStatus({
+          serverId,
+          url: data.ui_url,
+          error: null,
+          loading: false
+        });
+        
+        // Abrir la UI regular en una nueva pestaña
+        if (data.ui_url) {
+          window.open(data.ui_url, '_blank');
+        } else {
+          alert('La UI regular de DuckDB se ha iniciado pero no se pudo obtener la URL. Verifica el servidor.');
+        }
+      } else {
+        setUiStatus({
+          serverId,
+          url: null,
+          error: data.error || 'Error desconocido al iniciar la UI regular',
+          loading: false
+        });
+        alert(`Error al iniciar UI regular de DuckDB en ${serverName}: ${data.error || 'Error desconocido'}`);
+      }
+    } catch (error) {
+      console.error('Error al iniciar la UI regular de DuckDB:', error);
+      setUiStatus({
+        serverId,
+        url: null,
+        error: error.message,
+        loading: false
+      });
+      alert(`Error al iniciar UI regular de DuckDB: ${error.message}`);
     }
   };
 
@@ -998,6 +1053,7 @@ const DuckDBSwarmSimple = () => {
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-4">
                             {server.status === 'active' && (
+                              <>
                               <button
                                 onClick={() => startDuckDBUI(server.id, server.name || server.hostname)}
                                 disabled={uiStatus.loading && uiStatus.serverId === server.id}
@@ -1016,10 +1072,34 @@ const DuckDBSwarmSimple = () => {
                                     <svg className="h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                                     </svg>
-                                    UI Notebook
+                                    Notebook
                                   </>
                                 )}
                               </button>
+                              
+                              <button
+                                onClick={() => startRegularDuckDBUI(server.id, server.name || server.hostname)}
+                                disabled={uiStatus.loading && uiStatus.serverId === server.id}
+                                className="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300 inline-flex items-center ml-3"
+                              >
+                                {uiStatus.loading && uiStatus.serverId === server.id ? (
+                                  <>
+                                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                    Iniciando...
+                                  </>
+                                ) : (
+                                  <>
+                                    <svg className="h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                    </svg>
+                                    UI Regular
+                                  </>
+                                )}
+                              </button>
+                              </>
                             )}
                             
                             <button

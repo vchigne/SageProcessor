@@ -41,7 +41,7 @@ async function getServer(serverId) {
 }
 
 export default async function handler(req, res) {
-  // Solo permitir POST para iniciar UI
+  // Solo permitir POST para iniciar UI regular
   if (req.method !== 'POST') {
     return res.status(405).json({ success: false, error: 'Método no permitido' });
   }
@@ -67,11 +67,11 @@ export default async function handler(req, res) {
       });
     }
     
-    // Construir URL de la API DuckDB para iniciar la UI Notebook
+    // Construir URL de la API DuckDB para iniciar la UI regular
     const duckDBApiURL = `http://localhost:5001`;
     
-    // Realizar solicitud al endpoint de notebook UI del servidor DuckDB
-    const duckDBUIResponse = await fetch(`${duckDBApiURL}/api/servers/${serverId}/notebook`, {
+    // Realizar solicitud al endpoint de UI regular del servidor DuckDB
+    const duckDBUIResponse = await fetch(`${duckDBApiURL}/api/servers/${serverId}/ui`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -93,10 +93,10 @@ export default async function handler(req, res) {
     return res.status(200).json({
       success: true,
       ui_url: uiData.ui_url || `${duckDBApiURL}/ui`,
-      message: 'UI de DuckDB iniciada correctamente'
+      message: 'UI regular de DuckDB iniciada correctamente'
     });
   } catch (error) {
-    console.error('Error al iniciar UI DuckDB:', error);
+    console.error('Error al iniciar UI regular DuckDB:', error);
     return res.status(500).json({
       success: false,
       error: `Error interno del servidor: ${error.message}`
