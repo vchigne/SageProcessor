@@ -164,7 +164,24 @@ print_info "Verificando que el servidor esté respondiendo..."
 sleep 5
 curl -s http://localhost:$DUCKDB_PORT/health || echo "Error: No se pudo conectar al servidor"
 
-print_success "¡Instalación de DuckDB Server completada!"
+# Comprobar si realmente se instaló correctamente
+if [ -f ~/duckdb_server/duckdb_server.pid ] && pgrep -f "python3 .*duckdb_server.py" > /dev/null; then
+    print_success "¡Instalación de DuckDB Server completada!"
+    INSTALL_SUCCESS=1
+else
+    if grep -q "No module named 'duckdb'" ~/duckdb_server/duckdb_server.log 2>/dev/null; then
+        print_error "La instalación falló porque falta el módulo 'duckdb'."
+        print_info "Por favor, ejecute los siguientes comandos para instalar las dependencias necesarias:"
+        print_info "sudo apt-get update"
+        print_info "sudo apt-get install -y python3-pip"
+        print_info "pip3 install --user duckdb flask flask-cors"
+        print_info "Después, intente nuevamente el despliegue."
+        INSTALL_SUCCESS=0
+    else
+        print_error "La instalación falló por un error desconocido. Revise los logs para más detalles."
+        INSTALL_SUCCESS=0
+    fi
+fi
 echo ""
 echo "Para verificar el estado del servidor:"
 if [ -d /etc/systemd/system ]; then

@@ -25,10 +25,10 @@ class KnownHostsPolicy(paramiko.MissingHostKeyPolicy):
     """
     def missing_host_key(self, client, hostname, key):
         logger.warning(f"Host desconocido: {hostname}. Añadiendo automáticamente la clave.")
-        client._host_keys.add(hostname, key.get_name(), key)
-        # Si tuviéramos un archivo de known_hosts, podríamos guardarlo:
-        # if client._host_keys_filename is not None:
-        #    client.save_host_keys(client._host_keys_filename)
+        # No intentamos modificar directamente los host_keys internos
+        # Simplemente aceptamos la clave automáticamente
+        # Si necesitaramos guardar las claves permanentemente, deberíamos implementar
+        # un sistema de almacenamiento de claves externo
 
 def deploy_duckdb_via_ssh(ssh_host, ssh_port=22, ssh_username=None, ssh_password=None, 
                           ssh_key=None, duckdb_port=1294, server_key=None):

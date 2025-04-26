@@ -1089,6 +1089,22 @@ const DuckDBSwarmSimple = () => {
                                             ...prev,
                                             logs: [...prev.logs, ...logLines.map(line => `[OUTPUT] ${line}`)]
                                           }));
+                                          
+                                          // Buscar errores específicos para mostrar mensajes más claros
+                                          if (responseData.details.output.includes("No module named 'duckdb'") || 
+                                              responseData.details.output.includes("No se encontró pip ni pip3")) {
+                                            setDeploymentStatus(prev => ({
+                                              ...prev,
+                                              error: 'Faltan dependencias en el servidor remoto',
+                                              message: 'Es necesario instalar manualmente las dependencias en el servidor',
+                                              logs: [...prev.logs, 
+                                                '[REQUISITOS] Por favor, ejecute estos comandos en el servidor remoto:',
+                                                '[REQUISITOS] sudo apt-get update',
+                                                '[REQUISITOS] sudo apt-get install -y python3-pip',
+                                                '[REQUISITOS] pip3 install --user duckdb flask flask-cors',
+                                                '[REQUISITOS] Luego, intente redesplegar el servidor.']
+                                            }));
+                                          }
                                         }
                                       }
                                     } catch (error) {
