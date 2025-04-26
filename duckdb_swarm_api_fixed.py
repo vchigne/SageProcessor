@@ -429,8 +429,9 @@ def repair_vnc(server_id):
             return jsonify({'error': 'Servidor no tiene configuración SSH completa'}), 400
         
         # Intentar conectar por SSH para reparar servicios VNC
-        ssh_key = server[7]
-        ssh_password = server[8]
+        # Aseguramos que server_info tiene los datos de ssh_key y ssh_password para usar dentro de la función
+        server_info['ssh_key'] = server[7]
+        server_info['ssh_password'] = server[8]
         
         # Ejecutar script de reparación VNC
         import utils.ssh_deployer as ssh_deployer
@@ -474,8 +475,8 @@ def repair_vnc(server_id):
             repair_command,
             server_info['ssh_port'],
             server_info['ssh_user'],
-            ssh_password,
-            ssh_key
+            server_info['ssh_password'],
+            server_info['ssh_key']
         )
         
         # Verificar si falló la autenticación
