@@ -864,6 +864,26 @@ const DuckDBSwarmSimple = () => {
                             alert('Servidor actualizado correctamente');
                             fetchServers();
                             setShowEditModal(false);
+                            setEditMode(false);
+                            // Resetear el formulario a su estado inicial
+                            setFormData({
+                              id: null,
+                              name: '',
+                              hostname: '',
+                              port: 1294,
+                              server_key: '',
+                              server_type: 'general',
+                              is_local: false,
+                              installation_id: '',
+                              cloud_secret_id: '',
+                              bucket_name: '',
+                              ssh_host: '',
+                              ssh_port: 22,
+                              ssh_username: '',
+                              ssh_password: '',
+                              ssh_key: '',
+                              deploy_server: false
+                            });
                           } else {
                             const error = await response.json();
                             alert(error.error || 'Error al actualizar el servidor');
@@ -1038,7 +1058,29 @@ const DuckDBSwarmSimple = () => {
                         <div className="mt-6 flex justify-end space-x-3">
                           <button
                             type="button"
-                            onClick={() => setShowEditModal(false)}
+                            onClick={() => {
+                              setShowEditModal(false);
+                              setEditMode(false);
+                              // Resetear el formulario a su estado inicial
+                              setFormData({
+                                id: null,
+                                name: '',
+                                hostname: '',
+                                port: 1294,
+                                server_key: '',
+                                server_type: 'general',
+                                is_local: false,
+                                installation_id: '',
+                                cloud_secret_id: '',
+                                bucket_name: '',
+                                ssh_host: '',
+                                ssh_port: 22,
+                                ssh_username: '',
+                                ssh_password: '',
+                                ssh_key: '',
+                                deploy_server: false
+                              });
+                            }}
                             className="inline-flex justify-center px-4 py-2 text-sm font-medium text-gray-700 bg-white dark:bg-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
                           >
                             Cancelar
