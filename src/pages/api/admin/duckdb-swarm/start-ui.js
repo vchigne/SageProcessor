@@ -70,8 +70,31 @@ export default async function handler(req, res) {
     // Construir URL de la API DuckDB para iniciar la UI Notebook
     const duckDBApiURL = `http://localhost:5001`;
     
+    // Obtener la lista de servidores desde la API de DuckDB para traducir el ID
+    const serversResponse = await fetch(`${duckDBApiURL}/api/servers`);
+    if (!serversResponse.ok) {
+      return res.status(500).json({ 
+        success: false, 
+        error: `Error al obtener lista de servidores DuckDB: ${serversResponse.status}` 
+      });
+    }
+    
+    const duckdbServers = await serversResponse.json();
+    const duckdbServer = duckdbServers.servers && duckdbServers.servers.length > 0 ? 
+                         duckdbServers.servers[0] : null;
+    
+    if (!duckdbServer) {
+      return res.status(404).json({ 
+        success: false, 
+        error: `No hay servidores disponibles en DuckDB Swarm` 
+      });
+    }
+    
+    // Usar el primer servidor disponible (en este caso el servidor local)
+    const duckdbServerId = duckdbServer.id;
+    
     // Realizar solicitud al endpoint de notebook UI del servidor DuckDB
-    const duckDBUIResponse = await fetch(`${duckDBApiURL}/api/servers/${serverId}/notebook`, {
+    const duckDBUIResponse = await fetch(`${duckDBApiURL}/api/servers/${duckdbServerId}/notebook`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
