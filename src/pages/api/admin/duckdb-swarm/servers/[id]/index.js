@@ -4,36 +4,37 @@ import { pool } from '../../../../../../utils/db';
 export default async function handler(req, res) {
   const { method } = req;
   const { id } = req.query;
+  const serverId = parseInt(id);
+
+  if (isNaN(serverId)) {
+    return res.status(400).json({ error: 'ID de servidor inválido' });
+  }
 
   switch (method) {
     case 'GET':
       try {
-        // En una implementación real, aquí obtendríamos la información del servidor
-        // desde la base de datos con el ID proporcionado
+        // Obtener información del servidor desde la base de datos
+        const client = await pool.connect();
         
-        // Para simular, vamos a devolver datos ficticios
-        const isLocal = parseInt(id) === 1;
-        
-        return res.status(200).json({
-          success: true,
-          server: {
-            id: parseInt(id),
-            name: isLocal ? 'Servidor Local' : `Servidor ${id}`,
-            hostname: isLocal ? 'localhost' : `server-${id}.example.com`,
-            port: 1294,
-            server_type: isLocal ? 'general' : 'analytics',
-            is_local: isLocal,
-            status: 'active',
-            cloud_secret_id: isLocal ? '' : '1',
-            bucket_name: isLocal ? '' : 'data-bucket',
-            installation_id: '',
-            created_at: '2025-04-24T12:00:00Z',
-            last_seen: '2025-04-25T10:30:00Z'
+        try {
+          const result = await client.query(`
+            SELECT * FROM duckdb_servers WHERE id = $1
+          `, [serverId]);
+          
+          if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Servidor no encontrado' });
           }
-        });
+          
+          return res.status(200).json({
+            success: true,
+            server: result.rows[0]
+          });
+        } finally {
+          client.release();
+        }
       } catch (error) {
         console.error('Error getting server:', error);
-        return res.status(500).json({ error: 'Error al obtener servidor' });
+        return res.status(500).json({ error: 'Error al obtener servidor: ' + error.message });
       }
 
     case 'PUT':
@@ -64,44 +65,124 @@ export default async function handler(req, res) {
           return res.status(400).json({ error: 'Se requiere un nombre descriptivo' });
         }
 
-        // Aquí normalmente actualizaríamos el servidor en la base de datos
-        console.log(`Actualizando servidor ID ${id}:`, req.body);
+        // Actualizar el servidor en la base de datos
+        console.log(`Actualizando servidor ID ${serverId}:`, req.body);
         
-        // Simulamos actualización exitosa
-        return res.status(200).json({
-          success: true,
-          server: {
-            id: parseInt(id),
-            name,
-            hostname,
-            port,
-            server_type,
-            is_local: !!is_local,
-            installation_id: installation_id || '',
-            cloud_secret_id: cloud_secret_id || '',
-            bucket_name: bucket_name || '',
-            status: 'active',
-            updated_at: new Date().toISOString()
+        const client = await pool.connect();
+        
+        try {
+          // Verificar si el servidor existe
+          const checkResult = await client.query(`
+            SELECT id FROM duckdb_servers WHERE id = $1
+          `, [serverId]);
+          
+          if (checkResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Servidor no encontrado' });
           }
-        });
+          
+          // Construir la consulta de actualización con los campos proporcionados
+          let updateQuery = `
+            UPDATE duckdb_servers SET 
+              name = $1, 
+              hostname = $2, 
+              port = $3, 
+              server_type = $4, 
+              is_local = $5,
+              updated_at = NOW()
+          `;
+          
+          const values = [
+            name, 
+            hostname, 
+            parseInt(port), 
+            server_type || 'general', 
+            !!is_local
+          ];
+          
+          // Agregar los campos opcionales si están presentes
+          let paramIndex = 6;
+          
+          if (server_key !== undefined) {
+            updateQuery += `, server_key = $${paramIndex}`;
+            values.push(server_key);
+            paramIndex++;
+          }
+          
+          if (installation_id !== undefined) {
+            updateQuery += `, installation_id = $${paramIndex}`;
+            values.push(installation_id);
+            paramIndex++;
+          }
+          
+          if (cloud_secret_id !== undefined) {
+            updateQuery += `, cloud_secret_id = $${paramIndex}`;
+            values.push(cloud_secret_id);
+            paramIndex++;
+          }
+          
+          if (bucket_name !== undefined) {
+            updateQuery += `, bucket_name = $${paramIndex}`;
+            values.push(bucket_name);
+            paramIndex++;
+          }
+          
+          // Completar la consulta con la condición WHERE
+          updateQuery += ` WHERE id = $${paramIndex} RETURNING *`;
+          values.push(serverId);
+          
+          // Ejecutar la actualización
+          const result = await client.query(updateQuery, values);
+          
+          return res.status(200).json({
+            success: true,
+            server: result.rows[0]
+          });
+        } finally {
+          client.release();
+        }
       } catch (error) {
         console.error('Error updating server:', error);
-        return res.status(500).json({ error: 'Error al actualizar servidor' });
+        return res.status(500).json({ error: 'Error al actualizar servidor: ' + error.message });
       }
 
     case 'DELETE':
       try {
-        // Aquí normalmente eliminaríamos el servidor de la base de datos
-        console.log(`Eliminando servidor ID ${id}`);
+        const client = await pool.connect();
         
-        // Simulamos eliminación exitosa
-        return res.status(200).json({
-          success: true,
-          message: `Servidor con ID ${id} eliminado correctamente`
-        });
+        try {
+          // Verificar si el servidor existe y es local
+          const checkResult = await client.query(`
+            SELECT id, name, is_local FROM duckdb_servers WHERE id = $1
+          `, [serverId]);
+          
+          if (checkResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Servidor no encontrado' });
+          }
+          
+          const server = checkResult.rows[0];
+          
+          // No permitir eliminar el servidor local
+          if (server.is_local) {
+            return res.status(400).json({ 
+              error: 'No se puede eliminar el servidor local. Es necesario para el funcionamiento del sistema.' 
+            });
+          }
+          
+          // Eliminar el servidor
+          await client.query(`
+            DELETE FROM duckdb_servers WHERE id = $1
+          `, [serverId]);
+          
+          return res.status(200).json({
+            success: true,
+            message: `Servidor ${server.name} (ID: ${serverId}) eliminado correctamente`
+          });
+        } finally {
+          client.release();
+        }
       } catch (error) {
         console.error('Error deleting server:', error);
-        return res.status(500).json({ error: 'Error al eliminar servidor' });
+        return res.status(500).json({ error: 'Error al eliminar servidor: ' + error.message });
       }
 
     default:

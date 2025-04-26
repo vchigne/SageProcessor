@@ -1,41 +1,76 @@
 // API para gestionar servidores DuckDB
 import { pool } from '../../../../utils/db';
 
+// Crear la tabla de servidores si no existe
+async function createServersTableIfNotExists() {
+  const client = await pool.connect();
+  try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS duckdb_servers (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        hostname VARCHAR(255) NOT NULL,
+        port INTEGER NOT NULL,
+        server_key VARCHAR(255),
+        server_type VARCHAR(50) NOT NULL,
+        is_local BOOLEAN DEFAULT FALSE,
+        status VARCHAR(50) DEFAULT 'stopped',
+        cloud_secret_id VARCHAR(255),
+        bucket_name VARCHAR(255),
+        installation_id VARCHAR(255),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        last_seen TIMESTAMP,
+        updated_at TIMESTAMP
+      )
+    `);
+    
+    // Verificar si hay servidores y crear el servidor local por defecto si no hay
+    const checkResult = await client.query('SELECT COUNT(*) FROM duckdb_servers');
+    
+    if (parseInt(checkResult.rows[0].count) === 0) {
+      // No hay servidores, crear el servidor local por defecto
+      await client.query(`
+        INSERT INTO duckdb_servers (
+          name, hostname, port, server_type, is_local, status
+        ) VALUES (
+          'Servidor Local', 'localhost', 1294, 'general', TRUE, 'active'
+        )
+      `);
+    }
+  } finally {
+    client.release();
+  }
+}
+
 export default async function handler(req, res) {
   const { method } = req;
 
   switch (method) {
     case 'GET':
       try {
-        // Simulamos obtener los servidores desde la base de datos
-        return res.status(200).json({
-          success: true,
-          servers: [
-            {
-              id: 1,
-              hostname: 'localhost',
-              port: 1294,
-              server_type: 'general',
-              is_local: true,
-              status: 'active',
-              created_at: '2025-04-24T12:00:00Z',
-              last_seen: '2025-04-25T10:30:00Z'
-            },
-            {
-              id: 2,
-              hostname: 'duckdb-analytics.example.com',
-              port: 1294,
-              server_type: 'analytics',
-              is_local: false,
-              status: 'standby',
-              created_at: '2025-04-23T09:15:00Z',
-              last_seen: '2025-04-25T08:45:00Z'
-            }
-          ]
-        });
+        // Asegurarse de que la tabla existe y tiene al menos un servidor local
+        await createServersTableIfNotExists();
+        
+        // Obtener la conexión a la base de datos
+        const client = await pool.connect();
+        
+        try {
+          // Consultar todos los servidores
+          const result = await client.query(`
+            SELECT * FROM duckdb_servers ORDER BY id
+          `);
+          
+          return res.status(200).json({
+            success: true,
+            servers: result.rows
+          });
+        } finally {
+          // Liberar la conexión
+          client.release();
+        }
       } catch (error) {
         console.error('Error getting servers:', error);
-        return res.status(500).json({ error: 'Error al obtener servidores' });
+        return res.status(500).json({ error: 'Error al obtener servidores: ' + error.message });
       }
 
     case 'POST':
@@ -132,26 +167,39 @@ export default async function handler(req, res) {
           }
         }
 
-        // Aquí normalmente guardaríamos el servidor en la base de datos
-        // Por ahora, simplemente devolvemos éxito y un ID ficticio
-        return res.status(200).json({
-          success: true,
-          server: {
-            id: 3,
-            name,
-            hostname,
-            port,
-            server_type,
-            is_local: !!is_local,
-            status: 'starting',
-            created_at: new Date().toISOString(),
-            cloud_secret_id,
-            bucket_name
-          }
-        });
+        // Guardar el servidor en la base de datos
+        const client = await pool.connect();
+        try {
+          const result = await client.query(`
+            INSERT INTO duckdb_servers (
+              name, hostname, port, server_key, server_type, is_local, status, 
+              cloud_secret_id, bucket_name, installation_id
+            ) VALUES (
+              $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
+            ) RETURNING *
+          `, [
+            name, 
+            hostname, 
+            port, 
+            server_key || '', 
+            server_type || 'general', 
+            !!is_local, 
+            'starting', 
+            cloud_secret_id, 
+            bucket_name, 
+            installation_id || ''
+          ]);
+          
+          return res.status(201).json({
+            success: true,
+            server: result.rows[0]
+          });
+        } finally {
+          client.release();
+        }
       } catch (error) {
         console.error('Error creating server:', error);
-        return res.status(500).json({ error: 'Error al crear servidor' });
+        return res.status(500).json({ error: 'Error al crear servidor: ' + error.message });
       }
 
     default:
