@@ -76,50 +76,18 @@ export default async function handler(req, res) {
       });
     }
     
-    // Construir URL de la API DuckDB para iniciar el servidor HTTP
-    const duckDBApiURL = `http://localhost:5001`;
+    // No intentamos llamar a la API DuckDB Swarm - simplemente generamos las instrucciones para el cliente
     
-    // Si es un servidor remoto, necesitamos usar SSH para configurar httpserver
-    let remoteCommand = null;
-    let sshInfo = null;
-    
-    if (!server.is_local && server.ssh_host && server.ssh_username) {
-      sshInfo = {
-        host: server.ssh_host,
-        port: server.ssh_port || 22,
-        username: server.ssh_username,
-        password: server.ssh_password || null,
-        key: server.ssh_key || null
-      };
-      
-      console.log(`Preparando comando remoto para httpserver en servidor ${server.id} (${server.name})`);
-    }
-    
-    // Realizar solicitud al endpoint del servidor DuckDB para iniciar httpserver
-    const httpServerResponse = await fetch(`${duckDBApiURL}/api/servers/${server.id}/httpserver`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        port,
-        auth: `${username}:${password}`,
-        ssh: sshInfo
-      })
-    });
-    
-    if (!httpServerResponse.ok) {
-      const errorData = await httpServerResponse.json().catch(() => ({ message: 'Error desconocido' }));
-      return res.status(httpServerResponse.status).json({
-        success: false,
-        error: `Error al iniciar httpserver de DuckDB: ${errorData.message || errorData.error || 'Error desconocido'}`
-      });
-    }
-    
-    const httpServerData = await httpServerResponse.json();
-    
-    // En una implementación real, esta URL podría ser diferente dependiendo de la configuración de red
+    // Configuración para la extensión httpserver
+    const auth = `${username}:${password}`;
     const serverUrl = `http://${server.hostname}:${port}`;
+    
+    // Comandos SQL para la instalación y configuración de httpserver
+    const sqlCommands = [
+      'INSTALL httpserver;',
+      'LOAD httpserver;',
+      `SELECT httpserve_start('0.0.0.0', ${port}, '${auth}');`
+    ];
     
     return res.status(200).json({
       success: true,
@@ -129,8 +97,16 @@ export default async function handler(req, res) {
         username,
         password: '********' // No devolver la contraseña real
       },
-      sql_command: `INSTALL httpserver;\nLOAD httpserver;\nSELECT httpserve_start('0.0.0.0', ${port}, '${username}:${password}');`,
-      message: 'Servidor HTTP de DuckDB iniciado correctamente'
+      sql_command: sqlCommands.join('\n'),
+      message: 'Instrucciones de configuración generadas correctamente',
+      instructions: [
+        'Para utilizar httpserver en DuckDB:',
+        '1. Conéctese al servidor DuckDB usando SSH o una herramienta similar',
+        '2. Ejecute la instancia de DuckDB',
+        '3. Copie y ejecute los comandos SQL proporcionados',
+        '4. Abra un navegador web y acceda a la URL proporcionada',
+        '5. Utilice las credenciales generadas para autenticarse'
+      ]
     });
   } catch (error) {
     console.error('Error al iniciar httpserver de DuckDB:', error);
