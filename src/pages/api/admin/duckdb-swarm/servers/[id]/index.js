@@ -49,7 +49,13 @@ export default async function handler(req, res) {
           is_local,
           installation_id,
           cloud_secret_id,
-          bucket_name
+          bucket_name,
+          // Incluir credenciales SSH si se proporcionan
+          ssh_host,
+          ssh_port,
+          ssh_username,
+          ssh_password,
+          ssh_key
         } = req.body;
 
         // Validación simple
@@ -123,6 +129,37 @@ export default async function handler(req, res) {
           if (bucket_name !== undefined) {
             updateQuery += `, bucket_name = $${paramIndex}`;
             values.push(bucket_name);
+            paramIndex++;
+          }
+          
+          // Añadir credenciales SSH si se proporcionan
+          if (ssh_host !== undefined) {
+            updateQuery += `, ssh_host = $${paramIndex}`;
+            values.push(ssh_host);
+            paramIndex++;
+          }
+          
+          if (ssh_port !== undefined) {
+            updateQuery += `, ssh_port = $${paramIndex}`;
+            values.push(parseInt(ssh_port) || 22);
+            paramIndex++;
+          }
+          
+          if (ssh_username !== undefined) {
+            updateQuery += `, ssh_username = $${paramIndex}`;
+            values.push(ssh_username);
+            paramIndex++;
+          }
+          
+          if (ssh_password !== undefined) {
+            updateQuery += `, ssh_password = $${paramIndex}`;
+            values.push(ssh_password);
+            paramIndex++;
+          }
+          
+          if (ssh_key !== undefined) {
+            updateQuery += `, ssh_key = $${paramIndex}`;
+            values.push(ssh_key);
             paramIndex++;
           }
           

@@ -1280,7 +1280,7 @@ Para instrucciones detalladas, revise la configuración generada.
                             
                             <button
                               onClick={() => {
-                                // Cargar datos del servidor para edición
+                                // Cargar datos del servidor para edición, incluyendo credenciales SSH si existen
                                 setFormData({
                                   id: server.id,
                                   name: server.name || '',
@@ -1292,11 +1292,11 @@ Para instrucciones detalladas, revise la configuración generada.
                                   installation_id: server.installation_id || '',
                                   cloud_secret_id: server.cloud_secret_id || '',
                                   bucket_name: server.bucket_name || '',
-                                  ssh_host: '',
-                                  ssh_port: 22,
-                                  ssh_username: '',
-                                  ssh_password: '',
-                                  ssh_key: '',
+                                  ssh_host: server.ssh_host || '',
+                                  ssh_port: server.ssh_port || 22,
+                                  ssh_username: server.ssh_username || '',
+                                  ssh_password: server.ssh_password || '',
+                                  ssh_key: server.ssh_key || '',
                                   deploy_server: false
                                 });
                                 setEditMode(true);
@@ -1322,48 +1322,69 @@ Para instrucciones detalladas, revise la configuración generada.
                                     });
                                     
                                     try {
-                                      // Obtener información actualizada del servidor para SSH
+                                      // Inicializar con los datos SSH almacenados si existen
                                       const sshFormData = {
-                                        ssh_host: '',
-                                        ssh_port: 22,
-                                        ssh_username: '',
-                                        ssh_password: '',
-                                        ssh_key: ''
+                                        ssh_host: server.ssh_host || '',
+                                        ssh_port: server.ssh_port || 22,
+                                        ssh_username: server.ssh_username || '',
+                                        ssh_password: server.ssh_password || '',
+                                        ssh_key: server.ssh_key || ''
                                       };
                                       
-                                      // Solicitar información SSH
-                                      const userSSHInput = prompt(
-                                        `Ingrese los datos SSH para el servidor ${server.name || server.hostname} en formato JSON:\n` +
-                                        '{\n' +
-                                        '  "ssh_host": "host.example.com",\n' +
-                                        '  "ssh_port": 22,\n' +
-                                        '  "ssh_username": "usuario",\n' +
-                                        '  "ssh_password": "contraseña",\n' +
-                                        '  "ssh_key": "opcional-clave-ssh"\n' +
-                                        '}'
-                                      );
+                                      // Verificar si ya tenemos datos SSH completos
+                                      const hasSshCredentials = sshFormData.ssh_host && 
+                                                               sshFormData.ssh_username && 
+                                                               (sshFormData.ssh_password || sshFormData.ssh_key);
                                       
-                                      if (!userSSHInput) {
-                                        setLoading(prev => ({ ...prev, deploying: false }));
-                                        return;
-                                      }
-                                      
-                                      try {
-                                        const parsedSSH = JSON.parse(userSSHInput);
-                                        Object.assign(sshFormData, parsedSSH);
-                                      } catch (e) {
+                                      // Solicitar información SSH solo si no está completa
+                                      if (!hasSshCredentials) {
+                                        // Actualizar mensaje de log
                                         setDeploymentStatus(prev => ({
                                           ...prev,
-                                          message: 'Error de formato JSON',
-                                          error: 'El formato JSON ingresado es inválido',
-                                          logs: [...prev.logs, '[ERROR] El formato JSON ingresado es inválido: ' + e.message]
+                                          message: 'Solicitando credenciales SSH...',
+                                          logs: [...prev.logs, '[INFO] No se encontraron credenciales SSH almacenadas. Solicitando al usuario...']
                                         }));
                                         
-                                        // Esperar 3 segundos y cerrar el diálogo
-                                        setTimeout(() => {
+                                        const userSSHInput = prompt(
+                                          `Ingrese los datos SSH para el servidor ${server.name || server.hostname} en formato JSON:\n` +
+                                          '{\n' +
+                                          '  "ssh_host": "host.example.com",\n' +
+                                          '  "ssh_port": 22,\n' +
+                                          '  "ssh_username": "usuario",\n' +
+                                          '  "ssh_password": "contraseña",\n' +
+                                          '  "ssh_key": "opcional-clave-ssh"\n' +
+                                          '}'
+                                        );
+                                        
+                                        if (!userSSHInput) {
                                           setLoading(prev => ({ ...prev, deploying: false }));
-                                        }, 3000);
-                                        return;
+                                          return;
+                                        }
+                                        
+                                        try {
+                                          const parsedSSH = JSON.parse(userSSHInput);
+                                          Object.assign(sshFormData, parsedSSH);
+                                        } catch (e) {
+                                          setDeploymentStatus(prev => ({
+                                            ...prev,
+                                            message: 'Error de formato JSON',
+                                            error: 'El formato JSON ingresado es inválido',
+                                            logs: [...prev.logs, '[ERROR] El formato JSON ingresado es inválido: ' + e.message]
+                                          }));
+                                          
+                                          // Esperar 3 segundos y cerrar el diálogo
+                                          setTimeout(() => {
+                                            setLoading(prev => ({ ...prev, deploying: false }));
+                                          }, 3000);
+                                          return;
+                                        }
+                                      } else {
+                                        // Registrar que estamos usando credenciales almacenadas
+                                        setDeploymentStatus(prev => ({
+                                          ...prev,
+                                          message: 'Usando credenciales SSH almacenadas...',
+                                          logs: [...prev.logs, '[INFO] Usando credenciales SSH almacenadas para el servidor.']
+                                        }));
                                       }
                                       
                                       // Validar datos SSH

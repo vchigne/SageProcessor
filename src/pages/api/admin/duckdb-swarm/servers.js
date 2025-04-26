@@ -5,6 +5,7 @@ import { pool } from '../../../../utils/db';
 async function createServersTableIfNotExists() {
   const client = await pool.connect();
   try {
+    // Crear la tabla principal si no existe
     await client.query(`
       CREATE TABLE IF NOT EXISTS duckdb_servers (
         id SERIAL PRIMARY KEY,
@@ -23,6 +24,32 @@ async function createServersTableIfNotExists() {
         updated_at TIMESTAMP
       )
     `);
+    
+    // Verificar y añadir columnas SSH si no existen
+    // Usamos ALTER TABLE ADD COLUMN IF NOT EXISTS para PostgreSQL moderno
+    try {
+      // Verificar si las columnas existen
+      const checkColumns = await client.query(`
+        SELECT column_name FROM information_schema.columns 
+        WHERE table_name = 'duckdb_servers' AND column_name = 'ssh_host'
+      `);
+      
+      // Si no existen las columnas SSH, añadirlas
+      if (checkColumns.rows.length === 0) {
+        console.log('Añadiendo columnas SSH a la tabla duckdb_servers');
+        await client.query(`
+          ALTER TABLE duckdb_servers
+          ADD COLUMN ssh_host VARCHAR(255),
+          ADD COLUMN ssh_port INTEGER DEFAULT 22,
+          ADD COLUMN ssh_username VARCHAR(255),
+          ADD COLUMN ssh_password VARCHAR(255),
+          ADD COLUMN ssh_key TEXT
+        `);
+      }
+    } catch (error) {
+      console.error('Error al añadir columnas SSH:', error);
+      // Continuamos aunque haya un error para no bloquear la creación inicial
+    }
     
     // Verificar si hay servidores y crear el servidor local por defecto si no hay
     const checkResult = await client.query('SELECT COUNT(*) FROM duckdb_servers');
