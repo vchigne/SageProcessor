@@ -556,7 +556,7 @@ Configuración para servidor HTTP DuckDB generada correctamente.
 
 Para iniciar el servidor HTTP:
 1. Ejecute estos comandos SQL en DuckDB:
-${data.sql_commands.join('\n')}
+${data.sql_command}
 
 2. Una vez ejecutados, acceda a:
 ${data.server_url}
