@@ -121,7 +121,7 @@ def get_system_connection():
             # Tabla de sincronización con almacenamiento externo
             conn.execute("""
                 CREATE TABLE sync_operations (
-                    id INTEGER PRIMARY KEY,
+                    id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
                     database_id INTEGER,
                     operation_type VARCHAR,
                     external_uri VARCHAR,
@@ -162,6 +162,11 @@ def health_check():
             'timestamp': datetime.now().isoformat()
         }), 500
 
+# NUEVO ENDPOINT /status (muy simple)
+@app.route('/status', methods=['GET'])
+def status_check():
+    return jsonify({'status': 'ok', 'timestamp': datetime.now().isoformat()}), 200
+    
 # Listar bases de datos
 @app.route('/databases', methods=['GET'])
 @authenticate
