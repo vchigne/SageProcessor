@@ -14,6 +14,7 @@ export default function DuckDBScriptsManagerPage() {
     validateScript: '',
     duckdbServerScript: '',
     demosScript: '',
+    controlPanelScript: '',
     hasFiles: false
   });
   const [activeTab, setActiveTab] = useState('install');
@@ -37,6 +38,7 @@ export default function DuckDBScriptsManagerPage() {
           validateScript: data.validateScript || '',
           duckdbServerScript: data.duckdbServerScript || '',
           demosScript: data.demosScript || '',
+          controlPanelScript: data.controlPanelScript || '',
           hasFiles: data.hasFiles || false
         });
       } else {
@@ -140,6 +142,8 @@ export default function DuckDBScriptsManagerPage() {
         return 'duckdbServerScript';
       case 'demos':
         return 'demosScript';
+      case 'control-panel':
+        return 'controlPanelScript';
       default:
         return '';
     }
@@ -156,6 +160,8 @@ export default function DuckDBScriptsManagerPage() {
         return scripts.duckdbServerScript;
       case 'demos':
         return scripts.demosScript;
+      case 'control-panel':
+        return scripts.controlPanelScript;
       default:
         return '';
     }
@@ -264,6 +270,17 @@ export default function DuckDBScriptsManagerPage() {
               <CodeBracketIcon className="w-4 h-4 inline mr-1" />
               Script de Demos
             </button>
+            <button
+              onClick={() => setActiveTab('control-panel')}
+              className={`py-2 px-4 text-sm font-medium ${
+                activeTab === 'control-panel'
+                  ? 'text-blue-600 border-b-2 border-blue-600 dark:text-blue-400 dark:border-blue-400'
+                  : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
+              }`}
+            >
+              <CodeBracketIcon className="w-4 h-4 inline mr-1" />
+              Panel de Control
+            </button>
           </nav>
         </div>
 
@@ -275,6 +292,7 @@ export default function DuckDBScriptsManagerPage() {
               {activeTab === 'validate' && 'Script de Validación (validate_duckdb_systemd.sh)'}
               {activeTab === 'duckdb-server' && 'API DuckDB Server (duckdb_server.py)'}
               {activeTab === 'demos' && 'Script de Demos (install_demos_duckdb_server.py)'}
+              {activeTab === 'control-panel' && 'Panel de Control (control_panel.py)'}
             </h2>
             
             {/* Mostrar botón de subir archivos solo en la pestaña de demos */}
