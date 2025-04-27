@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 
 const DuckDBSwarmSimple = () => {
   const [servers, setServers] = useState([]);
@@ -1364,13 +1365,23 @@ Para instrucciones detalladas, revise la configuración generada.
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-8">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-          Gestión del Enjambre DuckDB
-        </h1>
-        <p className="text-gray-500 dark:text-gray-400">
-          Administre servidores DuckDB, bases de datos y métricas desde una única interfaz
-        </p>
+      <div className="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+            Gestión del Enjambre DuckDB
+          </h1>
+          <p className="text-gray-500 dark:text-gray-400">
+            Administre servidores DuckDB, bases de datos y métricas desde una única interfaz
+          </p>
+        </div>
+        <div className="mt-4 sm:mt-0">
+          <Link href="/admin/duckdb-swarm/scripts" className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 inline-flex items-center">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M12.316 3.051a1 1 0 01.633 1.265l-4 12a1 1 0 11-1.898-.632l4-12a1 1 0 011.265-.633zM5.707 6.293a1 1 0 010 1.414L3.414 10l2.293 2.293a1 1 0 11-1.414 1.414l-3-3a1 1 0 010-1.414l3-3a1 1 0 011.414 0zm8.586 0a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 11-1.414-1.414L16.586 10l-2.293-2.293a1 1 0 010-1.414z" clipRule="evenodd" />
+            </svg>
+            Gestionar Scripts
+          </Link>
+        </div>
       </div>
 
       {/* Tabs */}
