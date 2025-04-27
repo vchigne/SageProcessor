@@ -291,7 +291,7 @@ export default function DuckDBScriptsManagerPage() {
               {activeTab === 'install' && 'Script de Instalación (install_duckdb_systemd.sh)'}
               {activeTab === 'validate' && 'Script de Validación (validate_duckdb_systemd.sh)'}
               {activeTab === 'duckdb-server' && 'API DuckDB Server (duckdb_server.py)'}
-              {activeTab === 'demos' && 'Script de Demos (install_demos_duckdb_server.py)'}
+              {activeTab === 'demos' && 'Script de Demos (install_demos_duckdb_server.sh)'}
               {activeTab === 'control-panel' && 'Panel de Control (control_panel.py)'}
             </h2>
             
