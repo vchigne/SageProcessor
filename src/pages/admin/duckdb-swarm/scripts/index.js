@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
-import Layout from '../../../../components/Layout';
 import { PencilIcon, ArrowPathIcon, FolderIcon, DocumentTextIcon, CodeBracketIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 
@@ -177,7 +176,7 @@ export default function DuckDBScriptsManagerPage() {
   };
 
   return (
-    <Layout>
+    <>
       <Head>
         <title>Gestión de Scripts de Despliegue DuckDB</title>
       </Head>
@@ -315,6 +314,6 @@ export default function DuckDBScriptsManagerPage() {
           </p>
         </div>
       </div>
-    </Layout>
+    </>
   );
 }
