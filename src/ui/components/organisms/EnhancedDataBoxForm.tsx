@@ -142,7 +142,7 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
     }
   };
 
-  // Enviar formulario para vista previa
+  // Enviar formulario directamente para validación
   const handlePreviewSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -157,7 +157,8 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
       return;
     }
     
-    setShowYamlPreview(true);
+    // Iniciar validación directamente
+    handleValidationStart();
   };
 
   // Iniciar validación YAML
@@ -467,10 +468,10 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
     >
       <div className="fixed inset-0 bg-black/30 dark:bg-black/50" aria-hidden="true" />
       <div className="fixed inset-0 flex items-center justify-center p-4 overflow-y-auto">
-        <Dialog.Panel className="w-full max-w-3xl bg-white dark:bg-dark-card rounded-lg shadow-xl max-h-[90vh] overflow-y-auto">
-          <div className="p-6 space-y-4">
+        <Dialog.Panel className="w-full max-w-2xl bg-white dark:bg-dark-card rounded-lg shadow-xl max-h-[80vh] overflow-y-auto">
+          <div className="p-4 space-y-3">
             <div className="flex justify-between items-center">
-              <Dialog.Title className="text-xl font-semibold dark:text-dark-text">
+              <Dialog.Title className="text-lg font-semibold dark:text-dark-text">
                 {isValidating ? 'Validando YAML...' : (validationSuccess ? 'YAML Validado' : 'Contenido del YAML')}
               </Dialog.Title>
               {!isValidating && (
@@ -478,7 +479,7 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
                   onClick={() => setShowYamlPreview(false)}
                   className="text-gray-400 hover:text-gray-500 dark:text-dark-text-secondary dark:hover:text-dark-text"
                 >
-                  <XMarkIcon className="h-6 w-6" />
+                  <XMarkIcon className="h-5 w-5" />
                 </button>
               )}
             </div>
@@ -525,15 +526,16 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
             )}
 
             {/* Contenido YAML */}
-            <Card className="overflow-auto max-h-[500px] p-0">
-              <pre className="p-4 bg-gray-50 dark:bg-dark-card-secondary rounded m-0" style={{
+            <Card className="overflow-auto max-h-[50vh] p-0">
+              <pre className="p-3 bg-gray-50 dark:bg-dark-card-secondary rounded m-0" style={{
                 fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-                fontSize: '0.9rem',
-                lineHeight: '1.6',
+                fontSize: '0.85rem',
+                lineHeight: '1.5',
                 tabSize: 2,
                 whiteSpace: 'pre',
                 overflowWrap: 'normal',
-                overflowX: 'auto'
+                overflowX: 'auto',
+                maxWidth: '100%'
               }}>
                 <code className="language-yaml dark:text-dark-text">
                   {formData.yaml_content}
