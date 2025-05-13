@@ -53,54 +53,26 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
                               (dataBox.instalacion && dataBox.instalacion.id) || 
                               '';
         
-        // Extraer yaml_content/yaml_contenido con comprobación completa de tipos
+        // Extraer yaml_content/yaml_contenido y mostrarlo como texto plano
         let yamlContent = '';
         console.log('Datos de la casilla:', JSON.stringify(dataBox, null, 2));
         
-        if (typeof dataBox.yaml_contenido === 'string') {
-          console.log('Usando yaml_contenido (string):', dataBox.yaml_contenido);
-          yamlContent = dataBox.yaml_contenido;
-        } else if (dataBox.yaml_contenido) {
-          console.log('Usando yaml_contenido (objeto):', dataBox.yaml_contenido);
-          try {
-            // Usamos directamente el contenido si ya está en string, o lo convertimos a YAML completo
-            if (typeof dataBox.yaml_contenido === 'object' && dataBox.yaml_contenido.name) {
-              // Solo tenemos los datos básicos de sage_yaml, creamos una estructura completa
-              const yamlObj = { 
-                sage_yaml: dataBox.yaml_contenido,
-                catalogs: [],
-                packages: []
-              };
-              yamlContent = yaml.stringify(yamlObj);
-            } else {
-              // Ya tiene la estructura completa, solo convertimos a string
-              yamlContent = yaml.stringify(dataBox.yaml_contenido);
-            }
-          } catch (e) {
-            console.error('Error al convertir yaml_contenido a YAML:', e);
+        // Mostrar simplemente la representación en texto del objeto yaml_content o yaml_contenido
+        if (dataBox.yaml_content) {
+          // Verificamos si es un objeto y lo convertimos a texto de manera simple
+          if (typeof dataBox.yaml_content === 'object') {
+            const contentObj = dataBox.yaml_content as any;
+            yamlContent = `sage_yaml:\n  name: "${contentObj.name || ''}"\n  description: "${contentObj.description || ''}"\n\ncatalogs: []\n\npackages: []`;
+          } else if (typeof dataBox.yaml_content === 'string') {
+            yamlContent = dataBox.yaml_content;
           }
-        } else if (typeof dataBox.yaml_content === 'string') {
-          console.log('Usando yaml_content (string):', dataBox.yaml_content);
-          yamlContent = dataBox.yaml_content;
-        } else if (dataBox.yaml_content) {
-          console.log('Usando yaml_content (objeto):', dataBox.yaml_content);
-          try {
-            // Usamos directamente el contenido si ya está en string, o lo convertimos a YAML completo
-            if (typeof dataBox.yaml_content === 'object' && dataBox.yaml_content.name) {
-              // Solo tenemos los datos básicos de sage_yaml, creamos una estructura completa
-              const yamlObj = { 
-                sage_yaml: dataBox.yaml_content,
-                catalogs: [],
-                packages: []
-              };
-              yamlContent = yaml.stringify(yamlObj);
-            } else {
-              // Ya tiene la estructura completa, solo convertimos a string
-              yamlContent = yaml.stringify(dataBox.yaml_content);
-            }
-          } catch (e) {
-            console.error('Error al convertir yaml_content a YAML:', e);
-            yamlContent = '';
+        } else if (dataBox.yaml_contenido) {
+          // Verificamos si es un objeto y lo convertimos a texto de manera simple
+          if (typeof dataBox.yaml_contenido === 'object') {
+            const contenidoObj = dataBox.yaml_contenido as any;
+            yamlContent = `sage_yaml:\n  name: "${contenidoObj.name || ''}"\n  description: "${contenidoObj.description || ''}"\n\ncatalogs: []\n\npackages: []`;
+          } else if (typeof dataBox.yaml_contenido === 'string') {
+            yamlContent = dataBox.yaml_contenido;
           }
         }
         
