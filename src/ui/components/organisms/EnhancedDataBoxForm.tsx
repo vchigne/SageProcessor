@@ -41,8 +41,10 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
 
   // Inicializar formulario al abrir el modal
   useEffect(() => {
+    console.log('Modal abierto, dataBox recibido:', dataBox);
     if (isOpen) {
       if (dataBox && dataBox.id) {
+        console.log('En modo edición, ID:', dataBox.id);
         setIsEditMode(true);
         
         // Extraer instalacion_id, manejar posibles casos de nulidad
@@ -50,13 +52,25 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
                               (dataBox.instalacion && dataBox.instalacion.id) || 
                               '';
         
-        // Extraer yaml_content/yaml_contenido con comprobación de tipos
+        // Extraer yaml_content/yaml_contenido con comprobación completa de tipos
         let yamlContent = '';
+        console.log('Datos de la casilla:', JSON.stringify(dataBox, null, 2));
+        
         if (typeof dataBox.yaml_contenido === 'string') {
+          console.log('Usando yaml_contenido (string):', dataBox.yaml_contenido);
           yamlContent = dataBox.yaml_contenido;
+        } else if (dataBox.yaml_contenido) {
+          console.log('Usando yaml_contenido (objeto):', dataBox.yaml_contenido);
+          try {
+            yamlContent = JSON.stringify(dataBox.yaml_contenido, null, 2);
+          } catch (e) {
+            console.error('Error al convertir yaml_contenido a string:', e);
+          }
         } else if (typeof dataBox.yaml_content === 'string') {
+          console.log('Usando yaml_content (string):', dataBox.yaml_content);
           yamlContent = dataBox.yaml_content;
         } else if (dataBox.yaml_content) {
+          console.log('Usando yaml_content (objeto):', dataBox.yaml_content);
           try {
             yamlContent = JSON.stringify(dataBox.yaml_content, null, 2);
           } catch (e) {
