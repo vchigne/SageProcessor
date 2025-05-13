@@ -159,11 +159,11 @@ const Tab = styled.button`
 
 const YamlEditor = styled.textarea`
   width: 100%;
-  min-height: 400px;
+  min-height: 500px;
   padding: 1rem;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  font-size: 0.875rem;
-  line-height: 1.5;
+  font-size: 0.9rem;
+  line-height: 1.6;
   resize: vertical;
   border: 1px solid #e2e8f0;
   border-radius: 0.375rem;
@@ -890,14 +890,24 @@ export const EditDataBoxModal = ({
   description: 'Descripción de la configuración'"
                 />
                 
-                <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'flex-end' }}>
+                <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'space-between' }}>
+                  <div>
+                    <h4 style={{ fontSize: '0.9rem', fontWeight: '600', marginBottom: '0.25rem', color: '#374151' }}>Consejos:</h4>
+                    <ul style={{ fontSize: '0.8rem', color: '#6b7280', listStyleType: 'disc', paddingLeft: '1rem' }}>
+                      <li>Incluye siempre la sección <code style={{ backgroundColor: '#f1f5f9', padding: '0.1rem 0.25rem', borderRadius: '0.25rem' }}>sage_yaml</code> con <code style={{ backgroundColor: '#f1f5f9', padding: '0.1rem 0.25rem', borderRadius: '0.25rem' }}>name</code> y <code style={{ backgroundColor: '#f1f5f9', padding: '0.1rem 0.25rem', borderRadius: '0.25rem' }}>description</code></li>
+                      <li>Respeta la indentación con espacios (2 espacios por nivel)</li>
+                      <li>Usa comillas para valores con caracteres especiales</li>
+                    </ul>
+                  </div>
+                
                   <StyledButton
-                    color="green"
+                    color="blue"
                     variant="primary"
                     onClick={handleValidateYaml}
                     type="button"
                     size="sm"
                     disabled={!formData.yaml_content || isValidating}
+                    style={{ minWidth: '120px', height: '2.5rem' }}
                   >
                     {isValidating ? (
                       <>
@@ -909,6 +919,10 @@ export const EditDataBoxModal = ({
                       </>
                     ) : (
                       <>
+                        <svg className="h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
                         Validar YAML
                       </>
                     )}
@@ -921,7 +935,10 @@ export const EditDataBoxModal = ({
                       <ExclamationCircleIcon />
                     </StatusIcon>
                     <ValidationText>
-                      {validationError}
+                      <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>Error en la validación:</div>
+                      <div style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace', fontSize: '0.8rem', backgroundColor: 'rgba(254, 226, 226, 0.5)', padding: '0.5rem', borderRadius: '0.25rem', overflowX: 'auto', maxHeight: '200px', overflowY: 'auto', whiteSpace: 'pre-wrap' }}>
+                        {validationError}
+                      </div>
                     </ValidationText>
                   </ValidationMessage>
                 )}
@@ -932,7 +949,10 @@ export const EditDataBoxModal = ({
                       <CheckCircleIcon />
                     </StatusIcon>
                     <ValidationText>
-                      YAML validado correctamente
+                      <div style={{ display: 'flex', alignItems: 'center' }}>
+                        <span style={{ fontWeight: 'bold', marginRight: '0.5rem' }}>¡YAML validado correctamente!</span>
+                        <span style={{ fontSize: '0.8rem', color: '#059669' }}>El formato y estructura son válidos.</span>
+                      </div>
                     </ValidationText>
                   </ValidationMessage>
                 )}
