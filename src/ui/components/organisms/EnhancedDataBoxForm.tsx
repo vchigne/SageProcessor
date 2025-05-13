@@ -386,7 +386,7 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
                   </div>
                 )}
                 <textarea
-                  rows={15}
+                  rows={30}
                   className="w-full px-4 py-3 border border-gray-300 dark:border-dark-border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-dark-accent focus:border-blue-500 dark:focus:border-dark-accent dark:bg-dark-input dark:text-dark-text font-mono text-sm"
                   value={formData.yaml_content}
                   onChange={(e) => {
@@ -398,12 +398,13 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
                   required
                   spellCheck="false"
                   style={{ 
-                    height: '300px',
-                    maxHeight: '40vh',
-                    lineHeight: '1.6',
+                    height: '500px',
+                    minHeight: '500px',
+                    lineHeight: '1.4',
                     whiteSpace: 'pre',
                     overflowWrap: 'normal',
                     overflowX: 'auto',
+                    overflowY: 'auto',
                     backgroundColor: '#f8fafc',
                     color: '#334155',
                     tabSize: 2,
