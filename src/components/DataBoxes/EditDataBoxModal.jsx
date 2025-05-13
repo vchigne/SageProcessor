@@ -31,15 +31,22 @@ const DialogContainer = styled.div`
 
 const DialogBox = styled(Dialog.Panel)`
   width: 100%;
-  max-width: 600px;
+  max-width: 700px;
   background: white;
-  border-radius: 0.5rem;
+  border-radius: 0.75rem;
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.1);
   max-height: 95vh;
   overflow: auto;
   display: flex;
   flex-direction: column;
   margin: 1rem auto;
+  border: 1px solid #e5e7eb;
+  
+  @media (prefers-color-scheme: dark) {
+    background: #1e1e1e;
+    border-color: #374151;
+    color: #f3f4f6;
+  }
 `;
 
 const ModalHeader = styled.div`
@@ -48,6 +55,12 @@ const ModalHeader = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
+  background-color: #f9fafb;
+  
+  @media (prefers-color-scheme: dark) {
+    background-color: #2d3748;
+    border-color: #4a5568;
+  }
 `;
 
 const ModalTitle = styled.h3`
@@ -162,8 +175,8 @@ const Tab = styled.button`
 
 const YamlEditor = styled.textarea`
   width: 100%;
-  height: 300px;
-  max-height: 40vh;
+  height: 350px;
+  max-height: 50vh;
   padding: 1rem;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 0.9rem;
@@ -177,18 +190,30 @@ const YamlEditor = styled.textarea`
   white-space: pre;
   overflow-wrap: normal;
   overflow-x: auto;
+  margin-bottom: 1rem;
   
   &:focus {
     outline: none;
     border-color: #2563eb;
     box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
   }
+  
+  @media (prefers-color-scheme: dark) {
+    background-color: #1a202c;
+    color: #e2e8f0;
+    border-color: #4a5568;
+  }
 `;
 
 const ContentArea = styled.div`
-  padding: 1.25rem;
+  padding: 1.5rem;
   flex: 1;
   overflow-y: auto;
+  background-color: #ffffff;
+  
+  @media (prefers-color-scheme: dark) {
+    background-color: #1e1e1e;
+  }
 `;
 
 const ContentSection = styled.div`
@@ -464,13 +489,19 @@ const Footer = styled.div`
   justify-content: flex-end;
   align-items: center;
   gap: 0.75rem;
-  padding: 1rem 1.25rem;
+  padding: 1.25rem 1.5rem;
   border-top: 1px solid #e5e7eb;
   background-color: #f9fafb;
+  border-radius: 0 0 0.75rem 0.75rem;
   
   @media (max-width: 480px) {
     flex-direction: column-reverse;
     gap: 0.5rem;
+  }
+  
+  @media (prefers-color-scheme: dark) {
+    background-color: #2d3748;
+    border-color: #4a5568;
   }
 `;
 
@@ -644,15 +675,60 @@ export const EditDataBoxModal = ({
     e.preventDefault();
     if (!dataBox) return;
 
-    // No permitir guardar si solo se validó el YAML sin hacer cambios
-    if (validationSuccess && !formData.yaml_content) {
+    // No permitir guardar si no hay contenido YAML
+    if (!formData.yaml_content) {
+      setValidationError('El contenido YAML no puede estar vacío');
       return;
     }
 
+    // Validar el YAML primero
     setIsValidating(true);
     setValidationError(null);
+    setValidationSuccess(false);
     
     try {
+      // Primero validamos el YAML
+      const validateResponse = await fetch('/api/validate-yaml', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ yaml_content: formData.yaml_content }),
+      });
+      
+      if (!validateResponse.ok) {
+        const errorData = await validateResponse.json();
+        throw new Error(errorData.error || 'Error al validar YAML');
+      }
+      
+      // Si la validación es exitosa, crear un respaldo
+      try {
+        await fetch('/api/temp-yaml/write', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ 
+            yaml_content: formData.yaml_content,
+            backup_name: `backup_${dataBox.id}_${Date.now()}.yaml`
+          }),
+        });
+        console.log('Backup del YAML creado correctamente');
+      } catch (backupError) {
+        console.warn('No se pudo crear backup:', backupError);
+      }
+      
+      // Solicitar confirmación
+      const confirmar = window.confirm(
+        '¿Estás seguro de guardar los cambios? Esta acción actualizará la configuración YAML de la casilla.'
+      );
+      
+      if (!confirmar) {
+        setIsValidating(false);
+        return;
+      }
+      
+      // Proceder con la actualización
       const response = await fetch(`/api/data-boxes/${dataBox.id}/update`, {
         method: 'PUT',
         headers: {
@@ -683,12 +759,12 @@ export const EditDataBoxModal = ({
       
       setValidationSuccess(true);
       
-      // Mostrar un mensaje de éxito y esperar confirmación del usuario
+      // Mostrar un mensaje de éxito
       alert('Datos guardados correctamente');
       onClose();
     } catch (error) {
-      console.error('Error al actualizar casilla:', error);
-      setValidationError(error.message || 'Error al actualizar la casilla');
+      console.error('Error al procesar casilla:', error);
+      setValidationError(error.message || 'Error al procesar la casilla');
     } finally {
       setIsValidating(false);
     }
