@@ -169,10 +169,10 @@ const YamlEditor = styled.textarea`
   border-radius: 0.375rem;
   background-color: #f8fafc;
   color: #334155;
+  tab-size: 2;
   white-space: pre;
   overflow-wrap: normal;
   overflow-x: auto;
-  tab-size: 2;
   
   &:focus {
     outline: none;
