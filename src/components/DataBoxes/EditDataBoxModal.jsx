@@ -316,69 +316,116 @@ const CodeViewer = styled.div`
   overflow: hidden;
   background: #f8fafc;
   margin-top: 0.75rem;
+  margin-bottom: 1rem;
+  max-width: 100%;
+  width: 100%;
 `;
 
 const CodeHeader = styled.div`
   background: #f1f5f9;
-  padding: 0.5rem 0.75rem;
+  padding: 0.75rem 1rem;
   border-bottom: 1px solid #e2e8f0;
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: #64748b;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #334155;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  
+  span.text-xs {
+    color: #64748b;
+    font-size: 0.75rem;
+    font-weight: 500;
+  }
 `;
 
 const CodeContent = styled.pre`
   margin: 0;
   padding: 1rem;
-  max-height: 300px;
+  max-height: 600px;
   overflow: auto;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 0.875rem;
-  line-height: 1.4;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background-color: #f8fafb;
+  
+  code {
+    display: block;
+    width: 100%;
+  }
 `;
 
 const ValidationMessage = styled.div`
-  margin-top: 0.75rem;
-  padding: 0.75rem;
-  border-radius: 0.375rem;
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+  padding: 1rem;
+  border-radius: 0.5rem;
   font-size: 0.875rem;
+  line-height: 1.5;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.75rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 
   &.loading {
     background-color: #eff6ff;
     color: #1e40af;
-    border: 1px solid #dbeafe;
+    border: 1px solid #bfdbfe;
   }
 
   &.error {
     background-color: #fee2e2;
     color: #b91c1c;
-    border: 1px solid #fecaca;
+    border: 1px solid #fca5a5;
+    font-weight: 500;
   }
 
   &.success {
     background-color: #ecfdf5;
     color: #047857;
-    border: 1px solid #d1fae5;
+    border: 1px solid #a7f3d0;
+    font-weight: 500;
   }
 `;
 
 const StatusIcon = styled.div`
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   
   svg {
-    width: 1rem;
-    height: 1rem;
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+  
+  .loading & svg {
+    animation: spin 1s linear infinite;
+  }
+  
+  @keyframes spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
   }
 `;
 
 const ValidationText = styled.div`
   flex: 1;
+  line-height: 1.5;
+  
+  .error & {
+    white-space: pre-line;
+  }
+  
+  .success & {
+    font-weight: 600;
+  }
 `;
 
 const Footer = styled.div`
@@ -687,14 +734,21 @@ export const EditDataBoxModal = ({
                     Actualizar archivo YAML
                   </StyledButton>
                   <StyledButton
-                    color="blue"
-                    variant="secondary"
+                    color="green"
+                    variant="primary"
                     onClick={handleValidateYaml}
                     type="button"
-                    size="xs"
+                    size="sm"
                     disabled={!formData.yaml_content || isValidating}
+                    style={{ 
+                      marginLeft: '8px',
+                      fontWeight: 'bold',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
                     Validar YAML
@@ -728,12 +782,15 @@ export const EditDataBoxModal = ({
                   {validationSuccess && (
                     <ValidationMessage className="success">
                       <StatusIcon>
-                        <CheckCircleIcon />
+                        <CheckCircleIcon className="text-green-600" />
                       </StatusIcon>
                       <ValidationText>
-                        <div>YAML validado correctamente</div>
+                        <div>¡YAML validado correctamente!</div>
+                        <div style={{ fontSize: '0.85rem', marginTop: '0.25rem', fontWeight: 'normal' }}>
+                          La configuración YAML es válida y puede ser utilizada.
+                        </div>
                         {executionUuid && (
-                          <div style={{ fontSize: '0.75rem', marginTop: '0.25rem' }}>
+                          <div style={{ fontSize: '0.85rem', marginTop: '0.5rem', fontWeight: 'bold' }}>
                             Resultados en:{' '}
                             <a 
                               href={`/api/executions/${executionUuid}/log`}
