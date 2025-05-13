@@ -6,9 +6,11 @@ const YamlTempEditor = ({ initialContent, onChange, height = '300px' }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Crear archivo YAML al inicializar
+  // Crear archivo YAML al inicializar o cuando cambie el contenido inicial
   useEffect(() => {
+    console.log('Contenido inicial recibido:', initialContent);
     if (initialContent) {
+      setYamlContent(initialContent);
       createTempYamlFile(initialContent);
     }
   }, [initialContent]);

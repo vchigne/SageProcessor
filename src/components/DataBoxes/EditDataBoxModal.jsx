@@ -553,17 +553,30 @@ export const EditDataBoxModal = ({
       });
       
       // Cargar el contenido YAML
+      console.log('Cargando YAML para casilla:', dataBox.id);
       fetch(`/api/data-boxes/${dataBox.id}/yaml`)
-        .then(response => response.json())
-        .then(data => {
-          setFormData(prev => ({
-            ...prev,
-            yaml_content: data.content
-          }));
-          
-          setTimeout(() => Prism.highlightAll(), 100);
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`Error al cargar YAML: ${response.status}`);
+          }
+          return response.json();
         })
-        .catch(console.error);
+        .then(data => {
+          console.log('YAML cargado:', data);
+          if (data && data.content) {
+            setFormData(prev => ({
+              ...prev,
+              yaml_content: data.content
+            }));
+            
+            setTimeout(() => Prism.highlightAll(), 100);
+          } else {
+            console.error('El contenido YAML está vacío o no tiene el formato esperado');
+          }
+        })
+        .catch(error => {
+          console.error('Error al cargar el contenido YAML:', error);
+        });
         
       // Cargar el nombre humano del YAML
       fetch(`/api/data-boxes/${dataBox.id}/nombre-humano`)
