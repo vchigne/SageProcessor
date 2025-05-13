@@ -157,6 +157,30 @@ const Tab = styled.button`
   }
 `;
 
+const YamlEditor = styled.textarea`
+  width: 100%;
+  min-height: 400px;
+  padding: 1rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  resize: vertical;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.375rem;
+  background-color: #f8fafc;
+  color: #334155;
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: auto;
+  tab-size: 2;
+  
+  &:focus {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+  }
+`;
+
 const ContentArea = styled.div`
   padding: 1.25rem;
   flex: 1;
@@ -702,7 +726,13 @@ export const EditDataBoxModal = ({
               $active={activeTab === 'config'} 
               onClick={() => setActiveTab('config')}
             >
-              Configuración YAML
+              Vista Previa
+            </Tab>
+            <Tab 
+              $active={activeTab === 'editor'} 
+              onClick={() => setActiveTab('editor')}
+            >
+              Editor YAML
             </Tab>
             <Tab 
               $active={activeTab === 'notifications'} 
@@ -839,6 +869,74 @@ export const EditDataBoxModal = ({
                   </StyledButton>
                 </EmptyState>
               )}
+            </ContentSection>
+
+            {/* Sección de Editor de YAML */}
+            <ContentSection $active={activeTab === 'editor'}>
+              <FormGroup>
+                <div style={{ marginBottom: '1rem' }}>
+                  <strong>Editor YAML</strong>
+                  <p style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '0.25rem' }}>
+                    Edita directamente el contenido YAML. Los cambios se guardarán al hacer clic en "Guardar cambios".
+                  </p>
+                </div>
+                
+                <YamlEditor 
+                  value={formData.yaml_content}
+                  onChange={(e) => setFormData({ ...formData, yaml_content: e.target.value })}
+                  spellCheck="false"
+                  placeholder="sage_yaml:
+  name: 'Nombre de la configuración'
+  description: 'Descripción de la configuración'"
+                />
+                
+                <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'flex-end' }}>
+                  <StyledButton
+                    color="green"
+                    variant="primary"
+                    onClick={handleValidateYaml}
+                    type="button"
+                    size="sm"
+                    disabled={!formData.yaml_content || isValidating}
+                  >
+                    {isValidating ? (
+                      <>
+                        <svg className="animate-spin h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Validando...
+                      </>
+                    ) : (
+                      <>
+                        Validar YAML
+                      </>
+                    )}
+                  </StyledButton>
+                </div>
+                
+                {validationError && (
+                  <ValidationMessage className="error">
+                    <StatusIcon>
+                      <ExclamationCircleIcon />
+                    </StatusIcon>
+                    <ValidationText>
+                      {validationError}
+                    </ValidationText>
+                  </ValidationMessage>
+                )}
+                
+                {validationSuccess && (
+                  <ValidationMessage className="success">
+                    <StatusIcon>
+                      <CheckCircleIcon />
+                    </StatusIcon>
+                    <ValidationText>
+                      YAML validado correctamente
+                    </ValidationText>
+                  </ValidationMessage>
+                )}
+              </FormGroup>
             </ContentSection>
 
             {/* Sección de API y Notificaciones */}
