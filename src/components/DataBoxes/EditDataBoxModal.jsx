@@ -21,10 +21,12 @@ const DialogContainer = styled.div`
   inset: 0;
   overflow: auto;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   padding: 1rem;
   z-index: 50;
+  height: 100vh;
+  overflow-y: auto;
 `;
 
 const DialogBox = styled(Dialog.Panel)`
@@ -33,10 +35,11 @@ const DialogBox = styled(Dialog.Panel)`
   background: white;
   border-radius: 0.5rem;
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.1);
-  max-height: 85vh;
+  max-height: 90vh;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  margin: 2rem auto;
 `;
 
 const ModalHeader = styled.div`
@@ -159,7 +162,8 @@ const Tab = styled.button`
 
 const YamlEditor = styled.textarea`
   width: 100%;
-  min-height: 500px;
+  height: 400px;
+  max-height: 50vh;
   padding: 1rem;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 0.9rem;
@@ -185,6 +189,7 @@ const ContentArea = styled.div`
   padding: 1.25rem;
   flex: 1;
   overflow-y: auto;
+  max-height: calc(90vh - 130px); /* Header height + Footer height + some padding */
 `;
 
 const ContentSection = styled.div`
