@@ -63,11 +63,19 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
         } else if (dataBox.yaml_contenido) {
           console.log('Usando yaml_contenido (objeto):', dataBox.yaml_contenido);
           try {
-            // Convertir el objeto a YAML formateado correctamente
-            const yamlObj = { 
-              sage_yaml: dataBox.yaml_contenido 
-            };
-            yamlContent = yaml.stringify(yamlObj);
+            // Usamos directamente el contenido si ya está en string, o lo convertimos a YAML completo
+            if (typeof dataBox.yaml_contenido === 'object' && dataBox.yaml_contenido.name) {
+              // Solo tenemos los datos básicos de sage_yaml, creamos una estructura completa
+              const yamlObj = { 
+                sage_yaml: dataBox.yaml_contenido,
+                catalogs: [],
+                packages: []
+              };
+              yamlContent = yaml.stringify(yamlObj);
+            } else {
+              // Ya tiene la estructura completa, solo convertimos a string
+              yamlContent = yaml.stringify(dataBox.yaml_contenido);
+            }
           } catch (e) {
             console.error('Error al convertir yaml_contenido a YAML:', e);
           }
@@ -77,11 +85,19 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
         } else if (dataBox.yaml_content) {
           console.log('Usando yaml_content (objeto):', dataBox.yaml_content);
           try {
-            // Convertir el objeto a YAML formateado correctamente
-            const yamlObj = { 
-              sage_yaml: dataBox.yaml_content 
-            };
-            yamlContent = yaml.stringify(yamlObj);
+            // Usamos directamente el contenido si ya está en string, o lo convertimos a YAML completo
+            if (typeof dataBox.yaml_content === 'object' && dataBox.yaml_content.name) {
+              // Solo tenemos los datos básicos de sage_yaml, creamos una estructura completa
+              const yamlObj = { 
+                sage_yaml: dataBox.yaml_content,
+                catalogs: [],
+                packages: []
+              };
+              yamlContent = yaml.stringify(yamlObj);
+            } else {
+              // Ya tiene la estructura completa, solo convertimos a string
+              yamlContent = yaml.stringify(dataBox.yaml_content);
+            }
           } catch (e) {
             console.error('Error al convertir yaml_content a YAML:', e);
             yamlContent = '';
