@@ -1,88 +1,28 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
+// Versión simplificada sin uso de archivos temporales
 const YamlTempEditor = ({ initialContent, onChange, height = '300px' }) => {
-  const [fileName, setFileName] = useState('');
-  const [yamlContent, setYamlContent] = useState(initialContent || '');
+  const [yamlContent, setYamlContent] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-
-  // Crear archivo YAML al inicializar o cuando cambie el contenido inicial
+  const textareaRef = useRef(null);
+  
+  // Cuando llega el contenido inicial, lo establecemos directamente
   useEffect(() => {
     console.log('Contenido inicial recibido:', initialContent);
     if (initialContent) {
       setYamlContent(initialContent);
-      createTempYamlFile(initialContent);
     }
   }, [initialContent]);
 
-  // Crear archivo YAML temporal
-  const createTempYamlFile = async (content) => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const response = await fetch('/api/temp-yaml/write', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ yaml_content: content }),
-      });
-      
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Error al crear archivo YAML temporal');
-      }
-      
-      setFileName(data.filename);
-    } catch (error) {
-      console.error('Error al crear archivo YAML temporal:', error);
-      setError('Error al crear archivo YAML temporal. Intente de nuevo.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Leer archivo YAML temporal
-  const readTempYamlFile = async () => {
-    if (!fileName) return;
-    
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const response = await fetch(`/api/temp-yaml/read?filename=${fileName}`);
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Error al leer archivo YAML temporal');
-      }
-      
-      // Actualizar el contenido y notificar el cambio
-      setYamlContent(data.content);
-      if (onChange) {
-        onChange(data.content);
-      }
-    } catch (error) {
-      console.error('Error al leer archivo YAML temporal:', error);
-      setError('Error al leer archivo YAML temporal. Intente de nuevo.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Actualizar el archivo temporal y notificar el cambio
-  const handleContentChange = async (newContent) => {
+  // Actualizar el contenido y notificar el cambio
+  const handleContentChange = (newContent) => {
     setYamlContent(newContent);
     
     // Notificar el cambio
     if (onChange) {
       onChange(newContent);
     }
-    
-    // Actualizar el archivo temporal
-    await createTempYamlFile(newContent);
   };
 
   return (
@@ -93,7 +33,9 @@ const YamlTempEditor = ({ initialContent, onChange, height = '300px' }) => {
         </div>
       )}
       
+      {/* Usamos textarea directo sin guardar en archivos temporales */}
       <textarea
+        ref={textareaRef}
         value={yamlContent}
         onChange={(e) => handleContentChange(e.target.value)}
         className="w-full px-4 py-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
@@ -107,6 +49,7 @@ const YamlTempEditor = ({ initialContent, onChange, height = '300px' }) => {
         }}
         spellCheck="false"
         disabled={loading}
+        placeholder="sage_yaml:&#10;  name: 'Nombre de la configuración'&#10;  description: 'Descripción de la configuración'"
       />
       
       {loading && (
