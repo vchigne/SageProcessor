@@ -7,6 +7,7 @@ import Prism from 'prismjs';
 import 'prismjs/components/prism-yaml';
 import 'prismjs/themes/prism.css';
 import yaml from 'yaml';
+import YamlTempEditor from '../../../components/YamlTempEditor';
 
 interface EnhancedDataBoxFormProps {
   isOpen: boolean;
@@ -384,43 +385,16 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
                   </div>
                 )}
                 <div className="relative">
-                  <pre 
-                    style={{ 
-                      margin: 0, 
-                      padding: 0, 
-                      position: 'relative',
-                      height: '300px',
-                      width: '100%'
+                  {/* Utilizamos el nuevo componente que guarda el contenido en un archivo temporal */}
+                  <YamlTempEditor
+                    initialContent={formData.yaml_content}
+                    onChange={(newContent) => {
+                      setFormData({ ...formData, yaml_content: newContent });
+                      setValidationError(null);
+                      setValidationSuccess(false);
                     }}
-                  >
-                    <textarea
-                      rows={15}
-                      className="w-full h-full px-4 py-3 border border-gray-300 dark:border-dark-border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-dark-accent focus:border-blue-500 dark:focus:border-dark-accent dark:bg-dark-input dark:text-dark-text font-mono text-sm"
-                      value={formData.yaml_content}
-                      onChange={(e) => {
-                        // Actualizar directamente el contenido tal como viene del textarea
-                        setFormData({ ...formData, yaml_content: e.target.value });
-                        setValidationError(null);
-                        setValidationSuccess(false);
-                      }}
-                      required
-                      spellCheck="false"
-                      style={{ 
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        height: '100%',
-                        width: '100%',
-                        resize: 'none',
-                        lineHeight: '1.4',
-                        tabSize: 2,
-                        whiteSpace: 'pre',
-                        overflowY: 'auto',
-                        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
-                      }}
-                      placeholder="sage_yaml:&#10;  name: 'Nombre de la configuración'&#10;  description: 'Descripción de la configuración'"
-                    />
-                  </pre>
+                    height="300px"
+                  />
                 </div>
               </div>
             )}
