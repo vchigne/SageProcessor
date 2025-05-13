@@ -38,7 +38,6 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
   const [validationError, setValidationError] = useState<string | null>(null);
   const [validationSuccess, setValidationSuccess] = useState(false);
   const [executionUuid, setExecutionUuid] = useState<string | null>(null);
-  const [showFullYamlEditor, setShowFullYamlEditor] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
 
   // Inicializar formulario al abrir el modal
@@ -54,13 +53,11 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
                               (dataBox.instalacion && dataBox.instalacion.id) || 
                               '';
         
-        // Mostrar directamente el texto contenido en yaml_contenido, sin ningún preprocesamiento
-        const yamlContent = dataBox.yaml_contenido || '';
-        
+        // Usar directamente el valor de yaml_contenido sin ningún tipo de procesamiento
         setFormData({
           instalacion_id: instalacionId.toString(),
           nombre_yaml: dataBox.nombre_yaml || '',
-          yaml_content: yamlContent,
+          yaml_content: dataBox.yaml_contenido || '',
           api_endpoint: dataBox.api_endpoint || '',
           email_casilla: dataBox.email_casilla || '',
           is_active: dataBox.is_active !== undefined ? dataBox.is_active : true,
@@ -392,8 +389,8 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
                     className="w-full px-4 py-3 border border-gray-300 dark:border-dark-border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-dark-accent focus:border-blue-500 dark:focus:border-dark-accent dark:bg-dark-input dark:text-dark-text font-mono text-sm"
                     value={formData.yaml_content}
                     onChange={(e) => {
+                      // Actualizar directamente el contenido tal como viene del textaera
                       setFormData({ ...formData, yaml_content: e.target.value });
-                      // Resetear estados de validación al cambiar el contenido
                       setValidationError(null);
                       setValidationSuccess(false);
                     }}
@@ -403,33 +400,11 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
                       height: '300px',
                       lineHeight: '1.4',
                       whiteSpace: 'pre',
-                      overflowWrap: 'normal',
                       overflowX: 'auto',
-                      backgroundColor: '#f8fafc',
-                      color: '#334155',
-                      tabSize: 2,
                       fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
                     }}
-                    placeholder="sage_yaml:\n  name: 'Nombre de la configuración'\n  description: 'Descripción de la configuración'"
+                    placeholder="sage_yaml:&#10;  name: 'Nombre de la configuración'&#10;  description: 'Descripción de la configuración'"
                   />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      // Abrir modal de edición YAML
-                      setShowFullYamlEditor(true);
-                    }}
-                    className="absolute top-2 right-2 bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-md text-sm font-medium shadow-sm flex items-center gap-1"
-                  >
-                    <svg 
-                      xmlns="http://www.w3.org/2000/svg" 
-                      className="h-4 w-4" 
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                    >
-                      <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-                    </svg>
-                    Editar YAML
-                  </button>
                 </div>
               </div>
             )}
@@ -571,150 +546,12 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
     </Dialog>
   );
 
-  // Modal para editar el YAML en pantalla completa
-  const renderFullYamlEditor = () => {
-    const [showYamlEditor, setShowYamlEditor] = useState(true);
-    const [localYamlContent, setLocalYamlContent] = useState(formData.yaml_content);
-    
-    useEffect(() => {
-      // Al abrir el modal, actualizar el contenido local con el del formulario
-      if (showFullYamlEditor) {
-        setLocalYamlContent(formData.yaml_content);
-        // Si empieza en modo vista, aplicar resaltado de sintaxis
-        if (!showYamlEditor) {
-          setTimeout(() => {
-            try {
-              // @ts-ignore - Prism debería estar disponible globalmente
-              if (typeof Prism !== 'undefined') {
-                Prism.highlightAll();
-              }
-            } catch (error) {
-              console.error("Error al resaltar sintaxis YAML:", error);
-            }
-          }, 100);
-        }
-      }
-    }, [showFullYamlEditor, formData.yaml_content]);
-    
-    // Aplicar resaltado cuando cambia el modo de visualización
-    useEffect(() => {
-      if (!showYamlEditor && showFullYamlEditor) {
-        setTimeout(() => {
-          try {
-            // @ts-ignore - Prism debería estar disponible globalmente
-            if (typeof Prism !== 'undefined') {
-              Prism.highlightAll();
-            }
-          } catch (error) {
-            console.error("Error al resaltar sintaxis YAML:", error);
-          }
-        }, 100);
-      }
-    }, [showYamlEditor, showFullYamlEditor]);
-    
-    const handleSaveChanges = () => {
-      setFormData({ ...formData, yaml_content: localYamlContent });
-      setValidationError(null);
-      setValidationSuccess(false);
-      setShowFullYamlEditor(false);
-    };
-    
-    return (
-      <Dialog
-        open={showFullYamlEditor}
-        onClose={() => setShowFullYamlEditor(false)}
-        className="relative z-50"
-      >
-        <div className="fixed inset-0 bg-black bg-opacity-25" />
-        <div className="fixed inset-0 overflow-y-auto">
-          <div className="flex min-h-full items-center justify-center p-4">
-            <Dialog.Panel className="w-full max-w-5xl rounded bg-white dark:bg-dark-card p-6 shadow-xl">
-              <div className="flex justify-between items-center mb-4">
-                <Dialog.Title className="text-lg font-medium text-gray-900 dark:text-dark-text">
-                  Editor de YAML Completo
-                </Dialog.Title>
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setShowYamlEditor(!showYamlEditor)}
-                    className="text-sm font-medium text-blue-600 hover:text-blue-800 transition-colors duration-200"
-                  >
-                    {showYamlEditor ? 'Ver formato' : 'Editar YAML'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowFullYamlEditor(false)}
-                    className="text-gray-400 hover:text-gray-500"
-                  >
-                    <span className="sr-only">Cerrar</span>
-                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-              
-              <div className="my-4">
-                {showYamlEditor ? (
-                  <textarea
-                    rows={25}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-dark-border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-dark-accent focus:border-blue-500 dark:focus:border-dark-accent dark:bg-dark-input dark:text-dark-text font-mono text-sm"
-                    value={localYamlContent}
-                    onChange={(e) => setLocalYamlContent(e.target.value)}
-                    spellCheck="false"
-                    style={{ 
-                      height: '500px', 
-                      lineHeight: '1.4',
-                      whiteSpace: 'pre',
-                      overflowWrap: 'normal',
-                      overflowX: 'auto',
-                      backgroundColor: '#f8fafc',
-                      color: '#334155',
-                      tabSize: 2,
-                      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
-                    }}
-                  />
-                ) : (
-                  <div className="rounded-md bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
-                    <div className="overflow-auto" style={{ maxHeight: '500px' }}>
-                      <pre className="p-6 min-w-max">
-                        <code className="language-yaml text-sm leading-relaxed whitespace-pre dark:text-gray-100">
-                          {localYamlContent}
-                        </code>
-                      </pre>
-                    </div>
-                  </div>
-                )}
-              </div>
-              
-              <div className="flex justify-end gap-3 mt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowFullYamlEditor(false)}
-                  className="px-4 py-2 bg-gray-200 dark:bg-dark-button-secondary text-gray-800 dark:text-dark-text rounded-md hover:bg-gray-300 dark:hover:bg-dark-button-secondary-hover transition-colors duration-200"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSaveChanges}
-                  className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors duration-200"
-                >
-                  Guardar Cambios
-                </button>
-              </div>
-            </Dialog.Panel>
-          </div>
-        </div>
-      </Dialog>
-    );
-  };
+  // Sin editor de YAML completo - Se eliminó la funcionalidad para simplificar
 
   return (
     <>
       {renderFirstStep()}
       {renderYamlPreview()}
-      {renderFullYamlEditor()}
     </>
   );
 };
