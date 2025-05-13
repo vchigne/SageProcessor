@@ -155,6 +155,7 @@ const ContentArea = styled.div`
   padding: 1.25rem;
   flex: 1;
   overflow-y: auto;
+  max-height: 70vh; /* Altura máxima para asegurar que quepa en la pantalla */
 `;
 
 const ContentSection = styled.div<ActiveProps>`
@@ -259,11 +260,12 @@ const CodeHeader = styled.div`
 const CodeContent = styled.pre`
   margin: 0;
   padding: 1rem;
-  max-height: 300px;
+  max-height: 400px; /* Aumentamos la altura máxima para ver más contenido */
   overflow: auto;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 0.875rem;
   line-height: 1.4;
+  white-space: pre-wrap; /* Permite que se ajuste el texto largo */
 `;
 
 const TextArea = styled.textarea`
@@ -277,11 +279,19 @@ const TextArea = styled.textarea`
   line-height: 1.4;
   resize: vertical;
   transition: all 0.2s;
+  max-height: none; /* Eliminar límite máximo */
 
   &:focus {
     border-color: #2563eb;
     box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
     outline: none;
+  }
+
+  &.yaml-content {
+    min-height: 400px; /* Altura mayor para el contenido YAML */
+    height: auto; /* Permitir que se ajuste al contenido */
+    overflow-y: auto; /* Asegurar scroll vertical */
+    white-space: pre; /* Mantener formato de indentación */
   }
 `;
 
@@ -711,6 +721,7 @@ export const AdvancedDataBoxForm: React.FC<AdvancedDataBoxFormProps> = ({
                 <FormGroup>
                   <FieldLabel>Contenido YAML <span className="text-red-500">*</span></FieldLabel>
                   <TextArea
+                    className="yaml-content"
                     value={formData.yaml_content}
                     onChange={(e) => setFormData({ ...formData, yaml_content: e.target.value })}
                     placeholder="Ingresa o pega el contenido YAML aquí..."
