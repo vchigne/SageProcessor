@@ -53,51 +53,24 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
                               (dataBox.instalacion && dataBox.instalacion.id) || 
                               '';
         
-        // Extraer el contenido YAML sin procesar
+        // Determinar el valor inicial para yaml_content basado en lo que esté disponible
+        // Siguiendo exactamente la misma lógica de DataBoxForm.tsx
         let yamlContent = '';
-        console.log('Datos de la casilla:', JSON.stringify(dataBox, null, 2));
         
-        // Variable ejemplo para usar si no hay contenido
-        const yamlEjemplo = `sage_yaml:
-  name: "Archivo estandar de Strategio Canal Tradicional"
-  description: "Configuración generada para 7 catálogos"
-
-catalogs: []
-
-packages: []`;
-        
-        // Usar directamente el contenido tal cual viene
-        if (typeof dataBox.yaml_content === 'string') {
+        if (dataBox.yaml_contenido) {
+          yamlContent = dataBox.yaml_contenido;
+          console.log('Usando yaml_contenido:', yamlContent);
+        } else if (typeof dataBox.yaml_content === 'string') {
           yamlContent = dataBox.yaml_content;
-        } else if (dataBox.yaml_content && typeof dataBox.yaml_content === 'object') {
-          // Intentar JSON.stringify primero
+          console.log('Usando yaml_content (string):', yamlContent);
+        } else if (dataBox.yaml_content) {
+          // Si es un objeto, convertirlo a string
           try {
             yamlContent = JSON.stringify(dataBox.yaml_content, null, 2);
-            console.log('Convertido de objeto a JSON:', yamlContent);
-          } catch (error) {
-            console.error('Error al convertir objeto a JSON:', error);
+            console.log('Usando yaml_content (objeto convertido a JSON):', yamlContent);
+          } catch (e) {
+            console.error("Error stringify yaml_content", e);
           }
-        } else if (typeof dataBox.yaml_contenido === 'string') {
-          yamlContent = dataBox.yaml_contenido;
-        } else if (typeof dataBox.yaml_contenido === 'object' && dataBox.yaml_contenido) {
-          try {
-            yamlContent = JSON.stringify(dataBox.yaml_contenido, null, 2);
-            console.log('Convertido de objeto a JSON:', yamlContent);
-          } catch (error) {
-            console.error('Error al convertir objeto a JSON:', error);
-          }
-        } else if (dataBox.nombre && dataBox.descripcion) {
-          // Si no hay contenido YAML pero hay nombre y descripción, crear uno simple
-          yamlContent = `sage_yaml:
-  name: "${dataBox.nombre}"
-  description: "${dataBox.descripcion}"
-
-catalogs: []
-
-packages: []`;
-        } else {
-          // Si no hay nada, usar el ejemplo
-          yamlContent = yamlEjemplo;
         }
         
         setFormData({
