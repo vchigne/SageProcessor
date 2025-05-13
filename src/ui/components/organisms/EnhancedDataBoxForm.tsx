@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Dialog } from '@headlessui/react';
-import { XMarkIcon, DocumentArrowUpIcon, CheckCircleIcon, CodeBracketIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline';
+import { DocumentArrowUpIcon, CheckCircleIcon, CodeBracketIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline';
 import { Casilla, Instalacion } from '../../../types';
 import { Button, Card } from '../../components';
 import Prism from 'prismjs';
@@ -34,7 +34,6 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
   });
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [showYamlPreview, setShowYamlPreview] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [validationSuccess, setValidationSuccess] = useState(false);
@@ -51,31 +50,30 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
         
         // Extraer instalacion_id, manejar posibles casos de nulidad
         const instalacionId = dataBox.instalacion_id || 
-                              (dataBox.instalacion && dataBox.instalacion.id) || 
-                              '';
+                             (dataBox.instalacion && dataBox.instalacion.id) || 
+                             '';
         
-        // Inicializar con la configuración básica
+        // Extraer is_active, manejar posibles casos de nulidad
+        const isActive = dataBox.is_active !== undefined ? 
+                         dataBox.is_active : 
+                         true;
+        
+        // Actualizar estado del formulario con los datos del dataBox
         setFormData({
-          instalacion_id: instalacionId.toString(),
+          instalacion_id: String(instalacionId),
           nombre_yaml: dataBox.nombre_yaml || '',
-          yaml_content: '', // Inicialmente vacío, cargaremos el contenido a continuación
+          yaml_content: '',  // Se carga desde la API
           api_endpoint: dataBox.api_endpoint || '',
           email_casilla: dataBox.email_casilla || '',
-          is_active: dataBox.is_active !== undefined ? dataBox.is_active : true,
+          is_active: isActive,
         });
         
-        // Cargar el contenido YAML desde la API
-        console.log('Cargando YAML para casilla:', dataBox.id);
+        // Cargar contenido del YAML desde la API
         fetch(`/api/data-boxes/${dataBox.id}/yaml`)
-          .then(response => {
-            if (!response.ok) {
-              throw new Error(`Error al cargar YAML: ${response.status}`);
-            }
-            return response.json();
-          })
+          .then(response => response.json())
           .then(data => {
-            console.log('YAML cargado:', data);
-            if (data && data.content) {
+            console.log('Contenido YAML cargado:', data.content ? 'OK' : 'Vacío');
+            if (data.content) {
               setFormData(prev => ({
                 ...prev,
                 yaml_content: data.content
@@ -114,7 +112,6 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
       }
 
       setSelectedFile(null);
-      setShowYamlPreview(false);
       setIsValidating(false);
       setValidationError(null);
       setValidationSuccess(false);
@@ -122,12 +119,12 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
     }
   }, [isOpen, dataBox]);
 
-  // Aplicar resaltado de sintaxis cuando se muestra el YAML
+  // Aplicar resaltado de sintaxis al formulario YAML
   useEffect(() => {
-    if (showYamlPreview && formData.yaml_content) {
+    if (formData.yaml_content) {
       Prism.highlightAll();
     }
-  }, [showYamlPreview, formData.yaml_content]);
+  }, [formData.yaml_content]);
 
   // Manejar carga de archivo
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -188,11 +185,20 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
       }
 
       setValidationSuccess(true);
+      
+      // Si la validación es exitosa, procedemos directamente a guardar
+      if (isEditMode) {
+        await handleFinish();
+      } else {
+        // En modo de creación, mostramos un mensaje y esperamos confirmación
+        const confirmSave = confirm('¡YAML validado correctamente! ¿Desea guardar la casilla de datos?');
+        if (confirmSave) {
+          await handleFinish();
+        }
+      }
     } catch (error: any) {
-      console.error('Error validating:', error);
-      setValidationError(
-        error.message || 'Error al procesar la solicitud'
-      );
+      setValidationError(error.message || 'Error en la validación del YAML');
+      console.error('Error validating YAML:', error);
     } finally {
       setIsValidating(false);
     }
@@ -232,7 +238,6 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
           setExecutionUuid(result.executionUuid);
         }
         
-        setShowYamlPreview(false);
         onClose();
       } catch (error: any) {
         console.error('Error submitting:', error);
@@ -243,61 +248,88 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
     }
   };
 
-  // Renderizar modal inicial
-  const renderFirstStep = () => (
+  return (
     <Dialog 
-      open={isOpen && !showYamlPreview} 
+      open={isOpen} 
       onClose={onClose}
       className="relative z-50"
     >
       <div className="fixed inset-0 bg-black/30 dark:bg-black/50" aria-hidden="true" />
       <div className="fixed inset-0 flex items-center justify-center p-4 overflow-y-auto">
-        <Dialog.Panel className="w-full max-w-2xl rounded-lg bg-white dark:bg-dark-card p-6 max-h-[90vh] overflow-y-auto">
-          <div className="flex justify-between items-center mb-6">
-            <Dialog.Title className="text-xl font-semibold dark:text-dark-text">
-              {isEditMode ? 'Editar Casilla de Datos' : 'Nueva Casilla de Datos'}
-            </Dialog.Title>
-            <button
-              onClick={onClose}
-              className="text-gray-400 hover:text-gray-500 dark:text-dark-text-secondary dark:hover:text-dark-text"
-            >
-              <XMarkIcon className="h-6 w-6" />
-            </button>
-          </div>
-
-          <form onSubmit={handlePreviewSubmit} className="space-y-5">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-dark-text mb-1">
-                Instalación <span className="text-red-500 dark:text-dark-error">*</span>
-              </label>
-              <select
-                className="w-full px-3 py-2 border border-gray-300 dark:border-dark-border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-dark-accent focus:border-blue-500 dark:focus:border-dark-accent dark:bg-dark-input dark:text-dark-text"
-                value={formData.instalacion_id}
-                onChange={(e) => setFormData({ ...formData, instalacion_id: e.target.value })}
-                required
-              >
-                <option value="">Seleccione una instalación</option>
-                {installations.map((installation) => (
-                  <option key={installation.id} value={installation.id}>
-                    {installation.nombre}
-                  </option>
-                ))}
-              </select>
+        <Dialog.Panel className="w-full max-w-3xl bg-white dark:bg-dark-card rounded-lg shadow-xl max-h-[90vh] overflow-y-auto">
+          <div className="p-6 space-y-4">
+            <div className="flex justify-between items-center">
+              <Dialog.Title className="text-xl font-semibold dark:text-dark-text">
+                {isEditMode ? 'Editar Casilla de Datos' : 'Nueva Casilla de Datos'}
+              </Dialog.Title>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-dark-text mb-1">
-                  Nombre del archivo YAML <span className="text-red-500 dark:text-dark-error">*</span>
-                </label>
-                <input
-                  type="text"
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-dark-border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-dark-accent focus:border-blue-500 dark:focus:border-dark-accent dark:bg-dark-input dark:text-dark-text"
-                  value={formData.nombre_yaml}
-                  onChange={(e) => setFormData({ ...formData, nombre_yaml: e.target.value })}
-                  required
-                  placeholder="configuracion.yaml"
-                />
+            {/* Mostrar errores de validación */}
+            {validationError && (
+              <Card className="bg-red-50 border border-red-200">
+                <div className="flex items-start space-x-2">
+                  <ExclamationCircleIcon className="h-5 w-5 text-red-500 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1">
+                    <p className="font-medium text-red-700">Error en la validación del YAML:</p>
+                    <pre className="mt-1 text-sm text-red-600 whitespace-pre-wrap font-mono overflow-auto max-h-[200px]">
+                      {validationError}
+                    </pre>
+                  </div>
+                </div>
+              </Card>
+            )}
+
+            {/* Mostrar éxito de validación */}
+            {validationSuccess && (
+              <Card className="bg-green-50 border border-green-200">
+                <div className="flex items-start space-x-2">
+                  <CheckCircleIcon className="h-5 w-5 text-green-500 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1">
+                    <p className="font-medium text-green-700">YAML validado correctamente</p>
+                    {executionUuid && (
+                      <p className="mt-1 text-sm text-green-600">
+                        ID de ejecución: {executionUuid}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </Card>
+            )}
+
+            <form onSubmit={handlePreviewSubmit} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-dark-text mb-1">
+                    Instalación <span className="text-red-500 dark:text-dark-error">*</span>
+                  </label>
+                  <select
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-dark-border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-dark-accent focus:border-blue-500 dark:focus:border-dark-accent dark:bg-dark-input dark:text-dark-text"
+                    value={formData.instalacion_id}
+                    onChange={(e) => setFormData({ ...formData, instalacion_id: e.target.value })}
+                    required
+                  >
+                    <option value="">Seleccionar instalación</option>
+                    {installations.map((inst) => (
+                      <option key={inst.id} value={inst.id}>
+                        {inst.nombre}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-dark-text mb-1">
+                    Nombre del archivo <span className="text-red-500 dark:text-dark-error">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-dark-border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-dark-accent focus:border-blue-500 dark:focus:border-dark-accent dark:bg-dark-input dark:text-dark-text"
+                    value={formData.nombre_yaml}
+                    onChange={(e) => setFormData({ ...formData, nombre_yaml: e.target.value })}
+                    placeholder="nombre-del-archivo.yaml"
+                    required
+                  />
+                </div>
               </div>
               
               {!isEditMode && (
@@ -329,259 +361,106 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
                   </div>
                 </div>
               )}
-            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-dark-text mb-1">
-                  API Endpoint (opcional)
-                </label>
-                <input
-                  type="text"
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-dark-border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-dark-accent focus:border-blue-500 dark:focus:border-dark-accent dark:bg-dark-input dark:text-dark-text"
-                  value={formData.api_endpoint}
-                  onChange={(e) => setFormData({ ...formData, api_endpoint: e.target.value })}
-                  placeholder="https://ejemplo.com/api"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-dark-text mb-1">
-                  Dirección de Email (opcional)
-                </label>
-                <input
-                  type="email"
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-dark-border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-dark-accent focus:border-blue-500 dark:focus:border-dark-accent dark:bg-dark-input dark:text-dark-text"
-                  value={formData.email_casilla}
-                  onChange={(e) => setFormData({ ...formData, email_casilla: e.target.value })}
-                  placeholder="email@ejemplo.com"
-                />
-              </div>
-            </div>
-
-            {isEditMode && (
-              <div>
-                <label className="flex items-center text-sm font-medium text-gray-700 dark:text-dark-text">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-dark-text mb-1">
+                    API Endpoint (opcional)
+                  </label>
                   <input
-                    type="checkbox"
-                    className="h-4 w-4 rounded border-gray-300 dark:border-dark-border text-blue-600 dark:text-dark-accent focus:ring-blue-500 dark:focus:ring-dark-accent mr-2"
-                    checked={formData.is_active}
-                    onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
+                    type="text"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-dark-border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-dark-accent focus:border-blue-500 dark:focus:border-dark-accent dark:bg-dark-input dark:text-dark-text"
+                    value={formData.api_endpoint}
+                    onChange={(e) => setFormData({ ...formData, api_endpoint: e.target.value })}
+                    placeholder="https://ejemplo.com/api"
                   />
-                  Casilla activa
-                </label>
-              </div>
-            )}
+                </div>
 
-            {isEditMode && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-dark-text mb-1">
+                    Dirección de Email (opcional)
+                  </label>
+                  <input
+                    type="email"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-dark-border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-dark-accent focus:border-blue-500 dark:focus:border-dark-accent dark:bg-dark-input dark:text-dark-text"
+                    value={formData.email_casilla}
+                    onChange={(e) => setFormData({ ...formData, email_casilla: e.target.value })}
+                    placeholder="email@ejemplo.com"
+                  />
+                </div>
+              </div>
+
+              {isEditMode && (
+                <div>
+                  <label className="flex items-center text-sm font-medium text-gray-700 dark:text-dark-text">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-gray-300 dark:border-dark-border text-blue-600 dark:text-dark-accent focus:ring-blue-500 dark:focus:ring-dark-accent mr-2"
+                      checked={formData.is_active}
+                      onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
+                    />
+                    Casilla activa
+                  </label>
+                </div>
+              )}
+
+              {/* Editor YAML */}
               <div>
                 <div className="flex justify-between items-center mb-1">
                   <label className="block text-sm font-medium text-gray-700 dark:text-dark-text">
                     Contenido YAML <span className="text-red-500 dark:text-dark-error">*</span>
                   </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!formData.yaml_content) {
-                        alert('Por favor ingresa contenido YAML para validar');
-                        return;
-                      }
-                      setValidationError(null);
-                      setValidationSuccess(false);
-                      handleValidationStart();
-                    }}
-                    className="inline-flex items-center px-3 py-1 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                  >
-                    <CodeBracketIcon className="h-4 w-4 mr-1" /> Validar YAML
-                  </button>
-                </div>
-                {isValidating && (
-                  <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-md">
-                    <div className="flex items-center">
-                      <svg className="animate-spin h-5 w-5 text-blue-600 mr-1.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      <p className="text-sm font-medium text-blue-800">Validando YAML...</p>
-                    </div>
-                  </div>
-                )}
-                {!isValidating && validationError && (
-                  <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-md">
-                    <div className="flex items-center mb-1">
-                      <ExclamationCircleIcon className="h-5 w-5 text-red-600 mr-1.5" />
-                      <p className="text-sm font-medium text-red-800">Error de validación:</p>
-                    </div>
-                    <pre className="text-xs whitespace-pre-wrap font-mono text-red-700 max-h-[100px] overflow-auto p-2 bg-red-100 rounded">{validationError}</pre>
-                  </div>
-                )}
-                {!isValidating && validationSuccess && (
-                  <div className="mb-3 p-3 bg-green-50 border border-green-200 rounded-md">
-                    <div className="flex items-center">
-                      <CheckCircleIcon className="h-5 w-5 text-green-600 mr-1.5" />
-                      <p className="text-sm font-medium text-green-800">¡YAML validado correctamente!</p>
-                    </div>
-                  </div>
-                )}
-                <div className="relative">
-                  {/* Utilizamos el nuevo componente que guarda el contenido en un archivo temporal */}
-                  <YamlTempEditor
-                    initialContent={formData.yaml_content}
-                    onChange={(newContent) => {
-                      setFormData({ ...formData, yaml_content: newContent });
-                      setValidationError(null);
-                      setValidationSuccess(false);
-                    }}
-                    height="300px"
-                  />
-                </div>
-              </div>
-            )}
-
-            <div className="flex justify-end gap-2 pt-4">
-              <Button
-                variant="outline"
-                onClick={onClose}
-                type="button"
-              >
-                Cancelar
-              </Button>
-              <Button
-                type="submit"
-                isLoading={isValidating}
-              >
-                {isEditMode ? 'Guardar cambios' : 'Continuar'}
-              </Button>
-            </div>
-          </form>
-        </Dialog.Panel>
-      </div>
-    </Dialog>
-  );
-
-  // Renderizar segundo paso (validación YAML)
-  const renderYamlPreview = () => (
-    <Dialog
-      open={showYamlPreview}
-      onClose={() => {}}
-      className="relative z-50"
-    >
-      <div className="fixed inset-0 bg-black/30 dark:bg-black/50" aria-hidden="true" />
-      <div className="fixed inset-0 flex items-center justify-center p-4 overflow-y-auto">
-        <Dialog.Panel className="w-full max-w-2xl bg-white dark:bg-dark-card rounded-lg shadow-xl max-h-[80vh] overflow-y-auto">
-          <div className="p-4 space-y-3">
-            <div className="flex justify-between items-center">
-              <Dialog.Title className="text-lg font-semibold dark:text-dark-text">
-                {isValidating ? 'Validando YAML...' : (validationSuccess ? 'YAML Validado' : 'Contenido del YAML')}
-              </Dialog.Title>
-              {!isValidating && (
-                <button
-                  onClick={() => setShowYamlPreview(false)}
-                  className="text-gray-400 hover:text-gray-500 dark:text-dark-text-secondary dark:hover:text-dark-text"
-                >
-                  <XMarkIcon className="h-5 w-5" />
-                </button>
-              )}
-            </div>
-
-            {/* Estado de validación */}
-            {isValidating && (
-              <Card className="bg-blue-50 border border-blue-200">
-                <div className="flex items-center space-x-3">
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-700"></div>
-                  <p className="text-blue-700">Validando YAML...</p>
-                </div>
-              </Card>
-            )}
-
-            {/* Error de validación */}
-            {validationError && (
-              <Card className="bg-red-50 border border-red-200">
-                <div className="overflow-auto max-h-[200px]">
-                  <pre className="text-sm whitespace-pre-wrap font-mono text-red-700">{validationError}</pre>
-                </div>
-              </Card>
-            )}
-
-            {/* Éxito de validación */}
-            {validationSuccess && (
-              <Card className="bg-green-50 border border-green-200">
-                <div className="text-green-700">
-                  <p className="font-medium">¡Archivo procesado exitosamente!</p>
-                  {executionUuid && (
-                    <div className="mt-2 text-sm">
-                      Los resultados detallados están disponibles en:{' '}
-                      <a 
-                        href={`/api/executions/${executionUuid}/log`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:text-blue-800 underline"
-                      >
-                        ./executions/{executionUuid}/log
-                      </a>
-                    </div>
+                  {formData.yaml_content && (
+                    <button
+                      type="button"
+                      onClick={() => handleValidationStart()}
+                      className="inline-flex items-center px-3 py-1 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                      disabled={isValidating}
+                    >
+                      {isValidating ? (
+                        <>
+                          <svg className="animate-spin h-4 w-4 mr-1.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                          </svg>
+                          Validando...
+                        </>
+                      ) : (
+                        <>
+                          <CodeBracketIcon className="h-4 w-4 mr-1" /> Validar YAML
+                        </>
+                      )}
+                    </button>
                   )}
                 </div>
-              </Card>
-            )}
+                
+                {/* Editor de YAML con componente YamlTempEditor */}
+                <YamlTempEditor
+                  initialContent={formData.yaml_content}
+                  onChange={(content) => setFormData(prev => ({ ...prev, yaml_content: content }))}
+                  minHeight="300px"
+                />
+              </div>
 
-            {/* Contenido YAML */}
-            <Card className="overflow-auto max-h-[50vh] p-0">
-              <pre className="p-3 bg-gray-50 dark:bg-dark-card-secondary rounded m-0" style={{
-                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-                fontSize: '0.85rem',
-                lineHeight: '1.5',
-                tabSize: 2,
-                whiteSpace: 'pre',
-                overflowWrap: 'normal',
-                overflowX: 'auto',
-                maxWidth: '100%'
-              }}>
-                <code className="language-yaml dark:text-dark-text">
-                  {formData.yaml_content}
-                </code>
-              </pre>
-            </Card>
-
-            {/* Botones de acción */}
-            <div className="flex justify-end gap-2 pt-4">
-              {!isValidating && (
-                validationSuccess ? (
-                  <Button 
-                    onClick={handleFinish}
-                  >
-                    {isEditMode ? 'Actualizar Casilla' : 'Crear Casilla'}
-                  </Button>
-                ) : (
-                  <>
-                    <Button 
-                      variant="outline" 
-                      onClick={() => setShowYamlPreview(false)}
-                    >
-                      Volver
-                    </Button>
-                    <Button 
-                      onClick={handleValidationStart}
-                      isLoading={isValidating}
-                    >
-                      Validar YAML
-                    </Button>
-                  </>
-                )
-              )}
-            </div>
+              <div className="flex justify-end space-x-3">
+                <Button 
+                  variant="outline" 
+                  onClick={onClose} 
+                  type="button"
+                >
+                  Cancelar
+                </Button>
+                <Button 
+                  type="submit" 
+                  isLoading={isValidating}
+                >
+                  {isEditMode ? 'Guardar cambios' : 'Continuar'}
+                </Button>
+              </div>
+            </form>
           </div>
         </Dialog.Panel>
       </div>
     </Dialog>
-  );
-
-  // Sin editor de YAML completo - Se eliminó la funcionalidad para simplificar
-
-  return (
-    <>
-      {renderFirstStep()}
-      {renderYamlPreview()}
-    </>
   );
 };
