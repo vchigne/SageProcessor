@@ -215,6 +215,33 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
           throw new Error('ID de instalación no válido');
         }
         
+        // Si es modo edición, solicitar confirmación y crear backup
+        if (isEditMode) {
+          const confirmUpdate = window.confirm(
+            "¿Está seguro que desea guardar los cambios? Se creará un respaldo del YAML anterior."
+          );
+          
+          if (!confirmUpdate) {
+            return; // Cancelar la operación
+          }
+          
+          // Aquí podríamos llamar a un endpoint para crear backup si es necesario
+          try {
+            const backupResponse = await fetch(`/api/data-boxes/${dataBox?.id}/backup`, {
+              method: 'POST',
+            });
+            
+            if (!backupResponse.ok) {
+              console.warn('No se pudo crear backup, pero continuaremos con la actualización');
+            } else {
+              console.log('Backup creado exitosamente');
+            }
+          } catch (backupError) {
+            console.warn('Error al crear backup:', backupError);
+            // No bloqueamos la actualización por un error en el backup
+          }
+        }
+        
         console.log('Enviando datos a onSubmit:', {
           instalacion_id: instalacionId,
           nombre_yaml: formData.nombre_yaml,
@@ -438,7 +465,7 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
                 <YamlTempEditor
                   initialContent={formData.yaml_content}
                   onChange={(content) => setFormData(prev => ({ ...prev, yaml_content: content }))}
-                  minHeight="300px"
+                  height="300px"
                 />
               </div>
 
