@@ -6,6 +6,7 @@ import { Button, Card } from '../../components';
 import Prism from 'prismjs';
 import 'prismjs/components/prism-yaml';
 import 'prismjs/themes/prism.css';
+import yaml from 'yaml';
 
 interface EnhancedDataBoxFormProps {
   isOpen: boolean;
@@ -62,9 +63,13 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
         } else if (dataBox.yaml_contenido) {
           console.log('Usando yaml_contenido (objeto):', dataBox.yaml_contenido);
           try {
-            yamlContent = JSON.stringify(dataBox.yaml_contenido, null, 2);
+            // Convertir el objeto a YAML formateado correctamente
+            const yamlObj = { 
+              sage_yaml: dataBox.yaml_contenido 
+            };
+            yamlContent = yaml.stringify(yamlObj);
           } catch (e) {
-            console.error('Error al convertir yaml_contenido a string:', e);
+            console.error('Error al convertir yaml_contenido a YAML:', e);
           }
         } else if (typeof dataBox.yaml_content === 'string') {
           console.log('Usando yaml_content (string):', dataBox.yaml_content);
@@ -72,9 +77,13 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
         } else if (dataBox.yaml_content) {
           console.log('Usando yaml_content (objeto):', dataBox.yaml_content);
           try {
-            yamlContent = JSON.stringify(dataBox.yaml_content, null, 2);
+            // Convertir el objeto a YAML formateado correctamente
+            const yamlObj = { 
+              sage_yaml: dataBox.yaml_content 
+            };
+            yamlContent = yaml.stringify(yamlObj);
           } catch (e) {
-            console.error('Error al convertir yaml_content a string:', e);
+            console.error('Error al convertir yaml_content a YAML:', e);
             yamlContent = '';
           }
         }
