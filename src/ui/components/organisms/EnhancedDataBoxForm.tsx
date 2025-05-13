@@ -53,25 +53,8 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
                               (dataBox.instalacion && dataBox.instalacion.id) || 
                               '';
         
-        // Determinar el valor inicial para yaml_content basado en lo que esté disponible
-        // Siguiendo exactamente la misma lógica de DataBoxForm.tsx
-        let yamlContent = '';
-        
-        if (dataBox.yaml_contenido) {
-          yamlContent = dataBox.yaml_contenido;
-          console.log('Usando yaml_contenido:', yamlContent);
-        } else if (typeof dataBox.yaml_content === 'string') {
-          yamlContent = dataBox.yaml_content;
-          console.log('Usando yaml_content (string):', yamlContent);
-        } else if (dataBox.yaml_content) {
-          // Si es un objeto, convertirlo a string
-          try {
-            yamlContent = JSON.stringify(dataBox.yaml_content, null, 2);
-            console.log('Usando yaml_content (objeto convertido a JSON):', yamlContent);
-          } catch (e) {
-            console.error("Error stringify yaml_content", e);
-          }
-        }
+        // Mostrar directamente el texto contenido en yaml_contenido, sin ningún preprocesamiento
+        const yamlContent = dataBox.yaml_contenido || '';
         
         setFormData({
           instalacion_id: instalacionId.toString(),
