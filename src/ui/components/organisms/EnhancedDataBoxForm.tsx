@@ -54,15 +54,53 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
                               (dataBox.instalacion && dataBox.instalacion.id) || 
                               '';
         
-        // Usar directamente el valor de yaml_contenido sin ningún tipo de procesamiento
+        // Inicializar con la configuración básica
         setFormData({
           instalacion_id: instalacionId.toString(),
           nombre_yaml: dataBox.nombre_yaml || '',
-          yaml_content: dataBox.yaml_contenido || '',
+          yaml_content: '', // Inicialmente vacío, cargaremos el contenido a continuación
           api_endpoint: dataBox.api_endpoint || '',
           email_casilla: dataBox.email_casilla || '',
           is_active: dataBox.is_active !== undefined ? dataBox.is_active : true,
         });
+        
+        // Cargar el contenido YAML desde la API
+        console.log('Cargando YAML para casilla:', dataBox.id);
+        fetch(`/api/data-boxes/${dataBox.id}/yaml`)
+          .then(response => {
+            if (!response.ok) {
+              throw new Error(`Error al cargar YAML: ${response.status}`);
+            }
+            return response.json();
+          })
+          .then(data => {
+            console.log('YAML cargado:', data);
+            if (data && data.content) {
+              setFormData(prev => ({
+                ...prev,
+                yaml_content: data.content
+              }));
+            } else {
+              console.error('El contenido YAML está vacío o no tiene el formato esperado');
+              // Usar el contenido que podría venir en dataBox como respaldo
+              if (dataBox.yaml_contenido) {
+                setFormData(prev => ({
+                  ...prev,
+                  yaml_content: dataBox.yaml_contenido
+                }));
+              }
+            }
+          })
+          .catch(error => {
+            console.error('Error al cargar el contenido YAML:', error);
+            // Usar el contenido que podría venir en dataBox como respaldo
+            if (dataBox.yaml_contenido) {
+              setFormData(prev => ({
+                ...prev,
+                yaml_content: dataBox.yaml_contenido
+              }));
+            }
+          });
       } else {
         setIsEditMode(false);
         setFormData({
