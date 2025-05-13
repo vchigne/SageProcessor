@@ -6,6 +6,7 @@ import Prism from 'prismjs';
 import 'prismjs/components/prism-yaml';
 import 'prismjs/themes/prism.css';
 import styled from 'styled-components';
+import YamlTempEditor from '../YamlTempEditor';
 
 // Diseño completamente reimaginado con estilo moderno y eficiente
 const DialogOverlay = styled.div`
@@ -887,13 +888,10 @@ export const EditDataBoxModal = ({
                   </p>
                 </div>
                 
-                <YamlEditor 
-                  value={formData.yaml_content}
-                  onChange={(e) => setFormData({ ...formData, yaml_content: e.target.value })}
-                  spellCheck="false"
-                  placeholder="sage_yaml:
-  name: 'Nombre de la configuración'
-  description: 'Descripción de la configuración'"
+                <YamlTempEditor
+                  initialContent={formData.yaml_content}
+                  onChange={(newContent) => setFormData({ ...formData, yaml_content: newContent })}
+                  height="300px"
                 />
                 
                 <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'space-between' }}>
