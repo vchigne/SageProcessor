@@ -116,16 +116,13 @@ function extraerMetadatosYaml(contenido: string): { nombre: string, descripcion:
     let nombre = '';
     let descripcion = '';
     
-    // Buscar el nombre en el YAML
-    const nameMatch = contenido.match(/name:\s*"([^"]+)"/);
-    if (nameMatch && nameMatch[1]) {
-      nombre = nameMatch[1];
-    }
+    // Usar el parser de YAML en lugar de expresiones regulares
+    const parsedYaml = yaml.parse(contenido);
     
-    // Buscar la descripción en el YAML
-    const descMatch = contenido.match(/description:\s*"([^"]+)"/);
-    if (descMatch && descMatch[1]) {
-      descripcion = descMatch[1];
+    // Extraer los metadatos del objeto YAML parseado
+    if (parsedYaml && parsedYaml.sage_yaml) {
+      nombre = parsedYaml.sage_yaml.name || '';
+      descripcion = parsedYaml.sage_yaml.description || '';
     }
     
     return { nombre, descripcion };
