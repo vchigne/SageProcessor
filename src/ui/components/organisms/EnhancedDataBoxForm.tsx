@@ -364,18 +364,21 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
                   Contenido YAML <span className="text-red-500 dark:text-dark-error">*</span>
                 </label>
                 <textarea
-                  rows={20}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-dark-border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-dark-accent focus:border-blue-500 dark:focus:border-dark-accent dark:bg-dark-input dark:text-dark-text font-mono text-sm"
+                  rows={25}
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-dark-border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-dark-accent focus:border-blue-500 dark:focus:border-dark-accent dark:bg-dark-input dark:text-dark-text font-mono text-sm"
                   value={formData.yaml_content}
                   onChange={(e) => setFormData({ ...formData, yaml_content: e.target.value })}
                   required
                   spellCheck="false"
                   style={{ 
-                    minHeight: '400px',
-                    lineHeight: '1.5',
+                    minHeight: '500px',
+                    lineHeight: '1.6',
                     whiteSpace: 'pre',
                     overflowWrap: 'normal',
-                    overflowX: 'auto'
+                    overflowX: 'auto',
+                    backgroundColor: '#f8fafc',
+                    color: '#334155',
+                    tabSize: 2
                   }}
                   placeholder="sage_yaml:\n  name: 'Nombre de la configuración'\n  description: 'Descripción de la configuración'"
                 />
@@ -470,8 +473,16 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
             )}
 
             {/* Contenido YAML */}
-            <Card className="overflow-auto max-h-[400px] p-0">
-              <pre className="p-4 bg-gray-50 dark:bg-dark-card-secondary rounded m-0">
+            <Card className="overflow-auto max-h-[500px] p-0">
+              <pre className="p-4 bg-gray-50 dark:bg-dark-card-secondary rounded m-0" style={{
+                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+                fontSize: '0.9rem',
+                lineHeight: '1.6',
+                tabSize: 2,
+                whiteSpace: 'pre',
+                overflowWrap: 'normal',
+                overflowX: 'auto'
+              }}>
                 <code className="language-yaml dark:text-dark-text">
                   {formData.yaml_content}
                 </code>
