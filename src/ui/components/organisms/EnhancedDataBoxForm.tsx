@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Dialog } from '@headlessui/react';
-import { XMarkIcon, DocumentArrowUpIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, DocumentArrowUpIcon, CheckCircleIcon, CodeBracketIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline';
 import { Casilla, Instalacion } from '../../../types';
 import { Button, Card } from '../../components';
 import Prism from 'prismjs';
@@ -360,14 +360,64 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
 
             {isEditMode && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-dark-text mb-1">
-                  Contenido YAML <span className="text-red-500 dark:text-dark-error">*</span>
-                </label>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-dark-text">
+                    Contenido YAML <span className="text-red-500 dark:text-dark-error">*</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!formData.yaml_content) {
+                        alert('Por favor ingresa contenido YAML para validar');
+                        return;
+                      }
+                      setValidationError(null);
+                      setValidationSuccess(false);
+                      handleValidationStart();
+                    }}
+                    className="inline-flex items-center px-3 py-1 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  >
+                    <CodeBracketIcon className="h-4 w-4 mr-1" /> Validar YAML
+                  </button>
+                </div>
+                {isValidating && (
+                  <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                    <div className="flex items-center">
+                      <svg className="animate-spin h-5 w-5 text-blue-600 mr-1.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <p className="text-sm font-medium text-blue-800">Validando YAML...</p>
+                    </div>
+                  </div>
+                )}
+                {!isValidating && validationError && (
+                  <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-md">
+                    <div className="flex items-center mb-1">
+                      <ExclamationCircleIcon className="h-5 w-5 text-red-600 mr-1.5" />
+                      <p className="text-sm font-medium text-red-800">Error de validación:</p>
+                    </div>
+                    <pre className="text-xs whitespace-pre-wrap font-mono text-red-700 max-h-[100px] overflow-auto p-2 bg-red-100 rounded">{validationError}</pre>
+                  </div>
+                )}
+                {!isValidating && validationSuccess && (
+                  <div className="mb-3 p-3 bg-green-50 border border-green-200 rounded-md">
+                    <div className="flex items-center">
+                      <CheckCircleIcon className="h-5 w-5 text-green-600 mr-1.5" />
+                      <p className="text-sm font-medium text-green-800">¡YAML validado correctamente!</p>
+                    </div>
+                  </div>
+                )}
                 <textarea
                   rows={25}
                   className="w-full px-4 py-3 border border-gray-300 dark:border-dark-border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-dark-accent focus:border-blue-500 dark:focus:border-dark-accent dark:bg-dark-input dark:text-dark-text font-mono text-sm"
                   value={formData.yaml_content}
-                  onChange={(e) => setFormData({ ...formData, yaml_content: e.target.value })}
+                  onChange={(e) => {
+                    setFormData({ ...formData, yaml_content: e.target.value });
+                    // Resetear estados de validación al cambiar el contenido
+                    setValidationError(null);
+                    setValidationSuccess(false);
+                  }}
                   required
                   spellCheck="false"
                   style={{ 
@@ -378,7 +428,8 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
                     overflowX: 'auto',
                     backgroundColor: '#f8fafc',
                     color: '#334155',
-                    tabSize: 2
+                    tabSize: 2,
+                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
                   }}
                   placeholder="sage_yaml:\n  name: 'Nombre de la configuración'\n  description: 'Descripción de la configuración'"
                 />
