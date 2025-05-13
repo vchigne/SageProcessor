@@ -51,9 +51,17 @@ export const FormField: React.FC<FormFieldProps> = ({
                   placeholder={placeholder}
                   disabled={disabled}
                   rows={rows}
-                  className={`w-full px-3 py-2 border rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 ${
+                  spellCheck="false"
+                  className={`w-full px-3 py-2 border rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 font-mono text-sm ${
                     error ? 'border-red-500' : 'border-gray-300'
                   }`}
+                  style={{ 
+                    minHeight: name === 'yaml_content' ? '400px' : 'auto',
+                    lineHeight: '1.5',
+                    whiteSpace: 'pre',
+                    overflowWrap: 'normal',
+                    overflowX: 'auto'
+                  }}
                 />
               );
 
