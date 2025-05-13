@@ -236,8 +236,8 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
       className="relative z-50"
     >
       <div className="fixed inset-0 bg-black/30 dark:bg-black/50" aria-hidden="true" />
-      <div className="fixed inset-0 flex items-center justify-center p-4">
-        <Dialog.Panel className="w-full max-w-2xl rounded-lg bg-white dark:bg-dark-card p-6">
+      <div className="fixed inset-0 flex items-center justify-center p-4 overflow-y-auto">
+        <Dialog.Panel className="w-full max-w-2xl rounded-lg bg-white dark:bg-dark-card p-6 max-h-[90vh] overflow-y-auto">
           <div className="flex justify-between items-center mb-6">
             <Dialog.Title className="text-xl font-semibold dark:text-dark-text">
               {isEditMode ? 'Editar Casilla de Datos' : 'Nueva Casilla de Datos'}
@@ -409,7 +409,7 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
                   </div>
                 )}
                 <textarea
-                  rows={25}
+                  rows={15}
                   className="w-full px-4 py-3 border border-gray-300 dark:border-dark-border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-dark-accent focus:border-blue-500 dark:focus:border-dark-accent dark:bg-dark-input dark:text-dark-text font-mono text-sm"
                   value={formData.yaml_content}
                   onChange={(e) => {
@@ -421,7 +421,8 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
                   required
                   spellCheck="false"
                   style={{ 
-                    minHeight: '500px',
+                    height: '300px',
+                    maxHeight: '40vh',
                     lineHeight: '1.6',
                     whiteSpace: 'pre',
                     overflowWrap: 'normal',
@@ -465,8 +466,8 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
       className="relative z-50"
     >
       <div className="fixed inset-0 bg-black/30 dark:bg-black/50" aria-hidden="true" />
-      <div className="fixed inset-0 flex items-center justify-center p-4">
-        <Dialog.Panel className="w-full max-w-3xl bg-white dark:bg-dark-card rounded-lg shadow-xl">
+      <div className="fixed inset-0 flex items-center justify-center p-4 overflow-y-auto">
+        <Dialog.Panel className="w-full max-w-3xl bg-white dark:bg-dark-card rounded-lg shadow-xl max-h-[90vh] overflow-y-auto">
           <div className="p-6 space-y-4">
             <div className="flex justify-between items-center">
               <Dialog.Title className="text-xl font-semibold dark:text-dark-text">
