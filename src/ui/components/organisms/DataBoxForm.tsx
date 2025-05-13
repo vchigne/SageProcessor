@@ -144,7 +144,7 @@ export const DataBoxForm: React.FC<DataBoxFormProps> = ({
                 label="Contenido YAML"
                 type="textarea"
                 required
-                rows={20}
+                rows={10}
                 placeholder="sage_yaml:\n  name: 'Nombre de la configuración'\n  description: 'Descripción de la configuración'"
                 helperText="Contenido del archivo YAML con la configuración"
               />

@@ -350,11 +350,19 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
                   Contenido YAML <span className="text-red-500 dark:text-dark-error">*</span>
                 </label>
                 <textarea
-                  rows={8}
+                  rows={20}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-dark-border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-dark-accent focus:border-blue-500 dark:focus:border-dark-accent dark:bg-dark-input dark:text-dark-text font-mono text-sm"
                   value={formData.yaml_content}
                   onChange={(e) => setFormData({ ...formData, yaml_content: e.target.value })}
                   required
+                  spellCheck="false"
+                  style={{ 
+                    minHeight: '400px',
+                    lineHeight: '1.5',
+                    whiteSpace: 'pre',
+                    overflowWrap: 'normal',
+                    overflowX: 'auto'
+                  }}
                   placeholder="sage_yaml:\n  name: 'Nombre de la configuración'\n  description: 'Descripción de la configuración'"
                 />
               </div>
