@@ -189,12 +189,27 @@ def process_files(yaml_path: str, data_path: str, casilla_id: Optional[int] = No
             try:
                 from .process_materializations import process_materializations
                 logger.message("Iniciando procesamiento de materializaciones...")
-                process_materializations(
-                    casilla_id=casilla_id,
-                    execution_id=execution_uuid,
-                    dataframe=processor.last_processed_df,
-                    logger=logger
-                )
+                
+                # Si tenemos un dataframe de resumen y hay múltiples dataframes específicos por catálogo,
+                # pasar ambos a process_materializations
+                if hasattr(processor, 'dataframes') and processor.dataframes:
+                    logger.message(f"Detectados {len(processor.dataframes)} dataframes por catálogo para materializaciones: {', '.join(processor.dataframes.keys())}")
+                    process_materializations(
+                        casilla_id=casilla_id,
+                        execution_id=execution_uuid,
+                        dataframe=processor.last_processed_df,
+                        logger=logger,
+                        dataframes_by_catalog=processor.dataframes
+                    )
+                else:
+                    # Si no hay dataframes específicos, usar solo el dataframe principal
+                    logger.message("No se detectaron dataframes específicos por catálogo, usando dataframe único")
+                    process_materializations(
+                        casilla_id=casilla_id,
+                        execution_id=execution_uuid,
+                        dataframe=processor.last_processed_df,
+                        logger=logger
+                    )
             except Exception as e:
                 # No interrumpir el flujo principal si falla la materialización
                 logger.warning(f"Error al procesar materializaciones: {str(e)}")

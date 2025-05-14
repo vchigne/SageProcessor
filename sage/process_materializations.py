@@ -126,14 +126,15 @@ class MaterializationProcessor:
                 
         return params
         
-    def process(self, casilla_id: int, execution_id: str, dataframe: pd.DataFrame) -> None:
+    def process(self, casilla_id: int, execution_id: str, dataframe: pd.DataFrame, dataframes_by_catalog: Optional[Dict[str, pd.DataFrame]] = None) -> None:
         """
         Procesa las materializaciones configuradas para una casilla.
         
         Args:
             casilla_id: ID de la casilla
             execution_id: ID de la ejecución
-            dataframe: DataFrame resultante del procesamiento
+            dataframe: DataFrame resultante del procesamiento (o DataFrame resumen para ZIP)
+            dataframes_by_catalog: Diccionario de DataFrames por catálogo (para archivos ZIP)
         """
         if dataframe is None or dataframe.empty:
             self.logger.message("No hay datos para materializar")
@@ -143,6 +144,9 @@ class MaterializationProcessor:
             # Almacenar la casilla_id actual para su uso en la búsqueda de prefijos de bucket
             self.casilla_id = casilla_id
             self.logger.message(f"Procesando materializaciones para casilla_id: {casilla_id}")
+            
+            # Almacenar el diccionario de DataFrames por catálogo para usarlo en _process_materialization
+            self.dataframes_by_catalog = dataframes_by_catalog or {}
             
             # Obtener las materializaciones configuradas para esta casilla
             materializations = self._get_materializations_for_casilla(casilla_id)
@@ -236,7 +240,7 @@ class MaterializationProcessor:
         
         Args:
             materialization: Configuración de la materialización
-            dataframe: DataFrame con los datos a materializar
+            dataframe: DataFrame con los datos a materializar (o DataFrame resumen para ZIP)
             execution_id: ID de la ejecución
         """
         self.logger.message(f"Procesando materialización: {materialization['nombre']}")
@@ -249,6 +253,14 @@ class MaterializationProcessor:
             
             # Imprimir configuración para depuración
             self.logger.message(f"Configuración de materialización: {json.dumps(config, ensure_ascii=False, default=str)}")
+            
+            # Verificar si hay un catálogo específico para esta materialización
+            catalogo = config.get('catalogo')
+            if catalogo and hasattr(self, 'dataframes_by_catalog') and catalogo in self.dataframes_by_catalog:
+                # Usar el DataFrame específico del catálogo en lugar del DataFrame resumen
+                original_dataframe = dataframe
+                dataframe = self.dataframes_by_catalog[catalogo]
+                self.logger.message(f"Usando DataFrame específico para el catálogo '{catalogo}' con {len(dataframe)} filas en lugar del DataFrame resumen con {len(original_dataframe)} filas")
             
             # Determinar el tipo de destino y el ID, compatibles con ambos formatos
             destination_type = None
@@ -3652,19 +3664,20 @@ class MaterializationProcessor:
             cursor.close()
 
 
-def process_materializations(casilla_id: Optional[int], execution_id: str, dataframe: pd.DataFrame, logger: SageLogger) -> None:
+def process_materializations(casilla_id: Optional[int], execution_id: str, dataframe: pd.DataFrame, logger: SageLogger, dataframes_by_catalog: Optional[Dict[str, pd.DataFrame]] = None) -> None:
     """
     Función principal para procesar las materializaciones de una casilla.
     
     Args:
         casilla_id: ID de la casilla (puede ser None)
         execution_id: ID de la ejecución
-        dataframe: DataFrame resultante del procesamiento
+        dataframe: DataFrame resultante del procesamiento (o DataFrame resumen para ZIP)
         logger: Logger SAGE
+        dataframes_by_catalog: Diccionario de DataFrames por catálogo (para archivos ZIP)
     """
     if casilla_id is None:
         logger.message("No se puede procesar materializaciones sin ID de casilla")
         return
         
     processor = MaterializationProcessor(logger)
-    processor.process(casilla_id, execution_id, dataframe)
+    processor.process(casilla_id, execution_id, dataframe, dataframes_by_catalog)
