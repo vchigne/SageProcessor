@@ -35,16 +35,12 @@ async function handler(req, res) {
     const casilla = casillas[0];
 
     // 2. Obtener el contenido YAML actual
-    const { rows: yamlData } = await pool.query(
-      "SELECT content FROM casillas_yaml WHERE casilla_id = $1 ORDER BY created_at DESC LIMIT 1",
-      [casilla_id]
-    );
+    // El contenido YAML está directamente en la tabla de casillas
+    const yamlContent = casilla.yaml_contenido;
 
-    if (yamlData.length === 0) {
+    if (!yamlContent) {
       return res.status(404).json({ error: "Contenido YAML no encontrado" });
     }
-
-    const yamlContent = yamlData[0].content;
 
     // 3. Crear entrada en la tabla de backups
     const timestamp = new Date().toISOString();

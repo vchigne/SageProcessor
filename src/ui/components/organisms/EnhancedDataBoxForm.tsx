@@ -175,13 +175,9 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
 
       const data = await response.json();
 
-      if (data.error === 'YAML validation failed') {
-        setValidationError(data.details || 'Error en la validación del YAML');
+      if (!response.ok || data.error) {
+        setValidationError(data.details || data.error || 'Error en la validación del YAML');
         return;
-      }
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Error en la solicitud');
       }
 
       setValidationSuccess(true);
@@ -225,16 +221,27 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
             return; // Cancelar la operación
           }
           
-          // Aquí podríamos llamar a un endpoint para crear backup si es necesario
+          // Crear backup del YAML actual
           try {
+            console.log('Intentando crear backup para la casilla ID:', dataBox?.id);
+            
             const backupResponse = await fetch(`/api/data-boxes/${dataBox?.id}/backup`, {
               method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ 
+                description: `Backup automático antes de actualización - ${new Date().toLocaleString()}` 
+              }),
             });
             
+            const backupResult = await backupResponse.json();
+            
             if (!backupResponse.ok) {
-              console.warn('No se pudo crear backup, pero continuaremos con la actualización');
+              console.warn('No se pudo crear backup:', backupResult.error);
+              alert('Advertencia: No se pudo crear un respaldo del YAML anterior. ¿Desea continuar de todos modos?');
             } else {
-              console.log('Backup creado exitosamente');
+              console.log('Backup creado exitosamente:', backupResult);
             }
           } catch (backupError) {
             console.warn('Error al crear backup:', backupError);
