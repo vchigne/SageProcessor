@@ -150,8 +150,16 @@ def process_files(yaml_path: str, data_path: str, casilla_id: Optional[int] = No
         # Log summary
         # Para archivos ZIP, no podemos contar líneas directamente - usamos el contador de registros del procesador
         if is_zip:
-            # Obtener el conteo de registros del procesador o usar 0 si no está disponible
-            total_records = getattr(processor, 'total_records', 0) or 0
+            if hasattr(processor, 'last_processed_df') and processor.last_processed_df is not None:
+                # Si tenemos un DataFrame de resumen, sumamos los registros de cada archivo
+                if 'registros' in processor.last_processed_df.columns:
+                    total_records = processor.last_processed_df['registros'].sum()
+                else:
+                    # Retrocompatibilidad: si no hay columna 'registros', usar el contador antiguo
+                    total_records = getattr(processor, 'total_records', 0) or 0
+            else:
+                # Retrocompatibilidad: si no hay DataFrame de resumen, usar el contador antiguo
+                total_records = getattr(processor, 'total_records', 0) or 0
         # Para archivos Excel, tampoco podemos contar líneas directamente
         elif file_type in ["EXCEL"]:
             # Para archivos Excel, obtener el conteo del último DataFrame procesado
