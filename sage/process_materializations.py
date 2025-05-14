@@ -3109,29 +3109,16 @@ class MaterializationProcessor:
             provider_id: ID del proveedor
             
         Returns:
-            Información del proveedor incluyendo prefijo de bucket si existe
+            Información del proveedor
         """
         conn = self._get_database_connection()
         cursor = conn.cursor()
         
         try:
-            # Primero buscar si este provider es parte de una relación emisor-casilla
-            # para obtener el posible prefijo de bucket
-            cursor.execute("""
-                SELECT epc.emisor_bucket_prefijo
-                FROM emisores_por_casilla epc
-                JOIN emisores e ON epc.emisor_id = e.id
-                WHERE e.bucket_secret_id = %s
-                  AND epc.casilla_id = %s
-            """, (provider_id, self.casilla_id))
-            
+            # Inicializar variable de prefijo (no se utiliza en materializaciones)
             emisor_bucket_prefijo = None
-            result = cursor.fetchone()
-            if result and result[0]:
-                emisor_bucket_prefijo = result[0]
-                self.logger.message(f"Encontrado prefijo de bucket específico para este emisor-casilla: {emisor_bucket_prefijo}")
             
-            # Luego obtenemos la información completa del proveedor
+            # Obtenemos la información completa del proveedor
             cursor.execute("""
                 SELECT id, nombre, tipo, credenciales, configuracion, activo, estado, secreto_id
                 FROM cloud_providers
