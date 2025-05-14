@@ -431,6 +431,16 @@ export default function EditMaterializationPage() {
       // Determinar tipo de proveedor (cloud o database)
       const tipoProveedor = formData.destino === 'archivo' ? 'cloud' : 'database';
       
+      // Obtener información del catálogo seleccionado
+      const selectedFile = yamlStructure?.files[selectedFileIndex];
+      const catalogMatch = selectedFile?.name.match(/Catálogo de (.*)/);
+      const catalogId = catalogMatch ? catalogMatch[1].toLowerCase() : selectedFile?.name.toLowerCase();
+      
+      console.log(`Usando catálogo: ${catalogId} para la materialización en modo edición`);
+
+      // Conservar el campo catalogo si ya existe, o añadirlo si no existe
+      const existingCatalog = materialData?.configuracion?.catalogo;
+      
       const materializacionData = {
         nombre: formData.nombre,
         descripcion: formData.descripcion,
@@ -445,7 +455,9 @@ export default function EditMaterializationPage() {
           estrategiaActualizacion: formData.estrategiaActualizacion,
           tipoProveedor: tipoProveedor,
           proveedorId: proveedorSeleccionado,
-          columnMappings: formData.columnMappings.length > 0 ? formData.columnMappings : undefined
+          columnMappings: formData.columnMappings.length > 0 ? formData.columnMappings : undefined,
+          // Usar el catalogo existente si está presente, o el nuevo catalogId si no existe
+          catalogo: existingCatalog || catalogId
         }
       };
       

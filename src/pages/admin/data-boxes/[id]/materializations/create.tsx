@@ -403,6 +403,13 @@ export default function CreateMaterializationPage() {
       // Identificar el tipo de proveedor seleccionado (cloud o database)
       const tipoProveedor = formData.destino === 'archivo' ? 'cloud' : 'database';
       
+      // Obtener información del catálogo seleccionado
+      const selectedFile = yamlStructure?.files[selectedFileIndex];
+      const catalogMatch = selectedFile?.name.match(/Catálogo de (.*)/);
+      const catalogId = catalogMatch ? catalogMatch[1].toLowerCase() : selectedFile?.name.toLowerCase();
+      
+      console.log(`Usando catálogo: ${catalogId} para la nueva materialización`);
+
       const materializacionData = {
         nombre: formData.nombre,
         descripcion: formData.descripcion,
@@ -418,7 +425,8 @@ export default function CreateMaterializationPage() {
           tipoProveedor: tipoProveedor,
           proveedorId: proveedorSeleccionado,
           tablaDestino: formData.tablaDestino,
-          estrategiaActualizacion: formData.estrategiaActualizacion
+          estrategiaActualizacion: formData.estrategiaActualizacion,
+          catalogo: catalogId // Añadimos el campo catalogo para vincular explícitamente
         }
       };
       

@@ -332,9 +332,6 @@ export default function MaterializationsPage() {
     const catalogMatch = selectedFileName.match(/Catálogo de (.*)/);
     const catalogId = catalogMatch ? catalogMatch[1].toLowerCase() : selectedFileName.toLowerCase();
     
-    // Obtenemos todas las columnas del archivo seleccionado para comparar
-    const selectedFileColumns = selectedFile.columns.map(col => col.name);
-    
     // Registro para depuración
     console.log(`Filtrando materializaciones para catálogo: ${selectedFileName} (ID: ${catalogId})`);
     
@@ -342,51 +339,17 @@ export default function MaterializationsPage() {
       // Si no tiene configuración, no podemos filtrar
       if (!materialization.configuracion) return false;
       
-      // Preparamos versiones en minúsculas para comparaciones insensibles a mayúsculas/minúsculas
-      const tableName = materialization.configuracion.tablaDestino?.toLowerCase() || '';
-      const materialName = materialization.nombre?.toLowerCase() || '';
-      
-      // Criterio 1: La tabla de destino coincide exactamente con el catalogId
-      const exactTableMatch = tableName === catalogId;
-      
-      // Criterio 2: Para estrategia FULL_UUID, verificar si la tabla tiene el formato _uuid.catalogId
-      const fullUuidMatch = materialization.configuracion.estrategiaActualizacion === 'full_uuid' && 
-                          tableName.endsWith(catalogId) && 
-                          tableName.includes('_uuid.');
-      
-      // Criterio 3: El nombre de la materialización contiene explícitamente el catalogId
-      // Ejemplo: "Materialización Catálogo de Productos" cuando catalogId es "productos"
-      const explicitNameMatch = materialName === `materialización ${selectedFileName.toLowerCase()}` ||
-                              materialName === `materialización catálogo de ${catalogId}` ||
-                              materialName === `catalogo de ${catalogId}` ||
-                              materialName === catalogId;
-      
-      // Criterio 4: El nombre de la materialización coincide exactamente con el catalogId
-      const exactNameMatch = materialName === catalogId;
-      
-      // Criterio 5: Verificamos si la mayoría de las columnas en la materialización pertenecen al archivo seleccionado
-      let columnsMatch = false;
-      if (materialization.configuracion.columnas && materialization.configuracion.columnas.length > 0) {
-        const matchingColumns = materialization.configuracion.columnas.filter(col => selectedFileColumns.includes(col));
-        
-        // Consideramos una coincidencia solo si todas las columnas están en el archivo seleccionado
-        // Esto es más estricto que antes para evitar falsos positivos
-        columnsMatch = matchingColumns.length === materialization.configuracion.columnas.length;
+      // Verificamos si la materialización tiene un campo específico para el catálogo
+      if (materialization.configuracion.catalogo !== undefined) {
+        // Comparación insensible a mayúsculas/minúsculas
+        const materialCatalogo = materialization.configuracion.catalogo.toLowerCase();
+        return materialCatalogo === catalogId || 
+               materialCatalogo === selectedFileName.toLowerCase();
       }
       
-      // Verificamos si la materialización tiene un campo para indicar a qué catálogo pertenece
-      const hasCatalogField = materialization.configuracion.catalogo !== undefined;
-      const catalogFieldMatch = hasCatalogField && 
-                             (materialization.configuracion.catalogo?.toLowerCase() === catalogId ||
-                              materialization.configuracion.catalogo?.toLowerCase() === selectedFileName.toLowerCase());
-      
-      // Si tiene campo de catálogo, ese es el criterio principal
-      if (hasCatalogField) {
-        return catalogFieldMatch;
-      }
-      
-      // Si no tiene campo de catálogo, usamos los otros criterios
-      return exactTableMatch || fullUuidMatch || explicitNameMatch || exactNameMatch || columnsMatch;
+      // Si no tiene campo catalogo, por ahora asumimos que no pertenece a este catálogo
+      // Esta lógica es temporal y se eliminará una vez que todas las materializaciones tengan el campo catalogo
+      return false;
     });
   };
 
