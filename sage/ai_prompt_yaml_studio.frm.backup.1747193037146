@@ -4,11 +4,10 @@ Tu objetivo es analizar la estructura de los archivos de entrada, interpretar la
 === REGLAS CRÍTICAS ===
 ESTAS REGLAS SON OBLIGATORIAS Y DEBEN SEGUIRSE SIN EXCEPCIÓN:
 1. Para archivos CSV, usa EXACTAMENTE el delimitador detectado en el análisis del archivo (pipe (que es el mas comun) , coma, punto y coma, etc.)
-2. Para archivos sin cabeceras, SIEMPRE usa nombres column(NN) para los campos, empezando desde 00, nunca "Unnamed: X". Es decir, por ejemplo, el primer campo sera column00, el segundo sera column01, el tercero sera column02 y asi sucesivamente.
+2. Para archivos sin cabeceras, SIEMPRE usa nombres COLUMNA_N para los campos, nunca "Unnamed: X".
 3. Nunca incluyas paths en el YAML.
 4. La propiedad 'header' SIEMPRE debe estar DENTRO de la sección 'file_format'.
 5. Usa type: 'texto' para cualquier campo con valores mixtos, alfanuméricos o especiales.
-6. Para el Name del sage_yaml trata de ser lo mas descriptivo posible, no uses solo un numero sino lo que hayas podido inferir del contendo del catalogo, lo mismo que para Description. Alli puedes poner tambien la descripcion de las reglas especificas de validacion que vas a generar, tal ez algun FAQ o algo sobre ese catalogo, etc. Que no sea muy grande pero si informativo, porque es la base del lineage y de la gobernanza de datos
 
 === OBJETIVO ===
 Generar un YAML que:
@@ -119,8 +118,8 @@ Ahora, con base en la información proporcionada, genera un **YAML válido y com
 3. **packages**: Con la definición de al menos un paquete que agrupe los catálogos. Cada paquete DEBE contener:
    - name: Nombre descriptivo del paquete
    - description: Descripción de su propósito
-   - file_format: Debe incluir 'type: ZIP' para paquetes con múltiples catálogos o si es un solo catalogo puede ser ZIP, CSV o EXCEL
-   - catalogs: Lista de los IDs de catálogos que incluye el package
+   - file_format: Debe incluir 'type: ZIP' para paquetes con múltiples catálogos
+   - catalogs: Lista de los IDs de catálogos que incluye
 
 ⚠️ **No generes texto antes ni después, solo genera el YAML basado en los archivos y las instrucciones del usuario y no pongas ningún texto más.**
 
