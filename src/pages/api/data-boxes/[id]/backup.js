@@ -1,5 +1,4 @@
 import { pool } from "../../../../lib/db";
-import { authMiddleware } from "../../../../lib/auth";
 
 /**
  * API Handler para crear backups de casillas de datos
@@ -7,7 +6,7 @@ import { authMiddleware } from "../../../../lib/auth";
  * POST /api/data-boxes/:id/backup
  * Crea un backup del YAML de una casilla de datos
  */
-async function handler(req, res) {
+export default async function handler(req, res) {
   // Solo permitimos método POST
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Método no permitido" });
@@ -73,4 +72,3 @@ async function handler(req, res) {
   }
 }
 
-export default authMiddleware(handler);
