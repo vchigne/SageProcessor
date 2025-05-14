@@ -750,6 +750,9 @@ class FileProcessor:
         self.logger.message(f"Processing ZIP package: {zip_path}")
 
         total_records = 0
+        # Lista para almacenar las estadísticas de cada archivo para el DataFrame resumen
+        files_summary_data = []
+        
         with tempfile.TemporaryDirectory() as temp_dir:
             # Extract ZIP contents
             try:
@@ -775,6 +778,15 @@ class FileProcessor:
                         file=catalog.filename,
                         package=package_name
                     )
+                    # Añadir entrada para archivo faltante en el resumen
+                    files_summary_data.append({
+                        'archivo': catalog.filename,
+                        'catalogo': catalog_name,
+                        'registros': 0,
+                        'errores': 1,
+                        'advertencias': 0,
+                        'estado': 'Faltante'
+                    })
                     continue
 
                 try:
@@ -803,13 +815,23 @@ Success rate: {success_rate:.2f}%
 """
                     self.logger.message(summary)
 
-                    # Registrar estadísticas de este archivopara el reporte
+                    # Registrar estadísticas de este archivo para el reporte
                     self.logger.register_file_stats(
                         catalog.filename, 
                         file_records, 
                         file_errors, 
                         file_warnings
                     )
+
+                    # Añadir información a la lista para el DataFrame resumen
+                    files_summary_data.append({
+                        'archivo': catalog.filename,
+                        'catalogo': catalog_name,
+                        'registros': file_records,
+                        'errores': file_errors,
+                        'advertencias': file_warnings,
+                        'estado': 'Procesado'
+                    })
 
                     total_records += file_records
 
@@ -829,6 +851,16 @@ Success rate: {success_rate:.2f}%
                         1,  # un error crítico
                         0   # sin advertencias
                     )
+                    
+                    # Añadir información a la lista para el DataFrame resumen
+                    files_summary_data.append({
+                        'archivo': catalog.filename,
+                        'catalogo': catalog_name,
+                        'registros': 0,
+                        'errores': 1,
+                        'advertencias': 0,
+                        'estado': 'Error'
+                    })
                     continue  # Continuar con el siguiente catálogo
 
             # Apply package-level validations
@@ -845,6 +877,13 @@ Warnings: {self.warning_count}
 
             # Mostrar resumen de reglas omitidas para archivos grandes
             self._log_skipped_rules_summary()
+            
+            # Crear DataFrame de resumen y asignarlo a last_processed_df
+            import pandas as pd
+            self.last_processed_df = pd.DataFrame(files_summary_data)
+            
+            # Loguear el DataFrame creado
+            self.logger.message(f"Created summary DataFrame with {len(files_summary_data)} files information")
 
         return self.error_count, self.warning_count
 
