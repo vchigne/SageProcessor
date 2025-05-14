@@ -755,20 +755,17 @@ export default function CreateMaterializationPage() {
         </div>
         
         <div className="bg-white dark:bg-dark-card rounded-lg shadow-md p-6 mb-6">
-          {yamlStructure && yamlStructure.files && yamlStructure.files.length > 1 && (
+          {yamlStructure && yamlStructure.files && yamlStructure.files.length > 0 && (
             <div className="mb-6">
-              <h3 className="text-lg font-medium mb-2">Seleccionar archivo:</h3>
-              <div className="flex flex-wrap gap-2">
-                {yamlStructure.files.map((file, index) => (
-                  <Button
-                    key={index}
-                    variant={selectedFileIndex === index ? "primary" : "outline"}
-                    size="sm"
-                    onClick={() => handleSelectFile(index)}
-                  >
-                    {file.name}
-                  </Button>
-                ))}
+              <h3 className="text-lg font-medium mb-2">Archivo de Datos (Catálogo) Seleccionado:</h3>
+              <div className="p-3 bg-gray-100 dark:bg-gray-800 rounded-md border border-gray-200 dark:border-gray-700">
+                <div className="font-medium">{yamlStructure.files[selectedFileIndex].name}</div>
+                <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                  {yamlStructure.files[selectedFileIndex].description || 'Sin descripción'}
+                </div>
+                <div className="text-xs text-blue-600 dark:text-blue-400 mt-2">
+                  Cada materialización está vinculada a un único catálogo específico
+                </div>
               </div>
             </div>
           )}

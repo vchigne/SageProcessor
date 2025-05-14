@@ -122,7 +122,17 @@ export default function MaterializationsPage() {
     // Guardar primero los cambios en la estructura
     saveSemanticLayer();
     
-    // Luego redirigir a la página de creación
+    // Verificar que haya un archivo seleccionado válido
+    if (!yamlStructure || !yamlStructure.files || yamlStructure.files.length === 0) {
+      toast.error("No hay archivos disponibles para crear materializaciones");
+      return;
+    }
+    
+    // Mostrar el índice seleccionado con un mensaje informativo
+    const selectedFile = yamlStructure.files[selectedFileIndex];
+    toast.info(`Creando materialización para: ${selectedFile.name}`);
+    
+    // Luego redirigir a la página de creación con el índice del archivo seleccionado
     router.push({
       pathname: `/admin/data-boxes/${casilla_id}/materializations/create`,
       query: { fileIndex: selectedFileIndex }
@@ -130,7 +140,57 @@ export default function MaterializationsPage() {
   };
 
   const handleEditMaterializationClick = (materializationId: number) => {
-    router.push(`/admin/data-boxes/${casilla_id}/materializations/${materializationId}/edit`);
+    // Encontrar la materialización que se va a editar
+    const materializacion = materializations.find(m => m.id === materializationId);
+    
+    if (materializacion && yamlStructure && yamlStructure.files) {
+      // Intentar determinar qué archivo corresponde a esta materialización
+      let matchingFileIndex = selectedFileIndex; // Por defecto usar el seleccionado
+      
+      // Si tenemos la configuración de la materialización, intentamos encontrar el archivo correcto
+      if (materializacion.configuracion) {
+        const tablaDestino = materializacion.configuracion.tablaDestino?.toLowerCase() || '';
+        const columnas = materializacion.configuracion.columnas || [];
+        
+        // Buscar la mejor coincidencia entre los archivos
+        let bestMatchScore = 0;
+        
+        yamlStructure.files.forEach((file, index) => {
+          let score = 0;
+          const fileName = file.name.toLowerCase();
+          
+          // Coincidencia por nombre de tabla
+          if (tablaDestino === fileName || tablaDestino.includes(fileName)) {
+            score += 10;
+          }
+          
+          // Coincidencia por columnas
+          const fileColumns = file.columns.map(col => col.name);
+          const matchingColumns = columnas.filter(col => fileColumns.includes(col));
+          if (columnas.length > 0) {
+            score += (matchingColumns.length / columnas.length) * 20;
+          }
+          
+          if (score > bestMatchScore) {
+            bestMatchScore = score;
+            matchingFileIndex = index;
+          }
+        });
+      }
+      
+      // Mostrar un mensaje informativo del archivo seleccionado
+      const fileToUse = yamlStructure.files[matchingFileIndex];
+      toast.info(`Editando materialización asociada a: ${fileToUse.name}`);
+      
+      // Redirigir a la página de edición con el archivo preseleccionado
+      router.push({
+        pathname: `/admin/data-boxes/${casilla_id}/materializations/${materializationId}/edit`,
+        query: { fileIndex: matchingFileIndex }
+      });
+    } else {
+      // Si no se puede determinar el archivo, solo redirigir a la página de edición
+      router.push(`/admin/data-boxes/${casilla_id}/materializations/${materializationId}/edit`);
+    }
   };
 
   const handleDeleteMaterializationClick = async (materializationId: number) => {

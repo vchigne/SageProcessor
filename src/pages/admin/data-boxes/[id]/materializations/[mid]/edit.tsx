@@ -46,9 +46,10 @@ interface Materialization {
 
 export default function EditMaterializationPage() {
   const router = useRouter();
-  const { id, mid } = router.query;
+  const { id, mid, fileIndex } = router.query;
   const casilla_id = id ? parseInt(id as string) : null;
   const materializationId = mid ? parseInt(mid as string) : null;
+  const preselectedFileIndex = fileIndex ? parseInt(fileIndex as string) : 0;
   
   const [yamlStructure, setYamlStructure] = useState<YamlStructure | null>(null);
   const [materialization, setMaterialization] = useState<Materialization | null>(null);
@@ -122,7 +123,7 @@ export default function EditMaterializationPage() {
   const [partitionSelection, setPartitionSelection] = useState<{[key: string]: boolean}>({});
   
   // Selección de archivo
-  const [selectedFileIndex, setSelectedFileIndex] = useState<number>(0);
+  const [selectedFileIndex, setSelectedFileIndex] = useState<number>(preselectedFileIndex);
   
   useEffect(() => {
     if (!casilla_id || isNaN(casilla_id) || !materializationId || isNaN(materializationId)) return;
@@ -771,19 +772,17 @@ export default function EditMaterializationPage() {
           {yamlStructure && yamlStructure.files && yamlStructure.files.length > 0 && (
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Seleccionar Archivo de Datos
+                Archivo de Datos (Catálogo) Seleccionado:
               </label>
-              <select
-                value={selectedFileIndex}
-                onChange={(e) => setSelectedFileIndex(parseInt(e.target.value))}
-                className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md mb-4"
-              >
-                {yamlStructure.files.map((file, index) => (
-                  <option key={index} value={index}>
-                    {file.name} - {file.description}
-                  </option>
-                ))}
-              </select>
+              <div className="w-full p-3 bg-gray-100 dark:bg-gray-800 rounded-md mb-4 border border-gray-200 dark:border-gray-700">
+                <div className="font-medium">{yamlStructure.files[selectedFileIndex].name}</div>
+                <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                  {yamlStructure.files[selectedFileIndex].description || 'Sin descripción'}
+                </div>
+                <div className="text-xs text-blue-600 dark:text-blue-400 mt-2">
+                  Cada materialización está vinculada a un único catálogo específico
+                </div>
+              </div>
             </div>
           )}
           
