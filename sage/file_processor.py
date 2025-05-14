@@ -702,7 +702,7 @@ class FileProcessor:
 
                 # Para Series, procesamos cada valor que no cumple
                 if isinstance(result, pd.Series):
-                    failed_mask = not result
+                    failed_mask = ~result  # Usar negación bitwise en lugar de 'not'
                     if failed_mask.any():
                         if rule.severity == Severity.ERROR:
                             self.error_count += 1
