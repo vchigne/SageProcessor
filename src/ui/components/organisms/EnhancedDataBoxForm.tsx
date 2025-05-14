@@ -177,6 +177,16 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
 
       if (!response.ok || data.error) {
         let errorMessage = data.details || data.error || 'Error en la validación del YAML';
+        
+        // Detectar los errores específicos relacionados con formato incorrecto
+        if (errorMessage.includes("'str' object has no attribute 'keys'") || 
+            errorMessage.includes("'list' object has no attribute 'keys'")) {
+          // Añadir un mensaje explicativo sobre el error
+          errorMessage = errorMessage + "\n\n💡 NOTA IMPORTANTE: Este error indica que el YAML no tiene el formato correcto. " +
+                        "Asegúrate de que el YAML es un objeto con las secciones sage_yaml, catalogs y packages, " +
+                        "y no una lista, texto plano u otro formato no compatible.";
+        }
+        
         setValidationError(errorMessage);
         return;
       }
