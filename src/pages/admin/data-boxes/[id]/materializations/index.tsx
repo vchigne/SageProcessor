@@ -266,32 +266,48 @@ export default function MaterializationsPage() {
     const selectedFile = getFileStructureForCurrentSelection();
     if (!selectedFile) return materializations;
     
+    // Obtenemos el nombre y el ID del catálogo (generalmente el nombre corto que aparece en el YAML)
+    const selectedFileName = selectedFile.name;
+    // Si el nombre tiene formato "Catálogo de X", extraemos "X" como catalogId
+    const catalogMatch = selectedFileName.match(/Catálogo de (.*)/);
+    const catalogId = catalogMatch ? catalogMatch[1].toLowerCase() : selectedFileName.toLowerCase();
+    
+    // Obtenemos todas las columnas del archivo seleccionado para comparar
+    const selectedFileColumns = selectedFile.columns.map(col => col.name);
+    
     return materializations.filter(materialization => {
-      // Verificamos si la materialización corresponde al archivo seleccionado utilizando múltiples criterios:
+      // Si no tiene configuración, no podemos filtrar
+      if (!materialization.configuracion) return false;
       
-      // 1. Si la tabla de destino coincide exactamente con el nombre del archivo
-      const tableNameMatch = materialization.configuracion.tablaDestino === selectedFile.name;
+      // Preparamos versiones en minúsculas para comparaciones insensibles a mayúsculas/minúsculas
+      const tableName = materialization.configuracion.tablaDestino?.toLowerCase() || '';
+      const materialName = materialization.nombre?.toLowerCase() || '';
+      
+      // 1. Si la tabla de destino coincide con el nombre del archivo o catalogId
+      const tableNameMatch = tableName === selectedFileName.toLowerCase() || 
+                           tableName === catalogId;
       
       // 2. Si la tabla de destino coincide con el UUID + nombre del archivo (para estrategia FULL con UUID)
       const fullUuidMatch = materialization.configuracion.estrategiaActualizacion === 'full_uuid' && 
-                         materialization.configuracion.tablaDestino.endsWith(selectedFile.name) && 
-                         materialization.configuracion.tablaDestino.includes('_UUID.');
+                        (tableName.endsWith(selectedFileName.toLowerCase()) || 
+                         tableName.endsWith(catalogId)) && 
+                        tableName.includes('_uuid.');
       
-      // 3. Si el nombre de la materialización incluye específicamente el nombre del archivo
-      const nameMatch = materialization.nombre.includes(`Materialización ${selectedFile.name}`) || 
-                     materialization.nombre.includes(`Materializacion ${selectedFile.name}`);
+      // 3. Si el nombre de la materialización incluye específicamente el nombre del archivo o catalogId
+      const nameMatch = materialName.includes(selectedFileName.toLowerCase()) || 
+                     materialName.includes(catalogId);
       
-      // 4. Si las columnas configuradas están presentes en el archivo seleccionado
+      // 4. Verificamos si la mayoría de las columnas en la materialización pertenecen al archivo seleccionado
       let columnsMatch = false;
       if (materialization.configuracion.columnas && materialization.configuracion.columnas.length > 0) {
-        // Obtener los nombres de las columnas del archivo seleccionado
-        const fileColumnNames = selectedFile.columns.map(col => col.name);
-        // Verificar si al menos el 80% de las columnas en la materialización están en el archivo seleccionado
-        const matchingColumns = materialization.configuracion.columnas.filter(col => fileColumnNames.includes(col));
-        columnsMatch = matchingColumns.length >= materialization.configuracion.columnas.length * 0.8;
+        const matchingColumns = materialization.configuracion.columnas.filter(col => selectedFileColumns.includes(col));
+        
+        // Consideramos una coincidencia si al menos el 70% de las columnas están en el archivo seleccionado
+        const matchPercentage = matchingColumns.length / materialization.configuracion.columnas.length;
+        columnsMatch = matchPercentage >= 0.7;
       }
       
-      // Retornar verdadero si cualquiera de los criterios se cumple
+      // Solo retornamos verdadero si al menos uno de los criterios se cumple
       return tableNameMatch || fullUuidMatch || nameMatch || columnsMatch;
     });
   };

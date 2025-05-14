@@ -150,11 +150,18 @@ export default function CreateMaterializationPage() {
             // Actualizar las columnas seleccionadas en el formulario
             updateSelectedColumnsInForm(initialColumnSelection, initialPrimaryKeySelection, initialPartitionSelection);
             
+            // Extraer el nombre real sin el prefijo "Catálogo de" o similar
+            let tableName = fileToUse.name;
+            const catalogMatch = fileToUse.name.match(/Catálogo de (.*)/);
+            if (catalogMatch) {
+              tableName = catalogMatch[1].trim();
+            }
+            
             // Usar el nombre del archivo como nombre predeterminado para la materialización y tabla destino
             setFormData(prev => ({
               ...prev,
               nombre: `Materialización ${fileToUse.name}`,
-              tablaDestino: fileToUse.name
+              tablaDestino: tableName // Usar el nombre limpio sin "Catálogo de"
             }));
           }
         } else {
@@ -478,11 +485,18 @@ export default function CreateMaterializationPage() {
     if (yamlStructure && yamlStructure.files && yamlStructure.files.length > index) {
       const fileToUse = yamlStructure.files[index];
       
+      // Extraer el nombre real sin el prefijo "Catálogo de" o similar
+      let tableName = fileToUse.name;
+      const catalogMatch = fileToUse.name.match(/Catálogo de (.*)/);
+      if (catalogMatch) {
+        tableName = catalogMatch[1].trim();
+      }
+      
       // Actualizar el nombre de la materialización y la tabla destino
       setFormData(prev => ({
         ...prev,
         nombre: `Materialización ${fileToUse.name}`,
-        tablaDestino: fileToUse.name
+        tablaDestino: tableName // Usar el nombre limpio sin "Catálogo de"
       }));
       
       // Reinicializar la selección de columnas con las del archivo seleccionado
