@@ -63,8 +63,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       validator.on('close', async (code) => {
         console.log('Validator exit code:', code);
-        // Limpiar el archivo temporal
-        await fs.unlink(tempFile).catch(console.error);
+        
+        // Para depuración, no eliminamos el archivo temporal
+        // await fs.unlink(tempFile).catch(console.error);
 
         if (code === 0) {
           resolve({ isValid: true });
