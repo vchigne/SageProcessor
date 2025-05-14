@@ -880,10 +880,21 @@ Warnings: {self.warning_count}
             
             # Crear DataFrame de resumen y asignarlo a last_processed_df
             import pandas as pd
-            self.last_processed_df = pd.DataFrame(files_summary_data)
+            # Convertir tipos numpy a tipos nativos de Python para evitar problemas de serialización JSON
+            summary_data = []
+            for item in files_summary_data:
+                summary_data.append({
+                    'archivo': item['archivo'],
+                    'catalogo': item['catalogo'],
+                    'registros': int(item['registros']),
+                    'errores': int(item['errores']),
+                    'advertencias': int(item['advertencias']),
+                    'estado': item['estado']
+                })
+            self.last_processed_df = pd.DataFrame(summary_data)
             
             # Loguear el DataFrame creado
-            self.logger.message(f"Created summary DataFrame with {len(files_summary_data)} files information")
+            self.logger.message(f"Created summary DataFrame with {len(summary_data)} files information")
 
         return self.error_count, self.warning_count
 
