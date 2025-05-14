@@ -121,6 +121,9 @@ export default function EditMaterializationPage() {
   const [primaryKeySelection, setPrimaryKeySelection] = useState<{[key: string]: boolean}>({});
   const [partitionSelection, setPartitionSelection] = useState<{[key: string]: boolean}>({});
   
+  // Selección de archivo
+  const [selectedFileIndex, setSelectedFileIndex] = useState<number>(0);
+  
   useEffect(() => {
     if (!casilla_id || isNaN(casilla_id) || !materializationId || isNaN(materializationId)) return;
     
@@ -235,6 +238,20 @@ export default function EditMaterializationPage() {
     }
   }, [yamlStructure, formData.columnas, formData.primaryKey, formData.partitionBy]);
   
+  // Actualizar sugerencia de nombre de tabla cuando cambia el archivo seleccionado
+  useEffect(() => {
+    const selectedFile = getSelectedFile();
+    
+    // Solo sugerir nombre de tabla si está vacío o si se ha modificado recientemente
+    if (selectedFile && (!formData.tablaDestino || formData.tablaDestino === '')) {
+      setFormData(prev => ({
+        ...prev,
+        tablaDestino: selectedFile.name,
+        nombre: `Materialización ${selectedFile.name}`
+      }));
+    }
+  }, [selectedFileIndex, yamlStructure]);
+  
   const updateSelectedColumnsInForm = (
     columns: {[key: string]: boolean}, 
     primaryKeys: {[key: string]: boolean}, 
@@ -336,11 +353,13 @@ export default function EditMaterializationPage() {
   const handleSelectAllColumns = () => {
     if (!yamlStructure || !yamlStructure.files) return;
     
-    const allColumns: {[key: string]: boolean} = {};
-    yamlStructure.files.forEach(file => {
-      file.columns.forEach(column => {
-        allColumns[column.name] = true;
-      });
+    // Mantener selecciones actuales
+    const allColumns: {[key: string]: boolean} = {...columnSelection};
+    
+    // Seleccionar solo columnas del archivo actual
+    const selectedColumns = getAllColumns();
+    selectedColumns.forEach(column => {
+      allColumns[column.name] = true;
     });
     
     setColumnSelection(allColumns);
@@ -348,6 +367,23 @@ export default function EditMaterializationPage() {
   };
   
   const handleDeselectAllColumns = () => {
+    if (!yamlStructure || !yamlStructure.files) return;
+    
+    // Mantener selecciones actuales
+    const allColumns: {[key: string]: boolean} = {...columnSelection};
+    
+    // Deseleccionar solo columnas del archivo actual
+    const selectedColumns = getAllColumns();
+    selectedColumns.forEach(column => {
+      allColumns[column.name] = false;
+    });
+    
+    setColumnSelection(allColumns);
+    updateSelectedColumnsInForm(allColumns, primaryKeySelection, partitionSelection);
+  };
+  
+  // Función para limpiar todas las selecciones del formulario
+  const handleResetAllSelections = () => {
     if (!yamlStructure || !yamlStructure.files) return;
     
     const noColumns: {[key: string]: boolean} = {};
@@ -439,9 +475,28 @@ export default function EditMaterializationPage() {
     router.push(`/admin/data-boxes/${casilla_id}/materializations`);
   };
   
+  const getSelectedFile = (): FileStructure | null => {
+    if (!yamlStructure || !yamlStructure.files || yamlStructure.files.length === 0) {
+      return null;
+    }
+    
+    if (selectedFileIndex >= yamlStructure.files.length) {
+      return yamlStructure.files[0];
+    }
+    
+    return yamlStructure.files[selectedFileIndex];
+  };
+  
   const getAllColumns = (): Column[] => {
     if (!yamlStructure || !yamlStructure.files) return [];
     
+    // Si hay un archivo seleccionado, usar solo sus columnas
+    const selectedFile = getSelectedFile();
+    if (selectedFile) {
+      return selectedFile.columns;
+    }
+    
+    // Como fallback, retornar todas las columnas
     return yamlStructure.files.flatMap(file => file.columns);
   };
   
@@ -466,7 +521,8 @@ export default function EditMaterializationPage() {
     const esBaseDatos = formData.destino !== 'archivo';
     return esBaseDatos ? formatosPorDestino.base_datos : formatosPorDestino.archivo;
   };
-  
+
+  // Renderizado final del componente  
   if (loading) {
     return (
       <div className="container mx-auto px-4 py-8">
@@ -701,8 +757,35 @@ export default function EditMaterializationPage() {
               >
                 Deseleccionar Todo
               </Button>
+              <Button 
+                type="button"
+                onClick={handleResetAllSelections}
+                variant="outline"
+                size="sm"
+              >
+                Resetear Todas
+              </Button>
             </div>
           </div>
+          
+          {yamlStructure && yamlStructure.files && yamlStructure.files.length > 0 && (
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Seleccionar Archivo de Datos
+              </label>
+              <select
+                value={selectedFileIndex}
+                onChange={(e) => setSelectedFileIndex(parseInt(e.target.value))}
+                className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md mb-4"
+              >
+                {yamlStructure.files.map((file, index) => (
+                  <option key={index} value={index}>
+                    {file.name} - {file.description}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           
           <div className="overflow-x-auto">
             <table className="min-w-full border border-gray-200 dark:border-gray-700">
