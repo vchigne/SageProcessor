@@ -242,8 +242,8 @@ export default function EditMaterializationPage() {
   useEffect(() => {
     const selectedFile = getSelectedFile();
     
-    // Solo sugerir nombre de tabla si está vacío o si se ha modificado recientemente
-    if (selectedFile && (!formData.tablaDestino || formData.tablaDestino === '')) {
+    // Siempre actualizar el nombre de tabla al cambiar el archivo seleccionado
+    if (selectedFile) {
       setFormData(prev => ({
         ...prev,
         tablaDestino: selectedFile.name,

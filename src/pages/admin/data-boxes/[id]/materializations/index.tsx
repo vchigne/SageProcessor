@@ -169,6 +169,33 @@ export default function MaterializationsPage() {
 
   const handleSelectFile = (index: number) => {
     setSelectedFileIndex(index);
+    
+    if (yamlStructure && yamlStructure.files && yamlStructure.files.length > index) {
+      const fileName = yamlStructure.files[index].name;
+      
+      // Mostrar una notificación informativa sobre el filtrado
+      toast.info(`Mostrando materializaciones para: ${fileName}`);
+      
+      // Verificar si hay materializaciones para este archivo
+      const filteredMaterializaciones = materializations.filter(mat => {
+        const tableNameMatch = mat.configuracion.tablaDestino === fileName;
+        const fullUuidMatch = mat.configuracion.estrategiaActualizacion === 'full_uuid' && 
+                           mat.configuracion.tablaDestino.endsWith(fileName) && 
+                           mat.configuracion.tablaDestino.includes('_UUID.');
+        const nameMatch = mat.nombre.includes(`Materialización ${fileName}`) || 
+                       mat.nombre.includes(`Materializacion ${fileName}`);
+                       
+        return tableNameMatch || fullUuidMatch || nameMatch;
+      });
+      
+      if (filteredMaterializaciones.length === 0) {
+        // Informar que no hay materializaciones y sugerir crear una nueva
+        toast.info(`No hay materializaciones para "${fileName}". Puedes crear una nueva.`);
+      } else {
+        // Informar cuántas materializaciones se encontraron
+        toast.success(`Se encontraron ${filteredMaterializaciones.length} materializaciones para "${fileName}".`);
+      }
+    }
   };
 
   const handleEditColumn = (column: Column, index: number) => {
@@ -228,6 +255,45 @@ export default function MaterializationsPage() {
     if (!fileStructure) return [];
     
     return editedColumns[fileStructure.name] || fileStructure.columns;
+  };
+  
+  // Filtrar materializaciones para mostrar solo las del archivo seleccionado
+  const getFilteredMaterializations = () => {
+    if (!yamlStructure || !yamlStructure.files || yamlStructure.files.length === 0) {
+      return materializations;
+    }
+    
+    const selectedFile = getFileStructureForCurrentSelection();
+    if (!selectedFile) return materializations;
+    
+    return materializations.filter(materialization => {
+      // Verificamos si la materialización corresponde al archivo seleccionado utilizando múltiples criterios:
+      
+      // 1. Si la tabla de destino coincide exactamente con el nombre del archivo
+      const tableNameMatch = materialization.configuracion.tablaDestino === selectedFile.name;
+      
+      // 2. Si la tabla de destino coincide con el UUID + nombre del archivo (para estrategia FULL con UUID)
+      const fullUuidMatch = materialization.configuracion.estrategiaActualizacion === 'full_uuid' && 
+                         materialization.configuracion.tablaDestino.endsWith(selectedFile.name) && 
+                         materialization.configuracion.tablaDestino.includes('_UUID.');
+      
+      // 3. Si el nombre de la materialización incluye específicamente el nombre del archivo
+      const nameMatch = materialization.nombre.includes(`Materialización ${selectedFile.name}`) || 
+                     materialization.nombre.includes(`Materializacion ${selectedFile.name}`);
+      
+      // 4. Si las columnas configuradas están presentes en el archivo seleccionado
+      let columnsMatch = false;
+      if (materialization.configuracion.columnas && materialization.configuracion.columnas.length > 0) {
+        // Obtener los nombres de las columnas del archivo seleccionado
+        const fileColumnNames = selectedFile.columns.map(col => col.name);
+        // Verificar si al menos el 80% de las columnas en la materialización están en el archivo seleccionado
+        const matchingColumns = materialization.configuracion.columnas.filter(col => fileColumnNames.includes(col));
+        columnsMatch = matchingColumns.length >= materialization.configuracion.columnas.length * 0.8;
+      }
+      
+      // Retornar verdadero si cualquiera de los criterios se cumple
+      return tableNameMatch || fullUuidMatch || nameMatch || columnsMatch;
+    });
   };
 
   if (loading) {
@@ -554,7 +620,17 @@ export default function MaterializationsPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4">
-            {materializations.map((materialization) => (
+            {getFilteredMaterializations().length === 0 ? (
+              <div className="bg-white dark:bg-dark-card rounded-lg shadow-md p-6 text-center">
+                <p className="text-gray-500 dark:text-gray-400">
+                  No hay materializaciones configuradas para el archivo seleccionado: <strong>{getFileStructureForCurrentSelection()?.name}</strong>
+                </p>
+                <p className="text-gray-500 dark:text-gray-400 mt-2">
+                  Crea una nueva materialización para este archivo específico.
+                </p>
+              </div>
+            ) : (
+              getFilteredMaterializations().map((materialization) => (
               <div 
                 key={materialization.id} 
                 className="bg-white dark:bg-dark-card rounded-lg shadow-md p-6"
@@ -632,7 +708,7 @@ export default function MaterializationsPage() {
                   )}
                 </div>
               </div>
-            ))}
+            )))}
           </div>
         )}
       </div>

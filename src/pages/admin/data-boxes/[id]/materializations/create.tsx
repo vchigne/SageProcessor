@@ -112,11 +112,9 @@ export default function CreateMaterializationPage() {
           const casillaData = await casillaResponse.json();
           setCasillaInfo(casillaData);
           
-          // Usar el nombre de la casilla como nombre predeterminado para la materialización
+          // El nombre y tabla destino se actualizarán después, cuando cargue la estructura YAML
           setFormData(prev => ({
-            ...prev,
-            nombre: `Materialización ${casillaData.nombre || casilla_id}`,
-            tablaDestino: casillaData.nombre?.toLowerCase().replace(/\s+/g, '_') || `tabla_${casilla_id}`
+            ...prev
           }));
         } else {
           console.error('Error al cargar información de la casilla:', casillaResponse.statusText);
@@ -151,6 +149,13 @@ export default function CreateMaterializationPage() {
             
             // Actualizar las columnas seleccionadas en el formulario
             updateSelectedColumnsInForm(initialColumnSelection, initialPrimaryKeySelection, initialPartitionSelection);
+            
+            // Usar el nombre del archivo como nombre predeterminado para la materialización y tabla destino
+            setFormData(prev => ({
+              ...prev,
+              nombre: `Materialización ${fileToUse.name}`,
+              tablaDestino: fileToUse.name
+            }));
           }
         } else {
           console.error('Error al cargar estructura YAML:', yamlResponse.statusText);
@@ -337,6 +342,31 @@ export default function CreateMaterializationPage() {
     updateSelectedColumnsInForm(noColumns, noColumns, noColumns);
   };
   
+  // Función para resetear todas las selecciones a los valores predeterminados
+  const handleResetAllSelections = () => {
+    if (!yamlStructure || !yamlStructure.files) return;
+    
+    const fileToUse = yamlStructure.files[selectedFileIndex] || yamlStructure.files[0];
+    
+    // Reinicializar la selección de columnas con valores predeterminados del archivo seleccionado
+    const initialColumnSelection: {[key: string]: boolean} = {};
+    const initialPrimaryKeySelection: {[key: string]: boolean} = {};
+    const initialPartitionSelection: {[key: string]: boolean} = {};
+    
+    fileToUse.columns.forEach(column => {
+      initialColumnSelection[column.name] = true;
+      initialPrimaryKeySelection[column.name] = column.primary || false;
+      initialPartitionSelection[column.name] = column.partitionKey || false;
+    });
+    
+    setColumnSelection(initialColumnSelection);
+    setPrimaryKeySelection(initialPrimaryKeySelection);
+    setPartitionSelection(initialPartitionSelection);
+    
+    // Actualizar las columnas seleccionadas en el formulario
+    updateSelectedColumnsInForm(initialColumnSelection, initialPrimaryKeySelection, initialPartitionSelection);
+  };
+  
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -439,6 +469,40 @@ export default function CreateMaterializationPage() {
     }
     
     return yamlStructure.files[selectedFileIndex];
+  };
+  
+  const handleSelectFile = (index: number) => {
+    setSelectedFileIndex(index);
+    
+    // Actualizar los nombres basados en el archivo seleccionado
+    if (yamlStructure && yamlStructure.files && yamlStructure.files.length > index) {
+      const fileToUse = yamlStructure.files[index];
+      
+      // Actualizar el nombre de la materialización y la tabla destino
+      setFormData(prev => ({
+        ...prev,
+        nombre: `Materialización ${fileToUse.name}`,
+        tablaDestino: fileToUse.name
+      }));
+      
+      // Reinicializar la selección de columnas con las del archivo seleccionado
+      const initialColumnSelection: {[key: string]: boolean} = {};
+      const initialPrimaryKeySelection: {[key: string]: boolean} = {};
+      const initialPartitionSelection: {[key: string]: boolean} = {};
+      
+      fileToUse.columns.forEach((column: Column) => {
+        initialColumnSelection[column.name] = true;
+        initialPrimaryKeySelection[column.name] = column.primary || false;
+        initialPartitionSelection[column.name] = column.partitionKey || false;
+      });
+      
+      setColumnSelection(initialColumnSelection);
+      setPrimaryKeySelection(initialPrimaryKeySelection);
+      setPartitionSelection(initialPartitionSelection);
+      
+      // Actualizar las columnas seleccionadas en el formulario
+      updateSelectedColumnsInForm(initialColumnSelection, initialPrimaryKeySelection, initialPartitionSelection);
+    }
   };
   
   const getFormatosDisponibles = () => {
@@ -677,6 +741,24 @@ export default function CreateMaterializationPage() {
         </div>
         
         <div className="bg-white dark:bg-dark-card rounded-lg shadow-md p-6 mb-6">
+          {yamlStructure && yamlStructure.files && yamlStructure.files.length > 1 && (
+            <div className="mb-6">
+              <h3 className="text-lg font-medium mb-2">Seleccionar archivo:</h3>
+              <div className="flex flex-wrap gap-2">
+                {yamlStructure.files.map((file, index) => (
+                  <Button
+                    key={index}
+                    variant={selectedFileIndex === index ? "primary" : "outline"}
+                    size="sm"
+                    onClick={() => handleSelectFile(index)}
+                  >
+                    {file.name}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
+        
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-semibold">Selección de Columnas</h2>
             <div className="flex space-x-2">
@@ -695,6 +777,14 @@ export default function CreateMaterializationPage() {
                 size="sm"
               >
                 Deseleccionar Todo
+              </Button>
+              <Button 
+                type="button"
+                onClick={handleResetAllSelections}
+                variant="outline"
+                size="sm"
+              >
+                Resetear Todas
               </Button>
             </div>
           </div>
