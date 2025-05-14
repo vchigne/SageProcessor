@@ -158,11 +158,64 @@ export const EnhancedDataBoxForm: React.FC<EnhancedDataBoxFormProps> = ({
     handleValidationStart();
   };
 
+  // Función para realizar una validación básica del YAML antes de enviarlo al servidor
+  const validateBasicYamlStructure = (yamlContent: string): { isValid: boolean; error?: string } => {
+    if (!yamlContent || yamlContent.trim() === '') {
+      return { isValid: false, error: 'El contenido YAML no puede estar vacío.' };
+    }
+    
+    // Verificar que el YAML no comienza con un elemento de lista (-)
+    const firstNonEmptyLine = yamlContent.split('\n').find(line => line.trim() !== '' && !line.trim().startsWith('#'));
+    if (firstNonEmptyLine && firstNonEmptyLine.trim().startsWith('-')) {
+      return { 
+        isValid: false, 
+        error: 'El YAML no debe comenzar con un elemento de lista (-). El nivel superior debe ser un objeto con las secciones sage_yaml, catalogs y packages.' 
+      };
+    }
+    
+    // Verificar formato básico (buscar al menos las secciones principales)
+    const hasSageYaml = /sage_yaml\s*:/i.test(yamlContent);
+    const hasCatalogs = /catalogs\s*:/i.test(yamlContent);
+    const hasPackages = /packages\s*:/i.test(yamlContent);
+    
+    if (!hasSageYaml || !hasCatalogs || !hasPackages) {
+      return { 
+        isValid: false, 
+        error: `El YAML debe contener las secciones: ${!hasSageYaml ? 'sage_yaml' : ''}${!hasCatalogs ? ', catalogs' : ''}${!hasPackages ? ', packages' : ''}` 
+      };
+    }
+    
+    // Verificar que no tiene elementos de lista (- algo) en el nivel superior
+    const lines = yamlContent.split('\n');
+    const topLevelListItems = lines.filter(line => 
+      line.trim().startsWith('-') && 
+      !line.trim().match(/^\s+-/) && // Ignorar listas anidadas
+      line.trim().length > 1
+    );
+    
+    if (topLevelListItems.length > 0) {
+      return { 
+        isValid: false, 
+        error: 'El YAML tiene un formato incorrecto. No debe tener elementos de lista (líneas que comienzan con "-") en el nivel superior.' 
+      };
+    }
+    
+    return { isValid: true };
+  };
+
   // Iniciar validación YAML
   const handleValidationStart = async () => {
     setIsValidating(true);
     setValidationError(null);
     setValidationSuccess(false);
+
+    // Primero realizar validación básica en el cliente
+    const basicValidation = validateBasicYamlStructure(formData.yaml_content);
+    if (!basicValidation.isValid) {
+      setValidationError(`Error de formato YAML: ${basicValidation.error}`);
+      setIsValidating(false);
+      return;
+    }
 
     try {
       const response = await fetch('/api/validate-yaml', {
