@@ -492,11 +492,11 @@ class MaterializationProcessor:
         
         # Modificar el nombre de la tabla si es "FULL con UUID"
         if is_full_uuid:
-            # Generar un UUID único para esta operación
-            unique_uuid = str(uuid.uuid4()).split('-')[0]
-            # Modificar el nombre de la tabla con el prefijo _UUID.
+            # Usar el ID de ejecución como identificador único
+            uuid_prefix = execution_id if execution_id else str(uuid.uuid4())
+            # Modificar el nombre de la tabla con el prefijo del ID de ejecución
             original_table_name = table_name
-            table_name = f"_UUID.{table_name}"
+            table_name = f"_{uuid_prefix}.{table_name}"
             self.logger.message(f"Usando estrategia FULL con UUID. Tabla original: {original_table_name}, Tabla con UUID: {table_name}")
             # Para el resto de la lógica, tratarla como una operación overwrite
             operation = 'overwrite'
@@ -2073,19 +2073,19 @@ class MaterializationProcessor:
         is_full_uuid = operation == 'full_uuid'
         
         if is_full_uuid and destination_path:
-            # Generar un UUID único para esta operación
-            unique_uuid = str(uuid.uuid4()).split('-')[0]
+            # Usar el ID de ejecución como identificador único
+            uuid_prefix = execution_id if execution_id else str(uuid.uuid4())
             
-            # Modificar el nombre del archivo/path con el prefijo _UUID.
+            # Modificar el nombre del archivo/path con el prefijo del ID de ejecución
             original_destination_path = destination_path
             
             # Manejar diferentes casos de rutas
             if isinstance(destination_path, str) and '/' in destination_path:
                 dir_path = os.path.dirname(destination_path)
                 file_name = os.path.basename(destination_path)
-                destination_path = f"{dir_path}/_UUID.{file_name}"
+                destination_path = f"{dir_path}/_{uuid_prefix}.{file_name}"
             elif isinstance(destination_path, str):
-                destination_path = f"_UUID.{destination_path}"
+                destination_path = f"_{uuid_prefix}.{destination_path}"
                 
             self.logger.message(f"Usando estrategia FULL con UUID. Destino original: {original_destination_path}, Destino con UUID: {destination_path}")
         
