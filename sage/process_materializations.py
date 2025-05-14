@@ -486,7 +486,21 @@ class MaterializationProcessor:
         
         # Determinar la operación (estrategia de actualización)
         operation = config.get('operation') or config.get('estrategiaActualizacion')
-        if operation == 'reemplazar':
+        
+        # Verificar si se utiliza la estrategia "FULL con UUID"
+        is_full_uuid = operation == 'full_uuid'
+        
+        # Modificar el nombre de la tabla si es "FULL con UUID"
+        if is_full_uuid:
+            # Generar un UUID único para esta operación
+            unique_uuid = str(uuid.uuid4()).split('-')[0]
+            # Modificar el nombre de la tabla con el prefijo _UUID.
+            original_table_name = table_name
+            table_name = f"_UUID.{table_name}"
+            self.logger.message(f"Usando estrategia FULL con UUID. Tabla original: {original_table_name}, Tabla con UUID: {table_name}")
+            # Para el resto de la lógica, tratarla como una operación overwrite
+            operation = 'overwrite'
+        elif operation == 'reemplazar':
             operation = 'overwrite'
         elif operation == 'agregar':
             operation = 'append'
@@ -2053,12 +2067,33 @@ class MaterializationProcessor:
             if tabla_destino:
                 # Construir un path amigable a partir del nombre de la tabla
                 destination_path = f"/data/{file_format}/{tabla_destino}"
-                self.logger.message(f"Usando ruta de destino derivada de tablaDestino: {destination_path}")
-            else:
-                raise ValueError("No se ha especificado la ruta de destino ni tablaDestino")
+        
+        # Verificar si se utiliza la estrategia "FULL con UUID"
+        operation = config.get('operation') or config.get('estrategiaActualizacion')
+        is_full_uuid = operation == 'full_uuid'
+        
+        if is_full_uuid and destination_path:
+            # Generar un UUID único para esta operación
+            unique_uuid = str(uuid.uuid4()).split('-')[0]
+            
+            # Modificar el nombre del archivo/path con el prefijo _UUID.
+            original_destination_path = destination_path
+            
+            # Manejar diferentes casos de rutas
+            if isinstance(destination_path, str) and '/' in destination_path:
+                dir_path = os.path.dirname(destination_path)
+                file_name = os.path.basename(destination_path)
+                destination_path = f"{dir_path}/_UUID.{file_name}"
+            elif isinstance(destination_path, str):
+                destination_path = f"_UUID.{destination_path}"
+                
+            self.logger.message(f"Usando estrategia FULL con UUID. Destino original: {original_destination_path}, Destino con UUID: {destination_path}")
+        
+        if not destination_path:
+            raise ValueError("No se ha especificado la ruta de destino ni tablaDestino")
             
         # Asegurar que la ruta comienza con /
-        if not destination_path.startswith('/'):
+        if isinstance(destination_path, str) and not destination_path.startswith('/'):
             destination_path = '/' + destination_path
             
         # Crear cliente según el tipo de proveedor
@@ -2067,6 +2102,10 @@ class MaterializationProcessor:
         # Verificar la partición si está configurada
         partition_columns = config.get('partition_columns', [])
         
+        # Asegurar que destination_path es una cadena
+        if not isinstance(destination_path, str):
+            destination_path = str(destination_path)
+            
         try:
             if provider_type == 's3' or provider_type == 'minio':
                 self._materialize_to_s3_compatible(df, provider_info, destination_path, file_format, partition_columns, config)

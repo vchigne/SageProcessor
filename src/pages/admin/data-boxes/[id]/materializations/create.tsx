@@ -667,6 +667,7 @@ export default function CreateMaterializationPage() {
                 className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md"
               >
                 <option value="reemplazar">Reemplazar (Truncate + Insert)</option>
+                <option value="full_uuid">FULL con UUID (Crear tabla con prefijo _UUID.)</option>
                 <option value="upsert">Upsert (Actualizar existentes, insertar nuevos)</option>
                 <option value="append">Append (Solo agregar registros nuevos)</option>
                 <option value="merge">Merge (Control detallado con condiciones)</option>
