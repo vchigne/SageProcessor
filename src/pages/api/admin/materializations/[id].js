@@ -91,11 +91,27 @@ export default async function handler(req, res) {
         return res.status(404).json({ message: 'Materialización no encontrada' });
       }
       
-      // Procedemos a eliminar
-      const deleteQuery = `DELETE FROM materializaciones WHERE id = $1`;
-      await conn.query(deleteQuery, [materializationId]);
+      // Comenzamos una transacción para garantizar la integridad
+      await conn.query('BEGIN');
       
-      return res.status(200).json({ message: 'Materialización eliminada correctamente' });
+      try {
+        // Primero eliminamos los registros relacionados en materializaciones_ejecuciones
+        const deleteRelatedQuery = `DELETE FROM materializaciones_ejecuciones WHERE materialization_id = $1`;
+        await conn.query(deleteRelatedQuery, [materializationId]);
+        
+        // Luego eliminamos la materialización
+        const deleteQuery = `DELETE FROM materializaciones WHERE id = $1`;
+        await conn.query(deleteQuery, [materializationId]);
+        
+        // Confirmamos la transacción
+        await conn.query('COMMIT');
+        
+        return res.status(200).json({ message: 'Materialización eliminada correctamente' });
+      } catch (txError) {
+        // Si hay un error, revertimos la transacción
+        await conn.query('ROLLBACK');
+        throw txError;
+      }
     } catch (error) {
       console.error('Error al eliminar materialización:', error);
       return res.status(500).json({ message: 'Error al eliminar materialización', error: error.message });
