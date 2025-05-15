@@ -48,8 +48,8 @@ SUPPORTED_OPERATIONS = {
 }
 
 # Tamaño de lote para operaciones de inserción en bases de datos
-# Aumentado de 1000 a 10000 para optimizar el rendimiento de inserciones masivas
-DATABASE_BATCH_SIZE = 10000
+# Aumentado de 1000 a 50000 para optimizar el rendimiento de inserciones masivas
+DATABASE_BATCH_SIZE = 50000
 
 class MaterializationProcessor:
     """
@@ -1188,17 +1188,37 @@ class MaterializationProcessor:
                             records = df.to_records(index=False)
                             tuples = [tuple(x) for x in records]
                             
-                            # Ejecutar inserción por lotes (batch)
-                            batch_size = DATABASE_BATCH_SIZE  # Usando tamaño de lote global
-                            for i in range(0, len(tuples), batch_size):
-                                batch = tuples[i:i+batch_size]
-                                try:
-                                    # Vamos a limpiar los datos para asegurar compatibilidad
-                                    cleaned_batch = []
+                            # Usar método COPY de PostgreSQL para carga masiva de datos
+                            # Esta es una optimización para PostgreSQL que es mucho más rápida que executemany
+                            try:
+                                # En PostgreSQL, COPY FROM es mucho más eficiente que INSERT
+                                self.logger.message(f"Usando método COPY para carga masiva de datos (mucho más rápido)")
+                                
+                                # Preparar los datos para COPY
+                                # Limpiamos los datos primero para asegurar compatibilidad
+                                from io import StringIO
+                                import csv
+                                
+                                # Crear un archivo en memoria con formato CSV
+                                buffer = StringIO()
+                                csv_writer = csv.writer(buffer, delimiter='\t', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+                                
+                                # Iterar por lotes grandes para no sobrecargar la memoria
+                                batch_size = DATABASE_BATCH_SIZE * 5  # Usando un lote más grande para COPY
+                                total_batches = (len(tuples) + batch_size - 1) // batch_size
+                                
+                                for i in range(0, len(tuples), batch_size):
+                                    # Limpiar el buffer para cada lote
+                                    buffer.truncate(0)
+                                    buffer.seek(0)
+                                    
+                                    # Preparar este lote
+                                    batch = tuples[i:i+batch_size]
+                                    
                                     for row in batch:
                                         cleaned_row = []
                                         for val in row:
-                                            # None pasa directamente
+                                            # None se representa como \N en formato COPY
                                             if val is None:
                                                 cleaned_row.append(None)
                                             # float('nan') debe convertirse a NULL
@@ -1209,42 +1229,88 @@ class MaterializationProcessor:
                                                 cleaned_row.append(str(val))
                                             else:
                                                 cleaned_row.append(val)
-                                        cleaned_batch.append(tuple(cleaned_row))
+                                        csv_writer.writerow(cleaned_row)
                                     
                                     # Log para el primer registro (para debug)
                                     if i == 0:
-                                        self.logger.message(f"Ejemplo primer registro limpiado: {cleaned_batch[0]}")
+                                        buffer.seek(0)
+                                        first_line = buffer.readline().strip()
+                                        self.logger.message(f"Ejemplo primer registro para COPY: {first_line}")
+                                        buffer.seek(0)
                                     
-                                    # Ejecutar la inserción en lote
-                                    cursor.executemany(insert_sql, cleaned_batch)
+                                    # Ejecutar COPY
+                                    schema_prefix = f'"{schema_name}".' if schema_name else ""
+                                    copy_sql = f'COPY {schema_prefix}"{table_name}" FROM STDIN WITH CSV DELIMITER E\'\\t\' QUOTE E\'"\'NULL AS \'\''
+                                    
+                                    buffer.seek(0)
+                                    cursor.copy_expert(copy_sql, buffer)
                                     conn.commit()
-                                    self.logger.message(f"Insertado lote {i//batch_size + 1} de {(len(tuples) + batch_size - 1) // batch_size}")
-                                except Exception as batch_error:
-                                    self.logger.error(f"Error procesando lote {i//batch_size + 1}: {str(batch_error)}")
-                                    conn.rollback()
                                     
-                                    # Intentar inserción registro por registro como último recurso
-                                    for j, row in enumerate(batch):
-                                        try:
-                                            # Limpiar cada fila individualmente
+                                    self.logger.message(f"Cargado lote {i//batch_size + 1} de {total_batches} con COPY ({batch_size} registros por lote)")
+                            
+                            except Exception as copy_error:
+                                self.logger.error(f"Error en carga COPY: {str(copy_error)}")
+                                conn.rollback()
+                                
+                                # Si COPY falla, volvemos al método tradicional con executemany como respaldo
+                                self.logger.message("Volviendo al método estándar de inserción por lotes como respaldo")
+                                
+                                batch_size = DATABASE_BATCH_SIZE  # Restablecer al tamaño de lote normal
+                                for i in range(0, len(tuples), batch_size):
+                                    batch = tuples[i:i+batch_size]
+                                    try:
+                                        # Vamos a limpiar los datos para asegurar compatibilidad
+                                        cleaned_batch = []
+                                        for row in batch:
                                             cleaned_row = []
                                             for val in row:
+                                                # None pasa directamente
                                                 if val is None:
                                                     cleaned_row.append(None)
+                                                # float('nan') debe convertirse a NULL
                                                 elif isinstance(val, float) and math.isnan(val):
                                                     cleaned_row.append(None)
+                                                # Para otros tipos, usar str() si no es un tipo básico
                                                 elif not isinstance(val, (int, float, str, bool, datetime.datetime, datetime.date)):
                                                     cleaned_row.append(str(val))
                                                 else:
                                                     cleaned_row.append(val)
-                                            
-                                            cursor.execute(insert_sql, tuple(cleaned_row))
-                                            conn.commit()
-                                        except Exception as row_error:
-                                            self.logger.error(f"Error insertando fila {i+j} (valores: {row}): {str(row_error)}")
-                                            conn.rollback()
-                                            # Continuar con la siguiente fila
-                                            continue
+                                            cleaned_batch.append(tuple(cleaned_row))
+                                        
+                                        # Log para el primer registro (para debug)
+                                        if i == 0:
+                                            self.logger.message(f"Ejemplo primer registro limpiado: {cleaned_batch[0]}")
+                                        
+                                        # Ejecutar la inserción en lote
+                                        cursor.executemany(insert_sql, cleaned_batch)
+                                        conn.commit()
+                                        self.logger.message(f"Insertado lote {i//batch_size + 1} de {(len(tuples) + batch_size - 1) // batch_size}")
+                                    except Exception as batch_error:
+                                        self.logger.error(f"Error procesando lote {i//batch_size + 1}: {str(batch_error)}")
+                                        conn.rollback()
+                                        
+                                        # Intentar inserción registro por registro como último recurso
+                                        for j, row in enumerate(batch):
+                                            try:
+                                                # Limpiar cada fila individualmente
+                                                cleaned_row = []
+                                                for val in row:
+                                                    if val is None:
+                                                        cleaned_row.append(None)
+                                                    elif isinstance(val, float) and math.isnan(val):
+                                                        cleaned_row.append(None)
+                                                    elif not isinstance(val, (int, float, str, bool, datetime.datetime, datetime.date)):
+                                                        cleaned_row.append(str(val))
+                                                    else:
+                                                        cleaned_row.append(val)
+                                                
+                                                cursor.execute(insert_sql, tuple(cleaned_row))
+                                                conn.commit()
+                                            except Exception as row_error:
+                                                self.logger.error(f"Error insertando fila {i+j} (valores: {row}): {str(row_error)}")
+                                                conn.rollback()
+                                                # Continuar con la siguiente fila
+                                                continue
                             
                             rows_affected = len(df)
                             self.logger.message(f"Se {'agregaron' if operation == 'append' else 'sobrescribieron'} {rows_affected} filas a la tabla {schema_name}.{table_name}")
