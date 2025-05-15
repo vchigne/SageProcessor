@@ -91,6 +91,34 @@ export default async function handler(req, res) {
         return res.status(404).json({ message: 'Materialización no encontrada' });
       }
       
+      // Verificar si hay procesos activos de materialización
+      const checkActiveQuery = `
+        SELECT * FROM materializaciones_ejecuciones 
+        WHERE materialization_id = $1 
+        AND estado = 'en_proceso'
+      `;
+      const activeResult = await conn.query(checkActiveQuery, [materializationId]);
+      
+      // Intentar matar procesos activos si existen
+      if (activeResult.rows.length > 0) {
+        console.log(`Encontrados ${activeResult.rows.length} procesos activos para materialización ${materializationId}`);
+        
+        // Marcar estos procesos como cancelados
+        const cancelQuery = `
+          UPDATE materializaciones_ejecuciones 
+          SET estado = 'cancelado', 
+              mensaje = 'Cancelado por eliminación de materialización',
+              fecha_fin = NOW()
+          WHERE materialization_id = $1 
+          AND estado = 'en_proceso'
+        `;
+        await conn.query(cancelQuery, [materializationId]);
+        
+        // Nota: Los procesos reales de Python seguirán ejecutándose en el servidor,
+        // pero al menos marcaremos su estado como cancelado en la base de datos.
+        // Idealmente deberíamos implementar un sistema para matar estos procesos.
+      }
+      
       // Comenzamos una transacción para garantizar la integridad
       await conn.query('BEGIN');
       
@@ -106,7 +134,10 @@ export default async function handler(req, res) {
         // Confirmamos la transacción
         await conn.query('COMMIT');
         
-        return res.status(200).json({ message: 'Materialización eliminada correctamente' });
+        return res.status(200).json({ 
+          message: 'Materialización eliminada correctamente',
+          activeProcessesCancelled: activeResult.rows.length > 0
+        });
       } catch (txError) {
         // Si hay un error, revertimos la transacción
         await conn.query('ROLLBACK');
