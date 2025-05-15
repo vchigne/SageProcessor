@@ -47,6 +47,10 @@ SUPPORTED_OPERATIONS = {
     'delete': 'Eliminar registros según condición'
 }
 
+# Tamaño de lote para operaciones de inserción en bases de datos
+# Aumentado de 1000 a 5000 para mejorar el rendimiento de inserciones masivas
+DATABASE_BATCH_SIZE = 5000
+
 class MaterializationProcessor:
     """
     Procesa materializaciones configuradas para un dataframe ya procesado por SAGE.
@@ -793,7 +797,7 @@ class MaterializationProcessor:
                             tuples = [tuple(x) for x in records]
                             
                             # Ejecutar inserción por lotes (batch)
-                            batch_size = 1000  # Tamaño del lote
+                            batch_size = DATABASE_BATCH_SIZE  # Usando tamaño de lote global
                             for i in range(0, len(tuples), batch_size):
                                 batch = tuples[i:i+batch_size]
                                 try:
@@ -994,7 +998,7 @@ class MaterializationProcessor:
                             self.logger.message(f"SQL Inserción: {insert_sql} (primeros valores)")
                             
                             # Ejecutar inserción por lotes (batch)
-                            batch_size = 1000  # Tamaño del lote
+                            batch_size = DATABASE_BATCH_SIZE  # Usando tamaño de lote global
                             for i in range(0, len(tuples), batch_size):
                                 batch = tuples[i:i+batch_size]
                                 try:
@@ -1185,7 +1189,7 @@ class MaterializationProcessor:
                             tuples = [tuple(x) for x in records]
                             
                             # Ejecutar inserción por lotes (batch)
-                            batch_size = 1000  # Tamaño del lote
+                            batch_size = DATABASE_BATCH_SIZE  # Usando tamaño de lote global
                             for i in range(0, len(tuples), batch_size):
                                 batch = tuples[i:i+batch_size]
                                 try:
@@ -1405,7 +1409,7 @@ class MaterializationProcessor:
                         insert_sql = f"INSERT INTO {temp_table_qualified} ({columns}) VALUES ({placeholders})"
                         
                         # Ejecutar inserción por lotes (batch)
-                        batch_size = 1000  # Tamaño del lote
+                        batch_size = DATABASE_BATCH_SIZE  # Usando tamaño de lote global
                         for i in range(0, len(tuples), batch_size):
                             batch = tuples[i:i+batch_size]
                             cursor.executemany(insert_sql, batch)
@@ -1701,7 +1705,7 @@ class MaterializationProcessor:
                 tuples = [tuple(x) for x in records]
                 
                 # Ejecutar inserción por lotes (batch)
-                batch_size = 1000  # Tamaño del lote
+                batch_size = DATABASE_BATCH_SIZE  # Usando tamaño de lote global
                 for i in range(0, len(tuples), batch_size):
                     batch = tuples[i:i+batch_size]
                     try:

@@ -5,16 +5,17 @@ channel = "stable-24_05"
 packages = ["arrow-cpp", "cacert", "glibcLocales", "libyaml", "openssl", "pkg-config", "unixODBC"]
 
 [workflows]
-runButton = "UI Dev Server"
+runButton = "Project"
 
 [[workflows.workflow]]
 name = "UI Dev Server"
-author = 39710120
+author = "agent"
 mode = "sequential"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "cd /home/runner/workspace && npx next dev -p 5000 --hostname 0.0.0.0"
+waitForPort = 5000
 
 [[workflows.workflow]]
 name = "UI Dev Server"
@@ -40,6 +41,10 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "workflow.run"
 args = "DuckDB Swarm API"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "UI Dev Server"
 
 [[workflows.workflow]]
 name = "DuckDB Swarm API"
