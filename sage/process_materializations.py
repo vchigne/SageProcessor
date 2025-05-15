@@ -48,8 +48,8 @@ SUPPORTED_OPERATIONS = {
 }
 
 # Tamaño de lote para operaciones de inserción en bases de datos
-# Aumentado de 1000 a 5000 para mejorar el rendimiento de inserciones masivas
-DATABASE_BATCH_SIZE = 5000
+# Aumentado de 1000 a 10000 para optimizar el rendimiento de inserciones masivas
+DATABASE_BATCH_SIZE = 10000
 
 class MaterializationProcessor:
     """
