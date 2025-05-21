@@ -125,7 +125,7 @@ export default function Dashboard() {
           </div>
           <div className="ml-4">
             <h2 className="text-gray-500 text-sm font-medium">Archivos Exitosos</h2>
-            <p className="text-2xl font-semibold text-green-600">{statsData?.stats?.archivos_exitosos || 0}</p>
+            <p className="text-2xl font-semibold text-green-600">{ultimasEjecucionesData?.datos?.find(item => item.estado === 'Éxito')?.cantidad || 0}</p>
           </div>
         </div>
 
@@ -149,7 +149,7 @@ export default function Dashboard() {
           </div>
           <div className="ml-4">
             <h2 className="text-gray-500 text-sm font-medium">Archivos Fallidos</h2>
-            <p className="text-2xl font-semibold text-red-600">{statsData?.stats?.archivos_fallidos || 0}</p>
+            <p className="text-2xl font-semibold text-red-600">{ultimasEjecucionesData?.datos?.find(item => item.estado === 'Fallido')?.cantidad || 0}</p>
           </div>
         </div>
       </div>
