@@ -1,8 +1,7 @@
 
 import { useQuery } from '@tanstack/react-query';
-import { Card, Text, Title, DonutChart } from '@tremor/react';
-import { BarChart } from '@tremor/react';
-import React from 'react';
+import { Card, Text, Title, DonutChart, BarChart, Color } from '@tremor/react';
+import React, { createElement } from 'react';
 import { useState, useEffect } from 'react';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import DateRangePicker from '../components/dashboard/DateRangePicker';
@@ -142,24 +141,15 @@ export default function Dashboard() {
                   <span className="text-sm text-gray-600">Exitosos</span>
                 </div>
               </div>
-              <div className="mt-2 h-72" style={{ position: 'relative' }}>
-                {/* Aplicamos estilos personalizados al SVG */}
-                <style jsx global>{`
-                  .tendencia-chart .tr-chart-grid-lines .tr-bars-0 {
-                    fill: #4f46e5 !important;
-                  }
-                  .tendencia-chart .tr-chart-grid-lines .tr-bars-1 {
-                    fill: #10b981 !important;
-                  }
-                `}</style>
-                <BarChart
-                  className="tendencia-chart"
-                  data={tendenciaData.datos}
-                  index="fecha"
-                  categories={["procesados", "exitosos"]}
-                  colors={["#4f46e5", "#10b981"]}
-                />
-              </div>
+              <BarChart
+                className="mt-2 h-72"
+                data={tendenciaData.datos}
+                index="fecha"
+                categories={["procesados", "exitosos"]}
+                colors={["indigo", "emerald"]}
+                showLegend={true}
+                valueFormatter={(number) => `${number}`}
+              />
             </div>
           ) : (
             <div className="flex justify-center items-center h-72 text-gray-500">
@@ -196,34 +186,36 @@ export default function Dashboard() {
                 })}
               </div>
               
-              <div style={{ position: 'relative', height: '250px' }}>
-                {/* Aplicamos estilos personalizados al SVG del gráfico circular */}
-                <style jsx global>{`
-                  .estado-chart .tr-donut-arc-path-0 { 
-                    fill: #10b981 !important; /* verde para éxito */
+              <DonutChart
+                className="mt-2 h-64"
+                data={ultimasEjecucionesData.datos.map(item => {
+                  const estado = item.estado.toLowerCase();
+                  let colorName = 'slate'; // Color por defecto
+                  
+                  if (estado.includes('éxito') || estado.includes('exito')) {
+                    colorName = 'emerald'; // Verde para éxito
+                  } else if (estado.includes('fallo') || estado.includes('error') || estado.includes('fallido')) {
+                    colorName = 'rose'; // Rojo para fallidos
+                  } else if (estado.includes('parcial')) {
+                    colorName = 'amber'; // Ámbar para parcial
+                  } else if (estado.includes('pendiente') || estado.includes('en_proceso')) {
+                    colorName = 'indigo'; // Índigo para pendientes
                   }
-                  .estado-chart .tr-donut-arc-path-1 { 
-                    fill: #f59e0b !important; /* ámbar para parcial */
-                  }
-                  .estado-chart .tr-donut-arc-path-2 { 
-                    fill: #ef4444 !important; /* rojo para fallido */
-                  }
-                  .estado-chart .tr-donut-arc-path-3 { 
-                    fill: #6366f1 !important; /* índigo para pendiente */
-                  }
-                  .estado-chart .tr-donut-arc-path-4 { 
-                    fill: #94a3b8 !important; /* gris por defecto */
-                  }
-                `}</style>
-                <DonutChart
-                  className="mt-2 estado-chart"
-                  data={ultimasEjecucionesData.datos}
-                  category="cantidad"
-                  index="estado"
-                  valueFormatter={(number) => number.toString()}
-                  colors={["#10b981", "#f59e0b", "#ef4444", "#6366f1", "#94a3b8"]}
-                />
-              </div>
+                  
+                  return {
+                    ...item,
+                    // Agregamos un sufijo con el color para que Tremor lo use
+                    estado: `${item.estado} (${item.cantidad})`,
+                    color: colorName
+                  };
+                })}
+                category="cantidad"
+                index="estado"
+                valueFormatter={(number) => number.toString()}
+                showLabel={true}
+                showAnimation={true}
+                colors={["emerald", "amber", "rose", "indigo", "slate"]}
+              />
             </div>
           ) : (
             <div className="flex justify-center items-center h-72 text-gray-500">
