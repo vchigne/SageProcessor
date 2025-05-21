@@ -105,25 +105,53 @@ export default function Dashboard() {
       />
 
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="space-y-2">
-          <Title>Archivos Procesados</Title>
-          <Text className="text-2xl">{statsData?.stats?.archivos_procesados || 0}</Text>
-        </Card>
+        <div className="bg-white rounded-lg shadow p-4 flex items-center">
+          <div className="flex-shrink-0 w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          </div>
+          <div className="ml-4">
+            <h2 className="text-gray-500 text-sm font-medium">Archivos Procesados</h2>
+            <p className="text-2xl font-semibold text-gray-800">{statsData?.stats?.archivos_procesados || 0}</p>
+          </div>
+        </div>
 
-        <Card className="space-y-2">
-          <Title>Tasa de Éxito</Title>
-          <Text className="text-2xl">{statsData?.stats?.tasa_exito || 0}%</Text>
-        </Card>
+        <div className="bg-white rounded-lg shadow p-4 flex items-center">
+          <div className="flex-shrink-0 w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <div className="ml-4">
+            <h2 className="text-gray-500 text-sm font-medium">Archivos Exitosos</h2>
+            <p className="text-2xl font-semibold text-green-600">{ultimasEjecucionesData?.datos?.find(item => item.estado.toLowerCase().includes('éxito') || item.estado.toLowerCase().includes('exito'))?.cantidad || 0}</p>
+          </div>
+        </div>
 
-        <Card className="space-y-2">
-          <Title>Archivos Pendientes</Title>
-          <Text className="text-2xl">{statsData?.stats?.archivos_pendientes || 0}</Text>
-        </Card>
+        <div className="bg-white rounded-lg shadow p-4 flex items-center">
+          <div className="flex-shrink-0 w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <div className="ml-4">
+            <h2 className="text-gray-500 text-sm font-medium">Archivos Pendientes</h2>
+            <p className="text-2xl font-semibold text-amber-600">{statsData?.stats?.archivos_pendientes || 0}</p>
+          </div>
+        </div>
 
-        <Card className="space-y-2">
-          <Title>Casillas por Vencer</Title>
-          <Text className="text-2xl">{statsData?.stats?.casillas_por_vencer || 0}</Text>
-        </Card>
+        <div className="bg-white rounded-lg shadow p-4 flex items-center">
+          <div className="flex-shrink-0 w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <div className="ml-4">
+            <h2 className="text-gray-500 text-sm font-medium">Archivos Fallidos</h2>
+            <p className="text-2xl font-semibold text-red-600">{ultimasEjecucionesData?.datos?.find(item => item.estado.toLowerCase().includes('fallido') || item.estado.toLowerCase().includes('fallo') || item.estado.toLowerCase().includes('error'))?.cantidad || 0}</p>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
