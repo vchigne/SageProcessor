@@ -4,6 +4,17 @@ export default async function handler(req, res) {
   try {
     const conn = pool;
     
+    // Obtener parámetros de filtro de fecha
+    const { fechaInicio, fechaFin, dias = '30' } = req.query;
+    
+    let whereClause;
+    if (fechaInicio && fechaFin) {
+      whereClause = `WHERE fecha_inicio BETWEEN '${fechaInicio}' AND '${fechaFin}'`;
+    } else {
+      // Usar el número de días proporcionado o predeterminado a 30
+      whereClause = `WHERE fecha_inicio > NOW() - INTERVAL '${parseInt(dias)} days'`;
+    }
+    
     // Consulta para obtener las últimas ejecuciones agrupadas por estado
     const query = `
       SELECT 
@@ -11,13 +22,14 @@ export default async function handler(req, res) {
         COUNT(*) as cantidad
       FROM 
         ejecuciones_yaml
-      WHERE 
-        fecha_inicio > NOW() - INTERVAL '30 days'
+      ${whereClause}
       GROUP BY 
         estado
       ORDER BY 
         cantidad DESC
     `;
+    
+    console.log('Consulta de últimas ejecuciones:', query);
     
     const result = await conn.query(query);
     
@@ -36,6 +48,51 @@ export default async function handler(req, res) {
       );
     }
 
+    // Agregar información de diagnóstico
+    const incluirDiagnostico = req.query.diagnostico === 'true';
+    if (incluirDiagnostico) {
+      // Verificar si hay registros en la tabla
+      const countResult = await conn.query('SELECT COUNT(*) FROM ejecuciones_yaml');
+      const totalRegistros = parseInt(countResult.rows[0].count);
+      
+      // Obtener todos los estados disponibles
+      const estadosResult = await conn.query('SELECT DISTINCT estado FROM ejecuciones_yaml');
+      const estados = estadosResult.rows.map(row => row.estado);
+      
+      // Obtener el rango de fechas disponible
+      const fechasResult = await conn.query(`
+        SELECT 
+          TO_CHAR(MIN(fecha_inicio), 'YYYY-MM-DD') as fecha_min, 
+          TO_CHAR(MAX(fecha_inicio), 'YYYY-MM-DD') as fecha_max 
+        FROM ejecuciones_yaml
+      `);
+      
+      // Consulta para listar todos los registros (limitado a 100 para diagnóstico)
+      const registrosResult = await conn.query(`
+        SELECT 
+          id, 
+          estado, 
+          TO_CHAR(fecha_inicio, 'YYYY-MM-DD HH24:MI:SS') as fecha,
+          id_casilla
+        FROM 
+          ejecuciones_yaml 
+        ORDER BY 
+          fecha_inicio DESC 
+        LIMIT 100
+      `);
+      
+      const diagnostico = {
+        total_registros: totalRegistros,
+        estados_disponibles: estados,
+        rango_fechas: fechasResult.rows[0],
+        ultimos_registros: registrosResult.rows,
+        dias_solicitados: parseInt(dias)
+      };
+      
+      res.status(200).json({ datos, diagnostico });
+      return;
+    }
+
     res.status(200).json({ datos });
   } catch (error) {
     console.error('Error al obtener últimas ejecuciones del dashboard:', error);
@@ -46,7 +103,8 @@ export default async function handler(req, res) {
         { estado: 'exito', cantidad: 0 },
         { estado: 'error', cantidad: 0 },
         { estado: 'pendiente', cantidad: 0 }
-      ] 
+      ],
+      error: error.message
     });
   }
 }
