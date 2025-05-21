@@ -66,8 +66,13 @@ export default function Dashboard() {
   // Manejador para el cambio de rango de fechas
   const handleDateRangeChange = (newDateRange) => {
     setDateRange(newDateRange);
-    // No necesitamos llamar a refetch manualmente porque useQuery se encargará de ello
-    // cuando cambie la clave de consulta (queryKey)
+    // No necesitamos llamar a refetch manualmente porque useQuery se encargará de ello 
+    // cuando cambie la clave de consulta (queryKey), pero mostramos indicador de carga
+    document.getElementById('loading-overlay')?.classList.remove('hidden');
+    // Ocultamos el overlay después de un tiempo para asegurar que los datos se hayan cargado
+    setTimeout(() => {
+      document.getElementById('loading-overlay')?.classList.add('hidden');
+    }, 300);
   };
 
   if (loadingStats || loadingTendencia || loadingEjecuciones) {
@@ -76,6 +81,14 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
+      {/* Overlay de carga */}
+      <div id="loading-overlay" className="hidden fixed inset-0 bg-white bg-opacity-70 z-50 flex items-center justify-center">
+        <div className="flex flex-col items-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+          <span className="mt-2 text-indigo-600">Actualizando dashboard...</span>
+        </div>
+      </div>
+      
       <div className="flex justify-between items-center">
         <Title>Dashboard SAGE</Title>
         <div className="text-sm text-gray-500">
@@ -121,7 +134,7 @@ export default function Dashboard() {
               data={tendenciaData.datos}
               index="fecha"
               categories={["procesados", "exitosos"]}
-              colors={["blue", "green"]}
+              colors={["indigo", "emerald"]}
             />
           ) : (
             <div className="flex justify-center items-center h-72 text-gray-500">
@@ -139,7 +152,7 @@ export default function Dashboard() {
               category="cantidad"
               index="estado"
               valueFormatter={(number) => number.toString()}
-              colors={["green", "red", "yellow"]}
+              colors={["emerald", "rose", "amber"]}
             />
           ) : (
             <div className="flex justify-center items-center h-72 text-gray-500">
