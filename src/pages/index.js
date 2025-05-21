@@ -113,7 +113,7 @@ export default function Dashboard() {
           </div>
           <div className="ml-4">
             <h2 className="text-gray-500 text-sm font-medium">Archivos Procesados</h2>
-            <p className="text-2xl font-semibold text-gray-800">{statsData?.stats?.archivos_procesados || 0}</p>
+            <p className="text-2xl font-semibold text-gray-800">{ultimasEjecucionesData?.datos?.reduce((sum, item) => sum + item.cantidad, 0) || 0}</p>
           </div>
         </div>
 
@@ -136,8 +136,8 @@ export default function Dashboard() {
             </svg>
           </div>
           <div className="ml-4">
-            <h2 className="text-gray-500 text-sm font-medium">Archivos Pendientes</h2>
-            <p className="text-2xl font-semibold text-amber-600">{statsData?.stats?.archivos_pendientes || 0}</p>
+            <h2 className="text-gray-500 text-sm font-medium">Archivos Parciales</h2>
+            <p className="text-2xl font-semibold text-amber-600">{ultimasEjecucionesData?.datos?.find(item => item.estado === 'Parcial')?.cantidad || 0}</p>
           </div>
         </div>
 
