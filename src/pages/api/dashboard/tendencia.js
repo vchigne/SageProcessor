@@ -20,7 +20,7 @@ export default async function handler(req, res) {
       SELECT 
         TO_CHAR(DATE_TRUNC('day', fecha_ejecucion), 'DD/MM') as fecha,
         COUNT(*) as procesados,
-        COUNT(CASE WHEN estado = 'exito' THEN 1 END) as exitosos
+        COUNT(CASE WHEN estado = 'Éxito' THEN 1 END) as exitosos
       FROM 
         ejecuciones_yaml
       ${whereClause}

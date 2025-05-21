@@ -12,8 +12,8 @@ export default async function handler(req, res) {
     
     // Generar cláusulas WHERE para subqueries
     const whereExito = fechaInicio && fechaFin ? 
-      `WHERE estado = 'exito' AND fecha_ejecucion BETWEEN '${fechaInicio}' AND '${fechaFin}'` : 
-      `WHERE estado = 'exito'`;
+      `WHERE estado = 'Éxito' AND fecha_ejecucion BETWEEN '${fechaInicio}' AND '${fechaFin}'` : 
+      `WHERE estado = 'Éxito'`;
       
     const wherePendientes = fechaInicio && fechaFin ? 
       `WHERE estado IN ('pendiente', 'en_proceso') AND fecha_ejecucion BETWEEN '${fechaInicio}' AND '${fechaFin}'` : 
