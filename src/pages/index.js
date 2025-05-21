@@ -129,13 +129,25 @@ export default function Dashboard() {
         <Card>
           <Title>Tendencia de Procesamiento</Title>
           {tendenciaData?.datos && tendenciaData?.datos.length > 0 ? (
-            <BarChart
-              className="mt-4 h-72"
-              data={tendenciaData.datos}
-              index="fecha"
-              categories={["procesados", "exitosos"]}
-              colors={["#4f46e5", "#10b981"]}
-            />
+            <div>
+              <div className="mt-4 flex items-center gap-3 justify-end">
+                <div className="flex items-center gap-1">
+                  <div style={{ width: 12, height: 12, borderRadius: '50%', backgroundColor: '#4f46e5' }}></div>
+                  <span className="text-sm text-gray-600">Procesados</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div style={{ width: 12, height: 12, borderRadius: '50%', backgroundColor: '#10b981' }}></div>
+                  <span className="text-sm text-gray-600">Exitosos</span>
+                </div>
+              </div>
+              <BarChart
+                className="mt-2 h-72"
+                data={tendenciaData.datos}
+                index="fecha"
+                categories={["procesados", "exitosos"]}
+                colors={["#4f46e5", "#10b981"]}
+              />
+            </div>
           ) : (
             <div className="flex justify-center items-center h-72 text-gray-500">
               No hay datos para el período seleccionado
@@ -146,28 +158,61 @@ export default function Dashboard() {
         <Card>
           <Title>Estado de Últimas Ejecuciones</Title>
           {ultimasEjecucionesData?.datos && ultimasEjecucionesData?.datos.some(item => item.cantidad > 0) ? (
-            <DonutChart
-              className="mt-4 h-72"
-              data={ultimasEjecucionesData.datos}
-              category="cantidad"
-              index="estado"
-              valueFormatter={(number) => number.toString()}
-              colors={
-                ultimasEjecucionesData.datos.map(item => {
+            <div>
+              <div className="mt-4 flex flex-wrap gap-3 justify-center">
+                {ultimasEjecucionesData.datos.map((item, index) => {
+                  let color = '#94a3b8'; // Color gris por defecto
+                  
                   // Asignar colores según el tipo de estado
                   if (item.estado.toLowerCase().includes('éxito') || item.estado.toLowerCase().includes('exito')) {
-                    return '#10b981'; // verde para éxito
+                    color = '#10b981'; // verde para éxito
                   } else if (item.estado.toLowerCase().includes('fallo') || item.estado.toLowerCase().includes('error') || item.estado.toLowerCase().includes('fallido')) {
-                    return '#ef4444'; // rojo para fallido/error
+                    color = '#ef4444'; // rojo para fallido/error
                   } else if (item.estado.toLowerCase().includes('parcial')) {
-                    return '#f59e0b'; // ámbar para parcial
+                    color = '#f59e0b'; // ámbar para parcial
                   } else if (item.estado.toLowerCase().includes('pendiente') || item.estado.toLowerCase().includes('en_proceso')) {
-                    return '#6366f1'; // índigo para pendiente/en_proceso
+                    color = '#6366f1'; // índigo para pendiente/en_proceso
                   }
-                  return '#94a3b8'; // gris por defecto
-                })
-              }
-            />
+                  
+                  return (
+                    <div key={index} className="flex items-center gap-1">
+                      <div style={{ width: 12, height: 12, borderRadius: '50%', backgroundColor: color }}></div>
+                      <span className="text-sm text-gray-600">{item.estado} ({item.cantidad})</span>
+                    </div>
+                  );
+                })}
+              </div>
+              
+              <div style={{ position: 'relative', height: '250px' }}>
+                <DonutChart
+                  className="mt-2"
+                  data={ultimasEjecucionesData.datos.map((item, index) => {
+                    let color = '#94a3b8'; // Color gris por defecto
+                    
+                    // Asignar colores según el tipo de estado
+                    if (item.estado.toLowerCase().includes('éxito') || item.estado.toLowerCase().includes('exito')) {
+                      color = '#10b981'; // verde para éxito
+                    } else if (item.estado.toLowerCase().includes('fallo') || item.estado.toLowerCase().includes('error') || item.estado.toLowerCase().includes('fallido')) {
+                      color = '#ef4444'; // rojo para fallido/error
+                    } else if (item.estado.toLowerCase().includes('parcial')) {
+                      color = '#f59e0b'; // ámbar para parcial
+                    } else if (item.estado.toLowerCase().includes('pendiente') || item.estado.toLowerCase().includes('en_proceso')) {
+                      color = '#6366f1'; // índigo para pendiente/en_proceso
+                    }
+                    
+                    // Devolvemos el mismo objeto pero añadiendo una propiedad de color personalizada
+                    return {
+                      ...item,
+                      color: color
+                    };
+                  })}
+                  category="cantidad"
+                  index="estado"
+                  valueFormatter={(number) => number.toString()}
+                  colors={["#10b981", "#ef4444", "#f59e0b", "#6366f1", "#94a3b8"]}
+                />
+              </div>
+            </div>
           ) : (
             <div className="flex justify-center items-center h-72 text-gray-500">
               No hay datos para el período seleccionado
