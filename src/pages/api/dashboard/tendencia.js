@@ -1,42 +1,39 @@
-export default function handler(req, res) {
-  // Datos de ejemplo para la tendencia de procesamiento
-  const datos = [
-    {
-      fecha: '01/05',
-      procesados: 78,
-      exitosos: 72
-    },
-    {
-      fecha: '02/05',
-      procesados: 92,
-      exitosos: 85
-    },
-    {
-      fecha: '03/05',
-      procesados: 63,
-      exitosos: 59
-    },
-    {
-      fecha: '04/05',
-      procesados: 105,
-      exitosos: 98
-    },
-    {
-      fecha: '05/05',
-      procesados: 87,
-      exitosos: 80
-    },
-    {
-      fecha: '06/05',
-      procesados: 115,
-      exitosos: 107
-    },
-    {
-      fecha: '07/05',
-      procesados: 94,
-      exitosos: 91
-    }
-  ];
+import { pool } from '../../../utils/db';
 
-  res.status(200).json({ datos });
+export default async function handler(req, res) {
+  try {
+    const conn = pool;
+    
+    // Consulta para obtener la tendencia de procesamiento por día de los últimos 7 días
+    const query = `
+      SELECT 
+        TO_CHAR(DATE_TRUNC('day', fecha_inicio), 'DD/MM') as fecha,
+        COUNT(*) as procesados,
+        COUNT(CASE WHEN estado = 'exito' THEN 1 END) as exitosos
+      FROM 
+        yaml_executions
+      WHERE 
+        fecha_inicio > NOW() - INTERVAL '7 days'
+      GROUP BY 
+        DATE_TRUNC('day', fecha_inicio)
+      ORDER BY 
+        DATE_TRUNC('day', fecha_inicio)
+    `;
+    
+    const result = await conn.query(query);
+    
+    // Formatear los datos para el gráfico
+    const datos = result.rows.map(row => ({
+      fecha: row.fecha,
+      procesados: parseInt(row.procesados) || 0,
+      exitosos: parseInt(row.exitosos) || 0
+    }));
+
+    res.status(200).json({ datos });
+  } catch (error) {
+    console.error('Error al obtener tendencia del dashboard:', error);
+    
+    // En caso de error, devolver un array vacío para evitar ruptura del dashboard
+    res.status(200).json({ datos: [] });
+  }
 }
