@@ -36,11 +36,13 @@ export default async function handler(req, res) {
     
     const result = await conn.query(query);
     
-    // Formatear los datos para el gráfico
+    // Formatear los datos para el gráfico incluyendo parciales y fallidos
     const datos = result.rows.map(row => ({
       fecha: row.fecha,
       procesados: parseInt(row.procesados) || 0,
-      exitosos: parseInt(row.exitosos) || 0
+      exitosos: parseInt(row.exitosos) || 0,
+      parciales: parseInt(row.parciales) || 0,
+      fallidos: parseInt(row.fallidos) || 0
     }));
 
     // Agregar información de diagnóstico

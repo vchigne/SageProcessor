@@ -159,24 +159,7 @@ export default function Dashboard() {
           <Title>Tendencia de Procesamiento</Title>
           {tendenciaData?.datos && tendenciaData?.datos.length > 0 ? (
             <div className="mt-4">
-              <div className="flex flex-wrap gap-4 mb-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 bg-blue-600 rounded-sm"></div>
-                  <span className="text-sm font-medium">Procesados</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 bg-green-600 rounded-sm"></div>
-                  <span className="text-sm font-medium">Exitosos</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 bg-amber-500 rounded-sm"></div>
-                  <span className="text-sm font-medium">Parciales</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 bg-red-600 rounded-sm"></div>
-                  <span className="text-sm font-medium">Fallidos</span>
-                </div>
-              </div>
+
               
               <div className="overflow-x-auto h-72">
                 <table className="min-w-full divide-y divide-gray-200">
