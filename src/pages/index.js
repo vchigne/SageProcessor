@@ -1,3 +1,4 @@
+
 import { useQuery } from '@tanstack/react-query';
 import { Card, Text, Title, BarChart, DonutChart } from '@tremor/react';
 import { useState, useEffect } from 'react';
@@ -7,7 +8,6 @@ export default function Dashboard() {
   const [chartWidth, setChartWidth] = useState(0);
 
   useEffect(() => {
-    // Actualizar ancho al montar y en cambios de ventana
     function updateWidth() {
       setChartWidth(window.innerWidth > 1024 ? window.innerWidth * 0.4 : window.innerWidth * 0.8);
     }
@@ -35,7 +35,7 @@ export default function Dashboard() {
   });
 
   const { data: ultimasEjecucionesData, isLoading: loadingEjecuciones } = useQuery({
-    queryKey: ['dashboardUltimasEjecuciones'],
+    queryKey: ['dashboardUltimasEjecuciones'], 
     queryFn: async () => {
       const res = await fetch('/api/dashboard/ultimas-ejecuciones');
       if (!res.ok) throw new Error('Error al cargar últimas ejecuciones');
@@ -51,7 +51,6 @@ export default function Dashboard() {
     <div className="space-y-6">
       <Title>Dashboard SAGE</Title>
 
-      {/* Estadísticas Principales */}
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
         <Card className="space-y-2">
           <Title>Archivos Procesados</Title>
@@ -74,7 +73,6 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      {/* Gráficos */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card>
           <Title>Tendencia de Procesamiento</Title>
