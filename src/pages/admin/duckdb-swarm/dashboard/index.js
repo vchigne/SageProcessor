@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { 
   ServerIcon, 
@@ -24,16 +25,14 @@ const DuckDBDashboard = () => {
         const response = await fetch('/api/admin/duckdb-swarm/servers');
         if (response.ok) {
           const data = await response.json();
-          // La API devuelve un objeto con una propiedad 'servers'
           const serversList = data.servers || [];
           setServers(serversList);
           
-          // Calcular estadísticas
           const activeServers = serversList.filter(server => server.status === 'active').length;
           const totalDatabases = serversList.reduce((acc, server) => acc + (server.databases?.length || 0), 0);
           const storageTotalGB = serversList.reduce((acc, server) => {
             return acc + (server.databases?.reduce((dbAcc, db) => dbAcc + (db.size_mb || 0), 0) || 0);
-          }, 0) / 1024; // Convertir a GB
+          }, 0) / 1024;
           
           setStats({
             totalServers: serversList.length,
@@ -50,7 +49,6 @@ const DuckDBDashboard = () => {
     };
 
     fetchServers();
-    // Refrescar cada 30 segundos
     const interval = setInterval(fetchServers, 30000);
     return () => clearInterval(interval);
   }, []);
@@ -59,7 +57,6 @@ const DuckDBDashboard = () => {
     <div className="container mx-auto px-4 py-8">
       <h1 className="text-2xl font-bold mb-6">DuckDB Swarm Dashboard</h1>
       
-      {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <StatCard 
           title="Servidores Totales" 
@@ -183,7 +180,6 @@ const DuckDBDashboard = () => {
   );
 };
 
-// Componente de tarjeta estadística
 const StatCard = ({ title, value, icon }) => {
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
