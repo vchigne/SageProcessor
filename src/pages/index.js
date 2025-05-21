@@ -130,26 +130,71 @@ export default function Dashboard() {
         <Card>
           <Title>Tendencia de Procesamiento</Title>
           {tendenciaData?.datos && tendenciaData?.datos.length > 0 ? (
-            <div>
-              <div className="mt-4 flex items-center gap-3 justify-end">
-                <div className="flex items-center gap-1">
-                  <div style={{ width: 12, height: 12, borderRadius: '50%', backgroundColor: '#4f46e5' }}></div>
-                  <span className="text-sm text-gray-600">Procesados</span>
+            <div className="mt-4">
+              <div className="flex justify-between items-center mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 bg-blue-600 rounded-sm"></div>
+                  <span className="text-sm font-medium">Procesados</span>
                 </div>
-                <div className="flex items-center gap-1">
-                  <div style={{ width: 12, height: 12, borderRadius: '50%', backgroundColor: '#10b981' }}></div>
-                  <span className="text-sm text-gray-600">Exitosos</span>
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 bg-green-500 rounded-sm"></div>
+                  <span className="text-sm font-medium">Exitosos</span>
                 </div>
               </div>
-              <BarChart
-                className="mt-2 h-72"
-                data={tendenciaData.datos}
-                index="fecha"
-                categories={["procesados", "exitosos"]}
-                colors={["indigo", "emerald"]}
-                showLegend={true}
-                valueFormatter={(number) => `${number}`}
-              />
+              
+              <div className="overflow-x-auto h-72">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Fecha
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Procesados
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Exitosos
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Tasa de Éxito
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {tendenciaData.datos.map((item, index) => {
+                      const tasaExito = item.procesados > 0 ? Math.round((item.exitosos / item.procesados) * 100) : 0;
+                      return (
+                        <tr key={index}>
+                          <td className="px-6 py-2 whitespace-nowrap text-sm font-medium text-gray-900">
+                            {item.fecha}
+                          </td>
+                          <td className="px-6 py-2 whitespace-nowrap text-sm text-gray-900">
+                            <div className="flex items-center">
+                              <div className="w-12 h-2 bg-blue-600 rounded-sm mr-2" style={{ width: `${Math.min(item.procesados * 3, 100)}px` }}></div>
+                              {item.procesados}
+                            </div>
+                          </td>
+                          <td className="px-6 py-2 whitespace-nowrap text-sm text-gray-900">
+                            <div className="flex items-center">
+                              <div className="w-12 h-2 bg-green-500 rounded-sm mr-2" style={{ width: `${Math.min(item.exitosos * 3, 100)}px` }}></div>
+                              {item.exitosos}
+                            </div>
+                          </td>
+                          <td className="px-6 py-2 whitespace-nowrap text-sm text-gray-900">
+                            <span className={
+                              tasaExito > 80 ? "text-green-600 font-medium" : 
+                              tasaExito > 50 ? "text-amber-600 font-medium" : 
+                              "text-red-600 font-medium"
+                            }>
+                              {tasaExito}%
+                            </span>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           ) : (
             <div className="flex justify-center items-center h-72 text-gray-500">
@@ -161,61 +206,58 @@ export default function Dashboard() {
         <Card>
           <Title>Estado de Últimas Ejecuciones</Title>
           {ultimasEjecucionesData?.datos && ultimasEjecucionesData?.datos.some(item => item.cantidad > 0) ? (
-            <div>
-              <div className="mt-4 flex flex-wrap gap-3 justify-center">
+            <div className="mt-4">
+              <div className="grid grid-cols-1 gap-4 mb-4">
                 {ultimasEjecucionesData.datos.map((item, index) => {
-                  let color = '#94a3b8'; // Color gris por defecto
+                  // Determinar color según el estado
+                  let bgColor = 'bg-gray-500';
+                  let textColor = 'text-gray-800';
                   
-                  // Asignar colores según el tipo de estado
-                  if (item.estado.toLowerCase().includes('éxito') || item.estado.toLowerCase().includes('exito')) {
-                    color = '#10b981'; // verde para éxito
-                  } else if (item.estado.toLowerCase().includes('fallo') || item.estado.toLowerCase().includes('error') || item.estado.toLowerCase().includes('fallido')) {
-                    color = '#ef4444'; // rojo para fallido/error
-                  } else if (item.estado.toLowerCase().includes('parcial')) {
-                    color = '#f59e0b'; // ámbar para parcial
-                  } else if (item.estado.toLowerCase().includes('pendiente') || item.estado.toLowerCase().includes('en_proceso')) {
-                    color = '#6366f1'; // índigo para pendiente/en_proceso
+                  const estado = item.estado.toLowerCase();
+                  if (estado.includes('éxito') || estado.includes('exito')) {
+                    bgColor = 'bg-green-500';
+                    textColor = 'text-green-800';
+                  } else if (estado.includes('fallo') || estado.includes('error') || estado.includes('fallido')) {
+                    bgColor = 'bg-red-500';
+                    textColor = 'text-red-800';
+                  } else if (estado.includes('parcial')) {
+                    bgColor = 'bg-amber-500';
+                    textColor = 'text-amber-800';
+                  } else if (estado.includes('pendiente') || estado.includes('en_proceso')) {
+                    bgColor = 'bg-indigo-500';
+                    textColor = 'text-indigo-800';
                   }
                   
+                  // Calcular porcentaje
+                  const total = ultimasEjecucionesData.datos.reduce((sum, item) => sum + item.cantidad, 0);
+                  const porcentaje = Math.round((item.cantidad / total) * 100);
+                  
                   return (
-                    <div key={index} className="flex items-center gap-1">
-                      <div style={{ width: 12, height: 12, borderRadius: '50%', backgroundColor: color }}></div>
-                      <span className="text-sm text-gray-600">{item.estado} ({item.cantidad})</span>
+                    <div key={index} className="bg-white rounded-lg p-4 shadow-sm">
+                      <div className="flex justify-between items-center mb-2">
+                        <div className="flex items-center">
+                          <div className={`w-4 h-4 ${bgColor} rounded-full mr-2`}></div>
+                          <span className="font-medium">{item.estado}</span>
+                        </div>
+                        <span className={`font-bold ${textColor}`}>{item.cantidad}</span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div 
+                          className={`${bgColor} h-2 rounded-full`} 
+                          style={{ width: `${porcentaje}%` }}
+                        ></div>
+                      </div>
+                      <div className="text-right text-xs text-gray-500 mt-1">
+                        {porcentaje}% del total
+                      </div>
                     </div>
                   );
                 })}
               </div>
               
-              <DonutChart
-                className="mt-2 h-64"
-                data={ultimasEjecucionesData.datos.map(item => {
-                  const estado = item.estado.toLowerCase();
-                  let colorName = 'slate'; // Color por defecto
-                  
-                  if (estado.includes('éxito') || estado.includes('exito')) {
-                    colorName = 'emerald'; // Verde para éxito
-                  } else if (estado.includes('fallo') || estado.includes('error') || estado.includes('fallido')) {
-                    colorName = 'rose'; // Rojo para fallidos
-                  } else if (estado.includes('parcial')) {
-                    colorName = 'amber'; // Ámbar para parcial
-                  } else if (estado.includes('pendiente') || estado.includes('en_proceso')) {
-                    colorName = 'indigo'; // Índigo para pendientes
-                  }
-                  
-                  return {
-                    ...item,
-                    // Agregamos un sufijo con el color para que Tremor lo use
-                    estado: `${item.estado} (${item.cantidad})`,
-                    color: colorName
-                  };
-                })}
-                category="cantidad"
-                index="estado"
-                valueFormatter={(number) => number.toString()}
-                showLabel={true}
-                showAnimation={true}
-                colors={["emerald", "amber", "rose", "indigo", "slate"]}
-              />
+              <div className="mt-4 text-sm text-center text-gray-600">
+                Total de ejecuciones: {ultimasEjecucionesData.datos.reduce((sum, item) => sum + item.cantidad, 0)}
+              </div>
             </div>
           ) : (
             <div className="flex justify-center items-center h-72 text-gray-500">
