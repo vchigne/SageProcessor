@@ -10,7 +10,7 @@ export default async function handler(req, res) {
         estado,
         COUNT(*) as cantidad
       FROM 
-        yaml_executions
+        ejecuciones_yaml
       WHERE 
         fecha_inicio > NOW() - INTERVAL '30 days'
       GROUP BY 

@@ -8,11 +8,11 @@ export default async function handler(req, res) {
     const query = `
       SELECT
         COUNT(*) AS archivos_procesados,
-        (SELECT COUNT(*) FROM yaml_executions WHERE estado = 'exito') AS archivos_exitosos,
-        (SELECT COUNT(*) FROM yaml_executions WHERE estado IN ('pendiente', 'en_proceso')) AS archivos_pendientes,
+        (SELECT COUNT(*) FROM ejecuciones_yaml WHERE estado = 'exito') AS archivos_exitosos,
+        (SELECT COUNT(*) FROM ejecuciones_yaml WHERE estado IN ('pendiente', 'en_proceso')) AS archivos_pendientes,
         (SELECT COUNT(*) FROM casillas WHERE fecha_vencimiento < NOW() + INTERVAL '30 days') AS casillas_por_vencer
       FROM 
-        yaml_executions
+        ejecuciones_yaml
     `;
     
     const result = await conn.query(query);

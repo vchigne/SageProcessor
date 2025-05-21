@@ -11,7 +11,7 @@ export default async function handler(req, res) {
         COUNT(*) as procesados,
         COUNT(CASE WHEN estado = 'exito' THEN 1 END) as exitosos
       FROM 
-        yaml_executions
+        ejecuciones_yaml
       WHERE 
         fecha_inicio > NOW() - INTERVAL '7 days'
       GROUP BY 
