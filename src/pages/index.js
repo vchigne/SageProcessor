@@ -194,6 +194,11 @@ export default function Dashboard() {
                           </td>
                           <td className="px-6 py-2 whitespace-nowrap text-sm text-gray-900">
                             <span className="text-green-600 font-medium">{item.exitosos}</span>
+                            {item.procesados > 0 && (
+                              <span className="ml-2 text-xs text-green-700">
+                                ({Math.round((item.exitosos / item.procesados) * 100)}%)
+                              </span>
+                            )}
                           </td>
                           <td className="px-6 py-2 whitespace-nowrap text-sm text-gray-900">
                             <span className="text-amber-500 font-medium">{item.parciales || 0}</span>
