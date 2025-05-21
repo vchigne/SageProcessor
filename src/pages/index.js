@@ -134,7 +134,7 @@ export default function Dashboard() {
               data={tendenciaData.datos}
               index="fecha"
               categories={["procesados", "exitosos"]}
-              colors={["indigo", "emerald"]}
+              colors={["#4f46e5", "#10b981"]}
             />
           ) : (
             <div className="flex justify-center items-center h-72 text-gray-500">
@@ -152,7 +152,21 @@ export default function Dashboard() {
               category="cantidad"
               index="estado"
               valueFormatter={(number) => number.toString()}
-              colors={["emerald", "rose", "amber"]}
+              colors={
+                ultimasEjecucionesData.datos.map(item => {
+                  // Asignar colores según el tipo de estado
+                  if (item.estado.toLowerCase().includes('éxito') || item.estado.toLowerCase().includes('exito')) {
+                    return '#10b981'; // verde para éxito
+                  } else if (item.estado.toLowerCase().includes('fallo') || item.estado.toLowerCase().includes('error') || item.estado.toLowerCase().includes('fallido')) {
+                    return '#ef4444'; // rojo para fallido/error
+                  } else if (item.estado.toLowerCase().includes('parcial')) {
+                    return '#f59e0b'; // ámbar para parcial
+                  } else if (item.estado.toLowerCase().includes('pendiente') || item.estado.toLowerCase().includes('en_proceso')) {
+                    return '#6366f1'; // índigo para pendiente/en_proceso
+                  }
+                  return '#94a3b8'; // gris por defecto
+                })
+              }
             />
           ) : (
             <div className="flex justify-center items-center h-72 text-gray-500">
