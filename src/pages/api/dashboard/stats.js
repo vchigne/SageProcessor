@@ -7,25 +7,25 @@ export default async function handler(req, res) {
     // Obtener parámetros de filtro de fecha
     const { fechaInicio, fechaFin } = req.query;
     const whereClause = fechaInicio && fechaFin ? 
-      `WHERE fecha_inicio BETWEEN '${fechaInicio}' AND '${fechaFin}'` : 
+      `WHERE fecha_ejecucion BETWEEN '${fechaInicio}' AND '${fechaFin}'` : 
       '';
     
     // Generar cláusulas WHERE para subqueries
     const whereExito = fechaInicio && fechaFin ? 
-      `WHERE estado = 'exito' AND fecha_inicio BETWEEN '${fechaInicio}' AND '${fechaFin}'` : 
+      `WHERE estado = 'exito' AND fecha_ejecucion BETWEEN '${fechaInicio}' AND '${fechaFin}'` : 
       `WHERE estado = 'exito'`;
       
     const wherePendientes = fechaInicio && fechaFin ? 
-      `WHERE estado IN ('pendiente', 'en_proceso') AND fecha_inicio BETWEEN '${fechaInicio}' AND '${fechaFin}'` : 
+      `WHERE estado IN ('pendiente', 'en_proceso') AND fecha_ejecucion BETWEEN '${fechaInicio}' AND '${fechaFin}'` : 
       `WHERE estado IN ('pendiente', 'en_proceso')`;
     
-    // Consulta para obtener estadísticas reales
+    // Consulta para obtener estadísticas reales (ignoramos la consulta de casillas por vencer ya que no tenemos la tabla/columna)
     const query = `
       SELECT
         COUNT(*) AS archivos_procesados,
         (SELECT COUNT(*) FROM ejecuciones_yaml ${whereExito}) AS archivos_exitosos,
         (SELECT COUNT(*) FROM ejecuciones_yaml ${wherePendientes}) AS archivos_pendientes,
-        (SELECT COUNT(*) FROM casillas WHERE fecha_vencimiento < NOW() + INTERVAL '30 days') AS casillas_por_vencer
+        0 AS casillas_por_vencer
       FROM 
         ejecuciones_yaml
         ${whereClause}
@@ -62,15 +62,24 @@ export default async function handler(req, res) {
       // Obtener el rango de fechas disponible
       const fechasResult = await conn.query(`
         SELECT 
-          TO_CHAR(MIN(fecha_inicio), 'YYYY-MM-DD') as fecha_min, 
-          TO_CHAR(MAX(fecha_inicio), 'YYYY-MM-DD') as fecha_max 
+          TO_CHAR(MIN(fecha_ejecucion), 'YYYY-MM-DD') as fecha_min, 
+          TO_CHAR(MAX(fecha_ejecucion), 'YYYY-MM-DD') as fecha_max 
         FROM ejecuciones_yaml
+      `);
+      
+      // Mostrar algunos registros para diagnóstico
+      const muestraResult = await conn.query(`
+        SELECT id, nombre_yaml, estado, TO_CHAR(fecha_ejecucion, 'YYYY-MM-DD HH24:MI:SS') as fecha
+        FROM ejecuciones_yaml 
+        ORDER BY fecha_ejecucion DESC
+        LIMIT 5
       `);
       
       const diagnostico = {
         total_registros: totalRegistros,
         estados_disponibles: estados,
-        rango_fechas: fechasResult.rows[0]
+        rango_fechas: fechasResult.rows[0],
+        muestra_registros: muestraResult.rows
       };
       
       res.status(200).json({ stats, diagnostico });

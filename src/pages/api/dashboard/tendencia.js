@@ -9,25 +9,25 @@ export default async function handler(req, res) {
     
     let whereClause;
     if (fechaInicio && fechaFin) {
-      whereClause = `WHERE fecha_inicio BETWEEN '${fechaInicio}' AND '${fechaFin}'`;
+      whereClause = `WHERE fecha_ejecucion BETWEEN '${fechaInicio}' AND '${fechaFin}'`;
     } else {
       // Usar el número de días proporcionado o predeterminado a 7
-      whereClause = `WHERE fecha_inicio > NOW() - INTERVAL '${parseInt(dias)} days'`;
+      whereClause = `WHERE fecha_ejecucion > NOW() - INTERVAL '${parseInt(dias)} days'`;
     }
     
     // Consulta para obtener la tendencia de procesamiento por día
     const query = `
       SELECT 
-        TO_CHAR(DATE_TRUNC('day', fecha_inicio), 'DD/MM') as fecha,
+        TO_CHAR(DATE_TRUNC('day', fecha_ejecucion), 'DD/MM') as fecha,
         COUNT(*) as procesados,
         COUNT(CASE WHEN estado = 'exito' THEN 1 END) as exitosos
       FROM 
         ejecuciones_yaml
       ${whereClause}
       GROUP BY 
-        DATE_TRUNC('day', fecha_inicio)
+        DATE_TRUNC('day', fecha_ejecucion)
       ORDER BY 
-        DATE_TRUNC('day', fecha_inicio)
+        DATE_TRUNC('day', fecha_ejecucion)
     `;
     
     console.log('Consulta de tendencia:', query);
@@ -51,16 +51,25 @@ export default async function handler(req, res) {
       // Obtener el rango de fechas disponible
       const fechasResult = await conn.query(`
         SELECT 
-          TO_CHAR(MIN(fecha_inicio), 'YYYY-MM-DD') as fecha_min, 
-          TO_CHAR(MAX(fecha_inicio), 'YYYY-MM-DD') as fecha_max 
+          TO_CHAR(MIN(fecha_ejecucion), 'YYYY-MM-DD') as fecha_min, 
+          TO_CHAR(MAX(fecha_ejecucion), 'YYYY-MM-DD') as fecha_max 
         FROM ejecuciones_yaml
+      `);
+      
+      // Mostrar algunos registros para diagnóstico
+      const muestraResult = await conn.query(`
+        SELECT id, nombre_yaml, estado, TO_CHAR(fecha_ejecucion, 'YYYY-MM-DD HH24:MI:SS') as fecha
+        FROM ejecuciones_yaml 
+        ORDER BY fecha_ejecucion DESC
+        LIMIT 5
       `);
       
       const diagnostico = {
         total_registros: totalRegistros,
         rango_fechas: fechasResult.rows[0],
         registros_encontrados: datos.length,
-        dias_solicitados: parseInt(dias)
+        dias_solicitados: parseInt(dias),
+        muestra_registros: muestraResult.rows
       };
       
       res.status(200).json({ datos, diagnostico });

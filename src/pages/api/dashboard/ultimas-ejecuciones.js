@@ -9,10 +9,10 @@ export default async function handler(req, res) {
     
     let whereClause;
     if (fechaInicio && fechaFin) {
-      whereClause = `WHERE fecha_inicio BETWEEN '${fechaInicio}' AND '${fechaFin}'`;
+      whereClause = `WHERE fecha_ejecucion BETWEEN '${fechaInicio}' AND '${fechaFin}'`;
     } else {
       // Usar el número de días proporcionado o predeterminado a 30
-      whereClause = `WHERE fecha_inicio > NOW() - INTERVAL '${parseInt(dias)} days'`;
+      whereClause = `WHERE fecha_ejecucion > NOW() - INTERVAL '${parseInt(dias)} days'`;
     }
     
     // Consulta para obtener las últimas ejecuciones agrupadas por estado
@@ -62,8 +62,8 @@ export default async function handler(req, res) {
       // Obtener el rango de fechas disponible
       const fechasResult = await conn.query(`
         SELECT 
-          TO_CHAR(MIN(fecha_inicio), 'YYYY-MM-DD') as fecha_min, 
-          TO_CHAR(MAX(fecha_inicio), 'YYYY-MM-DD') as fecha_max 
+          TO_CHAR(MIN(fecha_ejecucion), 'YYYY-MM-DD') as fecha_min, 
+          TO_CHAR(MAX(fecha_ejecucion), 'YYYY-MM-DD') as fecha_max 
         FROM ejecuciones_yaml
       `);
       
@@ -72,12 +72,12 @@ export default async function handler(req, res) {
         SELECT 
           id, 
           estado, 
-          TO_CHAR(fecha_inicio, 'YYYY-MM-DD HH24:MI:SS') as fecha,
-          id_casilla
+          TO_CHAR(fecha_ejecucion, 'YYYY-MM-DD HH24:MI:SS') as fecha,
+          casilla_id
         FROM 
           ejecuciones_yaml 
         ORDER BY 
-          fecha_inicio DESC 
+          fecha_ejecucion DESC 
         LIMIT 100
       `);
       
