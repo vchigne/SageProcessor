@@ -165,23 +165,23 @@ export default function Dashboard() {
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th scope="col" className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Fecha
                       </th>
-                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        % Efectividad
+                      <th scope="col" className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        % Efect.
                       </th>
-                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Procesados
+                      <th scope="col" className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Proc.
                       </th>
-                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Exitosos
+                      <th scope="col" className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Exit.
                       </th>
-                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Parciales
+                      <th scope="col" className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Parc.
                       </th>
-                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Fallidos
+                      <th scope="col" className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Fall.
                       </th>
                     </tr>
                   </thead>
@@ -189,10 +189,10 @@ export default function Dashboard() {
                     {tendenciaData.datos.map((item, index) => {
                       return (
                         <tr key={index}>
-                          <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">
+                          <td className="px-2 py-1 whitespace-nowrap text-xs font-medium text-gray-900">
                             {item.fecha}
                           </td>
-                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
+                          <td className="px-2 py-1 whitespace-nowrap text-xs text-gray-900">
                             <span className={`font-medium ${item.procesados > 0 ? (
                               Math.round((item.exitosos / item.procesados) * 100) >= 80 ? 'text-green-600' : 
                               Math.round((item.exitosos / item.procesados) * 100) >= 50 ? 'text-amber-500' : 'text-red-600'
@@ -200,16 +200,16 @@ export default function Dashboard() {
                               {item.procesados > 0 ? `${Math.round((item.exitosos / item.procesados) * 100)}%` : 'N/A'}
                             </span>
                           </td>
-                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
+                          <td className="px-2 py-1 whitespace-nowrap text-xs text-center text-gray-900">
                             <span className="text-blue-600 font-medium">{item.procesados}</span>
                           </td>
-                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
+                          <td className="px-2 py-1 whitespace-nowrap text-xs text-center text-gray-900">
                             <span className="text-green-600 font-medium">{item.exitosos}</span>
                           </td>
-                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
+                          <td className="px-2 py-1 whitespace-nowrap text-xs text-center text-gray-900">
                             <span className="text-amber-500 font-medium">{item.parciales || 0}</span>
                           </td>
-                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
+                          <td className="px-2 py-1 whitespace-nowrap text-xs text-center text-gray-900">
                             <span className="text-red-600 font-medium">{item.fallidos || 0}</span>
                           </td>
                         </tr>
