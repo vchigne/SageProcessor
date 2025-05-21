@@ -19,16 +19,18 @@ export default async function handler(req, res) {
       `WHERE estado IN ('pendiente', 'en_proceso') AND fecha_ejecucion BETWEEN '${fechaInicio}' AND '${fechaFin}'` : 
       `WHERE estado IN ('pendiente', 'en_proceso')`;
     
-    // Consulta para obtener estadísticas reales (ignoramos la consulta de casillas por vencer ya que no tenemos la tabla/columna)
+    // Consulta para obtener estadísticas solo de los últimos 30 días para mantener consistencia con otros gráficos
+    const diasClause = `WHERE fecha_ejecucion > NOW() - INTERVAL '30 days'`;
+    
     const query = `
       SELECT
         COUNT(*) AS archivos_procesados,
-        (SELECT COUNT(*) FROM ejecuciones_yaml ${whereExito}) AS archivos_exitosos,
-        (SELECT COUNT(*) FROM ejecuciones_yaml ${wherePendientes}) AS archivos_pendientes,
-        0 AS casillas_por_vencer
+        COUNT(CASE WHEN estado = 'Éxito' THEN 1 END) AS archivos_exitosos,
+        COUNT(CASE WHEN estado IN ('pendiente', 'en_proceso') THEN 1 END) AS archivos_pendientes,
+        COUNT(CASE WHEN estado = 'Fallido' THEN 1 END) AS archivos_fallidos
       FROM 
         ejecuciones_yaml
-        ${whereClause}
+        ${fechaInicio && fechaFin ? whereClause : diasClause}
     `;
     
     console.log('Consulta de estadísticas:', query);
