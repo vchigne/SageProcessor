@@ -207,28 +207,16 @@ export default function Dashboard() {
                             {item.fecha}
                           </td>
                           <td className="px-6 py-2 whitespace-nowrap text-sm text-gray-900">
-                            <div className="flex items-center">
-                              <span className="text-blue-600 font-medium mr-2">{item.procesados}</span>
-                              <div className="h-2 bg-blue-600 rounded-sm" style={{ width: `${Math.min(item.procesados * 2, 80)}px` }}></div>
-                            </div>
+                            <span className="text-blue-600 font-medium">{item.procesados}</span>
                           </td>
                           <td className="px-6 py-2 whitespace-nowrap text-sm text-gray-900">
-                            <div className="flex items-center">
-                              <span className="text-green-600 font-medium mr-2">{item.exitosos}</span>
-                              <div className="h-2 bg-green-600 rounded-sm" style={{ width: `${Math.min(item.exitosos * 2, 80)}px` }}></div>
-                            </div>
+                            <span className="text-green-600 font-medium">{item.exitosos}</span>
                           </td>
                           <td className="px-6 py-2 whitespace-nowrap text-sm text-gray-900">
-                            <div className="flex items-center">
-                              <span className="text-amber-500 font-medium mr-2">{item.parciales || 0}</span>
-                              <div className="h-2 bg-amber-500 rounded-sm" style={{ width: `${Math.min((item.parciales || 0) * 2, 80)}px` }}></div>
-                            </div>
+                            <span className="text-amber-500 font-medium">{item.parciales || 0}</span>
                           </td>
                           <td className="px-6 py-2 whitespace-nowrap text-sm text-gray-900">
-                            <div className="flex items-center">
-                              <span className="text-red-600 font-medium mr-2">{item.fallidos || 0}</span>
-                              <div className="h-2 bg-red-600 rounded-sm" style={{ width: `${Math.min((item.fallidos || 0) * 2, 80)}px` }}></div>
-                            </div>
+                            <span className="text-red-600 font-medium">{item.fallidos || 0}</span>
                           </td>
                         </tr>
                       )
