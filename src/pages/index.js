@@ -159,14 +159,22 @@ export default function Dashboard() {
           <Title>Tendencia de Procesamiento</Title>
           {tendenciaData?.datos && tendenciaData?.datos.length > 0 ? (
             <div className="mt-4">
-              <div className="flex justify-between items-center mb-4">
+              <div className="flex flex-wrap gap-4 mb-4">
                 <div className="flex items-center gap-2">
                   <div className="w-4 h-4 bg-blue-600 rounded-sm"></div>
                   <span className="text-sm font-medium">Procesados</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 bg-green-500 rounded-sm"></div>
+                  <div className="w-4 h-4 bg-green-600 rounded-sm"></div>
                   <span className="text-sm font-medium">Exitosos</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 bg-amber-500 rounded-sm"></div>
+                  <span className="text-sm font-medium">Parciales</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 bg-red-600 rounded-sm"></div>
+                  <span className="text-sm font-medium">Fallidos</span>
                 </div>
               </div>
               
@@ -184,13 +192,15 @@ export default function Dashboard() {
                         Exitosos
                       </th>
                       <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Tasa de Éxito
+                        Parciales
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Fallidos
                       </th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {tendenciaData.datos.map((item, index) => {
-                      const tasaExito = item.procesados > 0 ? Math.round((item.exitosos / item.procesados) * 100) : 0;
                       return (
                         <tr key={index}>
                           <td className="px-6 py-2 whitespace-nowrap text-sm font-medium text-gray-900">
@@ -198,24 +208,27 @@ export default function Dashboard() {
                           </td>
                           <td className="px-6 py-2 whitespace-nowrap text-sm text-gray-900">
                             <div className="flex items-center">
-                              <div className="w-12 h-2 bg-blue-600 rounded-sm mr-2" style={{ width: `${Math.min(item.procesados * 3, 100)}px` }}></div>
-                              {item.procesados}
+                              <span className="text-blue-600 font-medium mr-2">{item.procesados}</span>
+                              <div className="h-2 bg-blue-600 rounded-sm" style={{ width: `${Math.min(item.procesados * 2, 80)}px` }}></div>
                             </div>
                           </td>
                           <td className="px-6 py-2 whitespace-nowrap text-sm text-gray-900">
                             <div className="flex items-center">
-                              <div className="w-12 h-2 bg-green-500 rounded-sm mr-2" style={{ width: `${Math.min(item.exitosos * 3, 100)}px` }}></div>
-                              {item.exitosos}
+                              <span className="text-green-600 font-medium mr-2">{item.exitosos}</span>
+                              <div className="h-2 bg-green-600 rounded-sm" style={{ width: `${Math.min(item.exitosos * 2, 80)}px` }}></div>
                             </div>
                           </td>
                           <td className="px-6 py-2 whitespace-nowrap text-sm text-gray-900">
-                            <span className={
-                              tasaExito > 80 ? "text-green-600 font-medium" : 
-                              tasaExito > 50 ? "text-amber-600 font-medium" : 
-                              "text-red-600 font-medium"
-                            }>
-                              {tasaExito}%
-                            </span>
+                            <div className="flex items-center">
+                              <span className="text-amber-500 font-medium mr-2">{item.parciales || 0}</span>
+                              <div className="h-2 bg-amber-500 rounded-sm" style={{ width: `${Math.min((item.parciales || 0) * 2, 80)}px` }}></div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-2 whitespace-nowrap text-sm text-gray-900">
+                            <div className="flex items-center">
+                              <span className="text-red-600 font-medium mr-2">{item.fallidos || 0}</span>
+                              <div className="h-2 bg-red-600 rounded-sm" style={{ width: `${Math.min((item.fallidos || 0) * 2, 80)}px` }}></div>
+                            </div>
                           </td>
                         </tr>
                       )
