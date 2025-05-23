@@ -31,22 +31,6 @@ export const YAMLStudioForm: React.FC = () => {
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
-      // Verificar el tamaño máximo de 20MB (20 * 1024 * 1024 bytes)
-      const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB en bytes
-      
-      if (selectedFile.size > MAX_FILE_SIZE) {
-        setValidationError(
-          `El archivo excede el tamaño máximo permitido de 20MB. Tu archivo tiene ${(selectedFile.size / (1024 * 1024)).toFixed(2)}MB.`
-        );
-        setValidationDetails(
-          "Por favor, selecciona un archivo más pequeño o divide tu archivo en partes más pequeñas. " +
-          "Los archivos grandes pueden causar problemas de rendimiento y fallos en el procesamiento."
-        );
-        // Limpiar el input para que el usuario pueda seleccionar otro archivo
-        e.target.value = '';
-        return;
-      }
-      
       setFile(selectedFile);
       setYamlContent('');
       setPromptContent('');

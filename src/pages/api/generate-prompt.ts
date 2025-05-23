@@ -19,30 +19,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    // Configurar formidable para mantener la extensión original y limitar el tamaño máximo
+    // Configurar formidable para mantener la extensión original
     const form = formidable({
       keepExtensions: true,
-      filename: (name, ext) => `${Date.now()}${ext}`,
-      maxFileSize: 20 * 1024 * 1024, // 20MB en bytes
+      filename: (name, ext) => `${Date.now()}${ext}`
     });
 
-    let fields, files;
-    
-    // Manejar el error de tamaño de archivo
-    try {
-      [fields, files] = await form.parse(req);
-    } catch (error: any) {
-      if (error.code === 'LIMIT_FILE_SIZE') {
-        return res.status(413).json({ 
-          error: 'El archivo excede el tamaño máximo permitido de 20MB',
-          details: 'Por favor, selecciona un archivo más pequeño o divide tu archivo en partes más pequeñas. Los archivos grandes pueden causar problemas de rendimiento y fallos en el procesamiento.'
-        });
-      }
-      throw error; // Re-lanzar otros errores para manejarlos en el catch exterior
-    }
+    const [fields, files] = await form.parse(req);
 
     const inputFile = files.file?.[0];
-    const instructions = fields?.instructions?.[0] || '';
+    const instructions = fields.instructions?.[0] || '';
 
     if (!inputFile) {
       return res.status(400).json({ error: 'No se proporcionó ningún archivo' });
