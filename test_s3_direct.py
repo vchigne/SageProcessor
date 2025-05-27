@@ -24,8 +24,8 @@ def upload_to_s3_direct():
     # Credenciales S3
     bucket = 'sage.vidasoft'
     region = 'us-east-2'
-    access_key = 'AKIA23WII4ZHBQFEIM4Q'
-    secret_key = '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'
+    access_key = '******'
+    secret_key = '*****'
     
     # Configurar AWS CLI a través de variables de entorno
     env = os.environ.copy()
