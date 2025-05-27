@@ -140,3 +140,6 @@ externalPort = 3000
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[http]
+max_request_size = 304857600
