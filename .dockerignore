@@ -1,0 +1,68 @@
+# Dependencias
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Archivos de desarrollo
+.next
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Archivos temporales
+*.log
+logs
+tmp
+.tmp
+
+# Archivos de sistema
+.DS_Store
+Thumbs.db
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Archivos de ejecución (se montan como volúmenes)
+executions/*
+uploads/*
+backups/*
+
+# Archivos de documentación
+README*.md
+docs
+
+# Archivos de testing
+tests
+*.test.js
+*.spec.js
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+
+# Python cache
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env
+pip-log.txt
+
+# Coverage reports
+coverage
+.nyc_output
+
+# Archivos grandes que no son necesarios en el container
+attached_assets/*
+*.zip
+*.tar.gz

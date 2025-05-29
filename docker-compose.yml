@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  sage-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=${DATABASE_URL}
+      - PGHOST=${PGHOST}
+      - PGPORT=${PGPORT}
+      - PGDATABASE=${PGDATABASE}
+      - PGUSER=${PGUSER}
+      - PGPASSWORD=${PGPASSWORD}
+    volumes:
+      - ./executions:/app/executions
+      - ./logs:/app/logs
+      - ./uploads:/app/uploads
+      - ./backups:/app/backups
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    networks:
+      - sage-network
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=${PGDATABASE:-sage_production}
+      - POSTGRES_USER=${PGUSER:-sage_user}
+      - POSTGRES_PASSWORD=${PGPASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./deploy_scripts/init_database.sql:/docker-entrypoint-initdb.d/01-init.sql
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    networks:
+      - sage-network
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./ssl:/etc/nginx/ssl
+    depends_on:
+      - sage-web
+    restart: unless-stopped
+    networks:
+      - sage-network
+
+volumes:
+  postgres_data:
+
+networks:
+  sage-network:
+    driver: bridge
